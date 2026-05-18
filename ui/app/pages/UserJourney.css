@@ -359,6 +359,7 @@
   border: 1px solid rgba(128, 128, 128, 0.15);
   border-radius: 12px;
   overflow: hidden;
+  width: 100%;
 }
 .uj-table-tile [role="cell"],
 .uj-table-tile [role="columnheader"] {

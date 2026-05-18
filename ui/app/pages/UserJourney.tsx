@@ -1206,20 +1206,25 @@ function geoNetworkQuery(days: number, frontend: string): string {
 // NEW: Geo Conversion Rate Query
 function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const firstStep = steps[0]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
-  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
-  const firstExpr = steps[0]?.identifiers?.length > 1 ? `(${firstStep})` : firstStep;
-  const lastExpr = steps[steps.length - 1]?.identifiers?.length > 1 ? `(${lastStep})` : lastStep;
+  const firstStepExpr = stepFilter(steps[0]);
+  const lastStepExpr = stepFilter(steps[steps.length - 1]);
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter ${anyStepFilter(steps)}
 | fieldsAdd country = geo.country.iso_code
-| fieldsAdd is_entry = ${firstExpr}
-| fieldsAdd is_conv = ${lastExpr}
+| fieldsAdd hit_first = ${firstStepExpr}
+| fieldsAdd hit_last = ${lastStepExpr}
 | summarize
-    total_sessions = countDistinct(dt.rum.session.id),
-    entry_sessions = countDistinctIf(dt.rum.session.id, is_entry == true),
-    conv_sessions = countDistinctIf(dt.rum.session.id, is_conv == true),
+    has_first = countIf(hit_first == true),
+    has_last = countIf(hit_last == true),
+    country_any = takeFirst(country),
+    by: {dt.rum.session.id, country}
+| fieldsAdd reached_first = has_first > 0
+| fieldsAdd reached_last = has_last > 0
+| summarize
+    total_sessions = count(),
+    entry_sessions = countIf(reached_first == true),
+    conv_sessions = countIf(reached_first == true and reached_last == true),
     by: {country}
 | fieldsAdd conv_rate = if(entry_sessions > 0, toDouble(conv_sessions) / toDouble(entry_sessions) * 100.0, else: 0.0)
 | sort total_sessions desc
@@ -5871,6 +5876,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
               sortable
               data={(() => {
                 const convRows = (conversionData?.data?.records ?? []) as any[];
+                console.log("[GeoConv] conversionData records:", convRows.length, convRows.slice(0, 3));
                 const convMap = new Map<string, number>();
                 convRows.forEach((r: any) => {
                   convMap.set(String(r.country ?? ""), Number(r.conv_rate ?? 0));
@@ -5934,7 +5940,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
           <div className="uj-table-tile"><DataTable sortable data={isps.map(c => ({
             ISP: c.name, Sessions: c.sessions, "Avg (ms)": Math.round(c.avgDur), Errors: c.errors, Apdex: c.apdex, Countries: c.countryList,
           }))} columns={[
-            { id: "ISP", header: "ISP", accessor: "ISP", cell: ({ value }: any) => <Strong style={{ whiteSpace: "nowrap" }}>{value}</Strong> },
+            { id: "ISP", header: "ISP", accessor: "ISP", width: 220, cell: ({ value }: any) => <span title={value} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block", maxWidth: 200, fontWeight: 600 }}>{value}</span> },
             { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
