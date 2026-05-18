@@ -1208,12 +1208,14 @@ function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): s
   const period = periodClause(days);
   const firstStep = steps[0]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
+  const firstExpr = steps[0]?.identifiers?.length > 1 ? `(${firstStep})` : firstStep;
+  const lastExpr = steps[steps.length - 1]?.identifiers?.length > 1 ? `(${lastStep})` : lastStep;
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter ${anyStepFilter(steps)}
 | fieldsAdd country = geo.country.iso_code
-| fieldsAdd is_entry = ${firstStep}
-| fieldsAdd is_conv = ${lastStep}
+| fieldsAdd is_entry = ${firstExpr}
+| fieldsAdd is_conv = ${lastExpr}
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
     entry_sessions = countDistinctIf(dt.rum.session.id, is_entry == true),
@@ -5864,7 +5866,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
 
           {/* Country table */}
           <SectionHeader title="Full Country Breakdown" />
-          <div className="uj-table-tile">
+          <div className="uj-table-tile" style={{ width: "100%" }}>
             <DataTable
               sortable
               data={(() => {
@@ -5932,7 +5934,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
           <div className="uj-table-tile"><DataTable sortable data={isps.map(c => ({
             ISP: c.name, Sessions: c.sessions, "Avg (ms)": Math.round(c.avgDur), Errors: c.errors, Apdex: c.apdex, Countries: c.countryList,
           }))} columns={[
-            { id: "ISP", header: "ISP", accessor: "ISP", cell: ({ value }: any) => <Strong>{value}</Strong> },
+            { id: "ISP", header: "ISP", accessor: "ISP", cell: ({ value }: any) => <Strong style={{ whiteSpace: "nowrap" }}>{value}</Strong> },
             { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
