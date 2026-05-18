@@ -732,7 +732,6 @@ function geoPerformanceQuery(days: number, frontend: string, steps: StepDef[]): 
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
 | fieldsAdd country = geo.country.iso_code
 | fieldsAdd country_name = geo.country.name
-| fieldsAdd city = geo.city.name
 | fieldsAdd lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0
 | fieldsAdd cls_val = toDouble(web_vitals.cumulative_layout_shift)
 | fieldsAdd inp_ms = toDouble(web_vitals.interaction_to_next_paint) / 1000000.0
@@ -749,7 +748,7 @@ function geoPerformanceQuery(days: number, frontend: string, steps: StepDef[]): 
     cls_avg = avg(cls_val),
     inp_avg = avg(inp_ms),
     country_name = takeFirst(country_name),
-    by: {country, city}
+    by: {country}
 | sort actions desc
 | limit 50`;
 }
@@ -1182,15 +1181,15 @@ function resourceSessionDrillQuery(days: number, frontend: string, steps: StepDe
 }
 
 
-// NEW: Geo Network/Carrier Performance Query
+// NEW: Geo Network/ISP Performance Query
 function geoNetworkQuery(days: number, frontend: string): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
-| fieldsAdd net_type = coalesce(connection.type, "unknown")
-| fieldsAdd carrier_name = coalesce(connection.carrier, "unknown")
+| fieldsAdd net_type = coalesce(connection.effective_type, "unknown")
+| fieldsAdd isp_name = coalesce(isp.name, "unknown")
 | fieldsAdd country = geo.country.iso_code
 | summarize
     actions = count(),
@@ -1200,7 +1199,7 @@ function geoNetworkQuery(days: number, frontend: string): string {
     satisfied = countIf(satisfaction == "satisfied"),
     tolerating = countIf(satisfaction == "tolerating"),
     frustrated = countIf(satisfaction == "frustrated"),
-    by: {net_type, carrier_name, country}
+    by: {net_type, isp_name, country}
 | sort actions desc
 | limit 100`;
 }
@@ -2301,8 +2300,8 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
           </div>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 15, 2026</Paragraph>
-            <Paragraph><Strong>Auto-Refresh — Live Data Updates Without Page Reload</Strong></Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Auto-Refresh selector</Strong> in the header bar (next to Timeframe) with options: Off, 30 seconds, 1 minute, 5 minutes, 10 minutes</Paragraph>
+            <Paragraph><Strong>Metric-Stream — Live Data Updates Without Page Reload</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Metric-Stream selector</Strong> in the header bar (next to Timeframe) with options: Off, 30 seconds, 1 minute, 5 minutes, 10 minutes</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• When enabled, <Strong>all DQL queries across every tab</Strong> automatically re-execute at the selected interval — data values update seamlessly in-place without a page refresh</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Live status indicator</Strong> in the header: spinning icon + "Refreshing…" during data fetch, then "Last refreshed Xs ago" when idle</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• Existing data remains visible during background refetch — no flicker or loading spinners on refresh cycles (only initial load shows full spinner)</Paragraph>
@@ -2432,8 +2431,8 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Error Clustering</Strong>: Groups JavaScript errors by type/pattern to help prioritize fixes. Shows occurrence count, affected sessions, and impact percentage per error cluster. Includes hourly error trend chart for detecting spikes, top clusters bar chart, and sample error messages for quick identification. Focus on high-impact clusters first.</Paragraph>
         <Paragraph><Strong>Hyperlyzer</Strong>: Multidimensional radial visualization for frontend performance analysis. Displays a radial chart with 4 quadrants (OS, Geolocation, User Action, Browser) showing metric values as proportional bar segments. Select from 8 metrics (Action Duration, Apdex, LCP, INP, CLS, TTFB, Load Event End, FCP). Click dimension labels to focus, click slices to apply cross-dimensional filters. Side table shows full list with color-coded metric ratings and drilldown links to Sessions or Vitals apps. Finding cards highlight outliers vs. the application median. Supports stacked filters for progressive drill-down analysis.</Paragraph>
       </HelpSection>
-      <HelpSection title="Auto-Refresh">
-        <Paragraph>The <Strong>Auto-Refresh</Strong> selector in the header controls automatic data re-fetching. Options: <Strong>Off</Strong> (manual only), <Strong>30 seconds</Strong>, <Strong>1 minute</Strong>, <Strong>5 minutes</Strong>, <Strong>10 minutes</Strong>. When active, all DQL queries across every tab re-execute at the chosen interval. Data updates seamlessly in-place — existing values remain visible during refresh (no loading spinners). A status indicator shows "Refreshing…" with a spinner during fetch, and "Last refreshed Xs ago" when idle. Use for wall displays, NOC dashboards, or continuous incident monitoring.</Paragraph>
+      <HelpSection title="Metric-Stream">
+        <Paragraph>The <Strong>Metric-Stream</Strong> selector in the header controls automatic data re-fetching. Options: <Strong>Off</Strong> (manual only), <Strong>30 seconds</Strong>, <Strong>1 minute</Strong>, <Strong>5 minutes</Strong>, <Strong>10 minutes</Strong>. When active, all DQL queries across every tab re-execute at the chosen interval. Data updates seamlessly in-place — existing values remain visible during refresh (no loading spinners). A status indicator shows "Refreshing…" with a spinner during fetch, and "Last refreshed Xs ago" when idle. Use for wall displays, NOC dashboards, or continuous incident monitoring.</Paragraph>
       </HelpSection>
       <HelpSection title="Tab Settings">
         <Paragraph>Click the <Strong>gear icon</Strong> (⚙) next to the help button to open Settings. Each of the 31 tabs can be toggled on or off individually. Drag to reorder. Settings are saved per user via Dynatrace App State — they persist across sessions and browser refreshes. All tabs default to visible. Hiding a tab does not affect data collection, only display.</Paragraph>
@@ -2826,7 +2825,7 @@ export function UserJourney() {
               }}
             />
           </div>
-          <Strong style={{ fontSize: 12 }}>Auto-Refresh</Strong>
+          <Strong style={{ fontSize: 12 }}>Metric-Stream</Strong>
           <Select value={String(refreshIntervalMs)} onChange={(val) => { if (val != null) setRefreshIntervalMs(Number(val)); }}>
             <Select.Trigger style={{ minWidth: 120 }} />
             <Select.Content>
@@ -5772,12 +5771,11 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
   const rows = (data.data?.records ?? []) as any[];
 
   // Aggregate by country
-  const countryMap = new Map<string, { sessions: number; actions: number; avgDur: number; p90: number; errors: number; sat: number; tol: number; fru: number; cities: string[]; countryName: string }>();
+  const countryMap = new Map<string, { sessions: number; actions: number; avgDur: number; p90: number; errors: number; sat: number; tol: number; fru: number; countryName: string }>();
   rows.forEach((r: any) => {
     const country = String(r.country ?? "Unknown");
-    const city = String(r.city ?? "");
     const cName = String(r.country_name ?? country);
-    const d = countryMap.get(country) ?? { sessions: 0, actions: 0, avgDur: 0, p90: 0, errors: 0, sat: 0, tol: 0, fru: 0, cities: [], countryName: cName };
+    const d = countryMap.get(country) ?? { sessions: 0, actions: 0, avgDur: 0, p90: 0, errors: 0, sat: 0, tol: 0, fru: 0, countryName: cName };
     const actions = Number(r.actions ?? 0);
     d.sessions += Number(r.sessions ?? 0);
     d.avgDur = d.actions > 0 ? (d.avgDur * d.actions + Number(r.avg_dur ?? 0) * actions) / (d.actions + actions) : Number(r.avg_dur ?? 0);
@@ -5787,7 +5785,6 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
     d.sat += Number(r.satisfied ?? 0);
     d.tol += Number(r.tolerating ?? 0);
     d.fru += Number(r.frustrated ?? 0);
-    if (city && !d.cities.includes(city)) d.cities.push(city);
     if (!d.countryName || d.countryName === country) d.countryName = cName;
     countryMap.set(country, d);
   });
@@ -5859,9 +5856,6 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
                     <div style={{ width: `${totalActions > 0 ? (c.tol / totalActions) * 100 : 0}%`, background: YELLOW, height: "100%" }} />
                     <div style={{ width: `${totalActions > 0 ? (c.fru / totalActions) * 100 : 0}%`, background: RED, height: "100%" }} />
                   </div>
-                  {c.cities.length > 0 && (
-                    <Text style={{ fontSize: 13, opacity: 0.4, marginTop: 4 }}>{c.cities.slice(0, 3).join(", ")}{c.cities.length > 3 ? ` +${c.cities.length - 3}` : ""}</Text>
-                  )}
                 </div>
                 </a>
               );
@@ -5873,18 +5867,25 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
           <div className="uj-table-tile">
             <DataTable
               sortable
-              data={countries.map((c) => ({
-                Country: c.countryName !== c.name ? `${c.countryName} (${c.name})` : c.name,
-                countryName: c.countryName,
-                Sessions: c.sessions,
-                Actions: c.actions,
-                "Avg (ms)": Math.round(c.avgDur),
-                "P90 (ms)": Math.round(c.p90),
-                Errors: c.errors,
-                "Error %": c.errRate,
-                Apdex: c.apdex,
-                Cities: c.cities.length,
-              }))}
+              data={(() => {
+                const convRows = (conversionData?.data?.records ?? []) as any[];
+                const convMap = new Map<string, number>();
+                convRows.forEach((r: any) => {
+                  convMap.set(String(r.country ?? ""), Number(r.conv_rate ?? 0));
+                });
+                return countries.map((c) => ({
+                  Country: c.countryName !== c.name ? `${c.countryName} (${c.name})` : c.name,
+                  countryName: c.countryName,
+                  Sessions: c.sessions,
+                  Actions: c.actions,
+                  "Avg (ms)": Math.round(c.avgDur),
+                  "P90 (ms)": Math.round(c.p90),
+                  Errors: c.errors,
+                  "Error %": c.errRate,
+                  Apdex: c.apdex,
+                  "Conv %": convMap.get(c.name) ?? 0,
+                }));
+              })()}
               columns={[
                 { id: "Country", header: "Country", accessor: "Country", cell: ({ value, row }: any) => {
                   const cName = row?.original?.countryName;
@@ -5897,37 +5898,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
                 { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
                 { id: "Error %", header: "Error %", accessor: "Error %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 5 ? RED : value > 1 ? YELLOW : GREEN }}>{fmtPct(value)}</Text> },
                 { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
-                { id: "Cities", header: "Cities", accessor: "Cities", sortType: "number" as any },
-              ]}
-            />
-          </div>
-
-          {/* City-level drill-down */}
-          <SectionHeader title="City-Level Detail" />
-          <div className="uj-table-tile">
-            <DataTable
-              sortable
-              data={rows.map((r: any) => {
-                const sat = Number(r.satisfied ?? 0);
-                const tol = Number(r.tolerating ?? 0);
-                const actions = Number(r.actions ?? 0);
-                return {
-                  Country: String(r.country ?? "Unknown"),
-                  City: String(r.city ?? "Unknown"),
-                  Sessions: Number(r.sessions ?? 0),
-                  Actions: actions,
-                  "Avg (ms)": Math.round(Number(r.avg_dur ?? 0)),
-                  Errors: Number(r.errors ?? 0),
-                  Apdex: calcApdex(sat, tol, actions),
-                };
-              })}
-              columns={[
-                { id: "Country", header: "Country", accessor: "Country" },
-                { id: "City", header: "City", accessor: "City", cell: ({ value }: any) => <Strong>{value}</Strong> },
-                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
-                { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
-                { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
-                { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
+                { id: "Conv %", header: "Conv %", accessor: "Conv %", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 5 ? GREEN : value > 2 ? YELLOW : RED }}>{fmtPct(value)}</Strong> },
               ]}
             />
           </div>
@@ -5936,7 +5907,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
 
       {/* Network Type Performance */}
       <SectionHeader title="Network Type Performance" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Performance breakdown by connection type (WiFi, 4G, 3G, etc.)</Text>
+      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Performance breakdown by effective connection type (4G, 3G, 2G, etc.)</Text>
       {(() => {
         const netRows = (networkData?.data?.records ?? []) as any[];
         const netMap = new Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number }>();
@@ -5971,16 +5942,16 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
         );
       })()}
 
-      {/* Carrier/ISP Performance */}
-      <SectionHeader title="Carrier / ISP Performance" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Performance by mobile carrier or ISP. Identifies network providers causing poor experience.</Text>
+      {/* ISP Performance */}
+      <SectionHeader title="ISP Performance" />
+      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Performance by Internet Service Provider. Identifies ISPs causing poor experience.</Text>
       {(() => {
         const netRows = (networkData?.data?.records ?? []) as any[];
-        const carrierMap = new Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number; countries: Set<string> }>();
+        const ispMap = new Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number; countries: Set<string> }>();
         netRows.forEach((r: any) => {
-          const carrier = String(r.carrier_name ?? "unknown");
-          if (carrier === "unknown") return;
-          const d = carrierMap.get(carrier) ?? { sessions: 0, actions: 0, avgDur: 0, errors: 0, sat: 0, tol: 0, fru: 0, countries: new Set() };
+          const isp = String(r.isp_name ?? "unknown");
+          if (isp === "unknown") return;
+          const d = ispMap.get(isp) ?? { sessions: 0, actions: 0, avgDur: 0, errors: 0, sat: 0, tol: 0, fru: 0, countries: new Set() };
           const actions = Number(r.actions ?? 0);
           d.avgDur = d.actions > 0 ? (d.avgDur * d.actions + Number(r.avg_dur ?? 0) * actions) / (d.actions + actions) : Number(r.avg_dur ?? 0);
           d.sessions += Number(r.sessions ?? 0);
@@ -5990,49 +5961,21 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
           d.tol += Number(r.tolerating ?? 0);
           d.fru += Number(r.frustrated ?? 0);
           if (r.country) d.countries.add(String(r.country));
-          carrierMap.set(carrier, d);
+          ispMap.set(isp, d);
         });
-        const carriers = Array.from(carrierMap.entries()).map(([name, d]) => ({ name, ...d, apdex: calcApdex(d.sat, d.tol, d.actions), countryList: [...d.countries].slice(0, 3).join(", ") })).sort((a, b) => b.sessions - a.sessions).slice(0, 15);
-        if (carriers.length === 0) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>No carrier data available (requires mobile traffic)</Text></div>;
+        const isps = Array.from(ispMap.entries()).map(([name, d]) => ({ name, ...d, apdex: calcApdex(d.sat, d.tol, d.actions), countryList: [...d.countries].slice(0, 3).join(", ") })).sort((a, b) => b.sessions - a.sessions).slice(0, 15);
+        if (isps.length === 0) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>No ISP data available</Text></div>;
         return (
-          <div className="uj-table-tile"><DataTable sortable data={carriers.map(c => ({
-            Carrier: c.name, Sessions: c.sessions, "Avg (ms)": Math.round(c.avgDur), Errors: c.errors, Apdex: c.apdex, Countries: c.countryList,
+          <div className="uj-table-tile"><DataTable sortable data={isps.map(c => ({
+            ISP: c.name, Sessions: c.sessions, "Avg (ms)": Math.round(c.avgDur), Errors: c.errors, Apdex: c.apdex, Countries: c.countryList,
           }))} columns={[
-            { id: "Carrier", header: "Carrier/ISP", accessor: "Carrier", cell: ({ value }: any) => <Strong>{value}</Strong> },
+            { id: "ISP", header: "ISP", accessor: "ISP", cell: ({ value }: any) => <Strong>{value}</Strong> },
             { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
             { id: "Countries", header: "Countries", accessor: "Countries", cell: ({ value }: any) => <Text style={{ fontSize: 11, opacity: 0.5 }}>{value}</Text> },
           ]} /></div>
-        );
-      })()}
-
-      {/* Conversion Rate by Geography */}
-      <SectionHeader title="Conversion Rate by Geography" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Conversion rate per country — reveals where business impact of geo performance is highest.</Text>
-      {(() => {
-        const convRows = (conversionData?.data?.records ?? []) as any[];
-        if (convRows.length === 0) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>No conversion data by geography</Text></div>;
-        const sorted = convRows.map((r: any) => ({
-          country: String(r.country ?? "??"),
-          sessions: Number(r.total_sessions ?? 0),
-          convRate: Number(r.conv_rate ?? 0),
-        })).sort((a: any, b: any) => b.sessions - a.sessions).slice(0, 20);
-        const maxConv = Math.max(1, ...sorted.map((s: any) => s.convRate));
-        return (
-          <div className="uj-table-tile" style={{ padding: 16 }}>
-            {sorted.map((c: any) => (
-              <Flex key={c.country} alignItems="center" gap={8} style={{ marginBottom: 6 }}>
-                <Strong style={{ width: 30, fontSize: 12 }}>{c.country}</Strong>
-                <div style={{ flex: 1, height: 18, background: "rgba(128,128,128,0.1)", borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${(c.convRate / maxConv) * 100}%`, background: c.convRate > 5 ? GREEN : c.convRate > 2 ? YELLOW : RED, borderRadius: 3 }} />
-                </div>
-                <Text style={{ width: 60, fontSize: 12, fontWeight: 700, textAlign: "right", color: c.convRate > 5 ? GREEN : c.convRate > 2 ? YELLOW : RED }}>{fmtPct(c.convRate)}</Text>
-                <Text style={{ width: 60, fontSize: 11, opacity: 0.5, textAlign: "right" }}>{fmtCount(c.sessions)}</Text>
-              </Flex>
-            ))}
-          </div>
         );
       })()}
 
