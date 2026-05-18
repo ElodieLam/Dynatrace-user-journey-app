@@ -1188,8 +1188,7 @@ function geoNetworkQuery(days: number, frontend: string): string {
 | filter frontend.name == "${frontend}"
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
-| fieldsAdd net_type = coalesce(connection.effective_type, "unknown")
-| fieldsAdd isp_name = coalesce(isp.name, "unknown")
+| fieldsAdd isp_name = coalesce(client.isp, "unknown")
 | fieldsAdd country = geo.country.iso_code
 | summarize
     actions = count(),
@@ -1199,7 +1198,7 @@ function geoNetworkQuery(days: number, frontend: string): string {
     satisfied = countIf(satisfaction == "satisfied"),
     tolerating = countIf(satisfaction == "tolerating"),
     frustrated = countIf(satisfaction == "frustrated"),
-    by: {net_type, isp_name, country}
+    by: {isp_name, country}
 | sort actions desc
 | limit 100`;
 }
@@ -1211,6 +1210,7 @@ function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): s
   const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
+| filter ${anyStepFilter(steps)}
 | fieldsAdd country = geo.country.iso_code
 | fieldsAdd is_entry = ${firstStep}
 | fieldsAdd is_conv = ${lastStep}
@@ -5904,43 +5904,6 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
           </div>
         </>
       )}
-
-      {/* Network Type Performance */}
-      <SectionHeader title="Network Type Performance" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Performance breakdown by effective connection type (4G, 3G, 2G, etc.)</Text>
-      {(() => {
-        const netRows = (networkData?.data?.records ?? []) as any[];
-        const netMap = new Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number }>();
-        netRows.forEach((r: any) => {
-          const nt = String(r.net_type ?? "unknown");
-          const d = netMap.get(nt) ?? { sessions: 0, actions: 0, avgDur: 0, errors: 0, sat: 0, tol: 0, fru: 0 };
-          const actions = Number(r.actions ?? 0);
-          d.avgDur = d.actions > 0 ? (d.avgDur * d.actions + Number(r.avg_dur ?? 0) * actions) / (d.actions + actions) : Number(r.avg_dur ?? 0);
-          d.sessions += Number(r.sessions ?? 0);
-          d.actions += actions;
-          d.errors += Number(r.errors ?? 0);
-          d.sat += Number(r.satisfied ?? 0);
-          d.tol += Number(r.tolerating ?? 0);
-          d.fru += Number(r.frustrated ?? 0);
-          netMap.set(nt, d);
-        });
-        const nets = Array.from(netMap.entries()).map(([name, d]) => ({ name, ...d, apdex: calcApdex(d.sat, d.tol, d.actions) })).sort((a, b) => b.sessions - a.sessions);
-        if (nets.length === 0) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>No network type data available</Text></div>;
-        return (
-          <Flex gap={12} flexWrap="wrap">
-            {nets.map(n => (
-              <div key={n.name} className="uj-geo-card" style={{ borderLeftColor: apdexClr(n.apdex), minWidth: 180 }}>
-                <Strong style={{ fontSize: 14, textTransform: "uppercase" }}>{n.name}</Strong>
-                <Flex gap={12} style={{ marginTop: 6 }}>
-                  <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Sessions</Text><Text style={{ display: "block", fontWeight: 700, color: BLUE }}>{fmtCount(n.sessions)}</Text></div>
-                  <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Avg</Text><Text style={{ display: "block", fontWeight: 700, color: n.avgDur > 3000 ? RED : n.avgDur > 1000 ? YELLOW : GREEN }}>{fmt(n.avgDur)}</Text></div>
-                  <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Apdex</Text><Text style={{ display: "block", fontWeight: 700, color: apdexClr(n.apdex) }}>{n.apdex.toFixed(2)}</Text></div>
-                </Flex>
-              </div>
-            ))}
-          </Flex>
-        );
-      })()}
 
       {/* ISP Performance */}
       <SectionHeader title="ISP Performance" />
