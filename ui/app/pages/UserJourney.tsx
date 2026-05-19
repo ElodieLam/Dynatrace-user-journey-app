@@ -6447,10 +6447,12 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "cls": return `${header}\nCLS: ${snap.cls > 0 ? snap.cls.toFixed(3) : "N/A"}\nApdex: ${apdex.toFixed(2)}`;
       case "inp": return `${header}\nINP: ${snap.inp > 0 ? fmt(snap.inp) : "N/A"}\nApdex: ${apdex.toFixed(2)}`;
       case "revenue": {
-        return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}`;
+        const estRev = aov > 0 && overallConv > 0 ? snap.sessions * (overallConv / 100) * aov : 0;
+        return `${header}\nEst. Revenue: ${fmtCurrency(estRev)}\nApdex: ${apdex.toFixed(2)}`;
       }
       case "convRate": {
-        return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}`;
+        const cr = convRateMap.get(iso) ?? 0;
+        return `${header}\nConversion Rate: ${fmtPct(cr)}\nApdex: ${apdex.toFixed(2)}`;
       }
       default: return `${header}\nApdex: ${apdex.toFixed(2)}\nAvg Duration: ${fmt(snap.avgDur)}\nErrors: ${snap.errors}`;
     }
@@ -7084,6 +7086,14 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                     case "lcp": tipLine2 = `LCP: ${tlSnap.lcp > 0 ? fmt(tlSnap.lcp) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
                     case "cls": tipLine2 = `CLS: ${tlSnap.cls > 0 ? tlSnap.cls.toFixed(3) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
                     case "inp": tipLine2 = `INP: ${tlSnap.inp > 0 ? fmt(tlSnap.inp) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    case "revenue": {
+                      const estRev = aov > 0 && overallConv > 0 ? tlSnap.sessions * (overallConv / 100) * aov : 0;
+                      tipLine2 = `Est. Revenue: ${fmtCurrency(estRev)}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    }
+                    case "convRate": {
+                      const cr = convRateMap.get(s.iso) ?? 0;
+                      tipLine2 = `Conversion Rate: ${fmtPct(cr)}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    }
                     default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nError Rate: ${fmtPct(tlErrRate)}`; break;
                   }
                 } else {
