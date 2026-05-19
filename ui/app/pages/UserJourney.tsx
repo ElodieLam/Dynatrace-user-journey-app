@@ -6204,6 +6204,15 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
   const [tlMode, setTlMode] = useState(false);
   const tlRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const tlTotalRef = React.useRef(0);
+  // Globe rotation state (must be at top level — Rules of Hooks)
+  const [rotLng, setRotLng] = useState(0);
+  const spinRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const startSpin = React.useCallback((dir: number) => {
+    if (spinRef.current) return;
+    spinRef.current = setInterval(() => setRotLng(prev => prev + dir * 0.8), 30);
+  }, []);
+  const stopSpin = React.useCallback(() => { if (spinRef.current) { clearInterval(spinRef.current); spinRef.current = null; } }, []);
+  useEffect(() => () => { if (spinRef.current) clearInterval(spinRef.current); }, []);
   // Sync with saved default if user hasn't manually changed yet
   useEffect(() => { if (!hasUserChanged) setMapView(defaultView); }, [defaultView, hasUserChanged]);
   // Time-lapse auto-advance interval
@@ -6905,16 +6914,6 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
         const RAD = Math.PI / 180;
         const R = 200; // Globe radius
         const CX = 400, CY = 280; // Center of SVG
-
-        // Rotation state uses a ref + interval for smooth spin
-        const [rotLng, setRotLng] = React.useState(0);
-        const spinRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-        const startSpin = (dir: number) => {
-          if (spinRef.current) return;
-          spinRef.current = setInterval(() => setRotLng(prev => prev + dir * 0.8), 30);
-        };
-        const stopSpin = () => { if (spinRef.current) { clearInterval(spinRef.current); spinRef.current = null; } };
-        React.useEffect(() => () => { if (spinRef.current) clearInterval(spinRef.current); }, []);
 
         // Orthographic projection
         const project = (lat: number, lng: number): [number, number, boolean] => {
