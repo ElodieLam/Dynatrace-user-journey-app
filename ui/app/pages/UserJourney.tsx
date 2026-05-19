@@ -6394,7 +6394,29 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     const snap = currentHourData.get(iso);
     if (!snap) return `${countryName} — No data this hour`;
     const apdex = calcApdex(snap.sat, snap.tol, snap.actions);
-    return `${countryName} (${iso})\nSessions: ${fmtCount(snap.sessions)}\nApdex: ${apdex.toFixed(2)}\nAvg Duration: ${fmt(snap.avgDur)}\nErrors: ${snap.errors}`;
+    const errRate = snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
+    const header = `${countryName} (${iso})\nSessions: ${fmtCount(snap.sessions)}`;
+    switch (metric) {
+      case "sessions": return `${header}\nActions: ${fmtCount(snap.actions)}\nApdex: ${apdex.toFixed(2)}`;
+      case "avgDur": return `${header}\nAvg Duration: ${fmt(snap.avgDur)}\nApdex: ${apdex.toFixed(2)}`;
+      case "apdex": return `${header}\nApdex: ${apdex.toFixed(2)}\nSatisfied: ${snap.sat} | Tolerating: ${snap.tol} | Frustrated: ${snap.fru}`;
+      case "errRate": return `${header}\nError Rate: ${fmtPct(errRate)}\nErrors: ${snap.errors} / ${snap.actions} actions`;
+      case "lcp": case "cls": case "inp": {
+        const c = countries.find(cc => cc.iso === iso);
+        const val = metric === "lcp" ? c?.lcp : metric === "cls" ? c?.cls : c?.inp;
+        const label = metric === "lcp" ? "LCP" : metric === "cls" ? "CLS" : "INP";
+        return `${header}\n${label}: ${val != null ? (metric === "cls" ? val.toFixed(3) : fmt(val)) : "N/A"} (period avg)\nHourly Apdex: ${apdex.toFixed(2)}`;
+      }
+      case "revenue": {
+        const c = countries.find(cc => cc.iso === iso);
+        return `${header}\nEst. Revenue: ${c ? "$" + fmtCount(c.estRevenue) : "N/A"} (period)\nHourly Apdex: ${apdex.toFixed(2)}`;
+      }
+      case "convRate": {
+        const rate = convRateMap.get(iso) ?? 0;
+        return `${header}\nConversion Rate: ${fmtPct(rate)} (period)\nHourly Apdex: ${apdex.toFixed(2)}`;
+      }
+      default: return `${header}\nApdex: ${apdex.toFixed(2)}\nAvg Duration: ${fmt(snap.avgDur)}\nErrors: ${snap.errors}`;
+    }
   };
 
   const animCSS = `
