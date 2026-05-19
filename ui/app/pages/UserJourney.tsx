@@ -7062,12 +7062,13 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                 let tipLine2: string;
                 if (tlMode && tlSnap) {
                   // Show per-bucket data
+                  const tlErrRate = tlSnap.actions > 0 ? (tlSnap.errors / tlSnap.actions) * 100 : 0;
                   switch (metric) {
                     case "sessions": tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
                     case "avgDur": tipLine2 = `Avg Duration: ${fmt(tlSnap.avgDur)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
                     case "apdex": tipLine2 = `Apdex: ${tlApdex.toFixed(2)}\nSat: ${tlSnap.sat} | Tol: ${tlSnap.tol} | Fru: ${tlSnap.fru}`; break;
-                    case "errRate": { const er = tlSnap.actions > 0 ? (tlSnap.errors / tlSnap.actions) * 100 : 0; tipLine2 = `Error Rate: ${fmtPct(er)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break; }
-                    default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`; break;
+                    case "errRate": tipLine2 = `Error Rate: ${fmtPct(tlErrRate)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
+                    default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nAvg Duration: ${fmt(tlSnap.avgDur)}\nError Rate: ${fmtPct(tlErrRate)}`; break;
                   }
                 } else {
                   tipLine2 = `${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`;
