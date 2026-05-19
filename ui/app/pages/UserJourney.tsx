@@ -6492,10 +6492,10 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           <select
             value={tlBucket}
             onChange={(e) => { onBucketChange?.(e.target.value as TlBucket); setTlIndex(0); setTlPlaying(false); }}
-            style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(128,128,128,0.08)", color: "inherit", fontSize: 11, cursor: "pointer" }}
+            style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(128,128,128,0.3)", background: "#1a1e2e", color: "#e0e0e0", fontSize: 11, cursor: "pointer" }}
           >
             {(["1m", "5m", "10m", "30m", "1h"] as TlBucket[]).map((b) => (
-              <option key={b} value={b}>{TL_BUCKET_LABELS[b]}</option>
+              <option key={b} value={b} style={{ background: "#1a1e2e", color: "#e0e0e0" }}>{TL_BUCKET_LABELS[b]}</option>
             ))}
           </select>
           {tlLoading && <Text style={{ fontSize: 11, opacity: 0.5 }}>Loading hourly data…</Text>}
