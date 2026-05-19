@@ -1240,7 +1240,7 @@ function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[]): st
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
 | fieldsAdd country = geo.country.iso_code
-| fieldsAdd hour_bucket = bin(timestamp, 1h)
+| fieldsAdd hour_bucket = formatTimestamp(timestamp, format: "yyyy-MM-dd HH:00")
 | summarize
     actions = count(),
     sessions = countDistinct(dt.rum.session.id),
@@ -2857,7 +2857,7 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.47.77</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.49.8</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
@@ -3528,6 +3528,154 @@ function analyzeGeoHeatmap(data: any, conversionData?: any, networkData?: any): 
 
   const summary = `Geo Heatmap provides country-level performance and conversion analysis, revealing how user experience varies by geographic region. This tab is critical for Infrastructure Architects planning CDN edge locations, Global Product Managers understanding regional user satisfaction, and Operations Teams identifying underperforming regions. It answers: Which countries have the worst performance? Is our CDN delivering content efficiently? Are there regions where poor performance is suppressing conversion? Which ISPs cause poor experience? Currently analyzing ${entries.length} regions with a global average latency of ${fmt(globalAvg)}. ${slowRegions.length > 0 ? `${slowRegions.length} region(s) have latency 50%+ above the global average — these users are having a measurably worse experience that may be driving regional conversion differences.` : "Performance is consistent across all regions, suggesting your CDN and infrastructure are well-distributed."} The Conv % column shows per-country funnel completion rates. ISP Performance reveals which internet providers cause slowness. Use this data to justify CDN investments, regional server deployments, or geo-specific performance optimizations.`;
   return { summary, insights, recommendations: recs };
+}
+
+function analyzeMapByMetric(data: any, metric: string, conversionData?: any): AIInsightsData {
+  const records = (data?.data?.records ?? []) as any[];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  if (records.length === 0) return { summary: "No geographic data available.", insights: [], recommendations: [] };
+
+  // Build country entries with all metrics
+  const countryMap = new Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number; lcpSum: number; lcpCount: number; clsSum: number; clsCount: number; inpSum: number; inpCount: number; name: string }>();
+  records.forEach((r: any) => {
+    const country = String(r.country ?? "").toUpperCase();
+    if (!country) return;
+    const cName = String(r.country_name ?? country);
+    const d = countryMap.get(country) ?? { sessions: 0, actions: 0, avgDur: 0, errors: 0, sat: 0, tol: 0, fru: 0, lcpSum: 0, lcpCount: 0, clsSum: 0, clsCount: 0, inpSum: 0, inpCount: 0, name: cName };
+    const actions = Number(r.actions ?? 0);
+    d.sessions += Number(r.sessions ?? 0);
+    d.avgDur = d.actions > 0 ? (d.avgDur * d.actions + Number(r.avg_dur ?? 0) * actions) / (d.actions + actions) : Number(r.avg_dur ?? 0);
+    d.actions += actions;
+    d.errors += Number(r.errors ?? 0);
+    d.sat += Number(r.satisfied ?? 0); d.tol += Number(r.tolerating ?? 0); d.fru += Number(r.frustrated ?? 0);
+    const lcp = r.lcp_avg != null ? Number(r.lcp_avg) : NaN;
+    if (!isNaN(lcp)) { d.lcpSum += lcp * actions; d.lcpCount += actions; }
+    const cls = r.cls_avg != null ? Number(r.cls_avg) : NaN;
+    if (!isNaN(cls)) { d.clsSum += cls * actions; d.clsCount += actions; }
+    const inp = r.inp_avg != null ? Number(r.inp_avg) : NaN;
+    if (!isNaN(inp)) { d.inpSum += inp * actions; d.inpCount += actions; }
+    countryMap.set(country, d);
+  });
+  const countries = Array.from(countryMap.entries()).map(([iso, d]) => ({
+    iso, ...d,
+    apdex: calcApdex(d.sat, d.tol, d.actions),
+    errRate: d.actions > 0 ? (d.errors / d.actions) * 100 : 0,
+    lcp: d.lcpCount > 0 ? d.lcpSum / d.lcpCount : NaN,
+    cls: d.clsCount > 0 ? d.clsSum / d.clsCount : NaN,
+    inp: d.inpCount > 0 ? d.inpSum / d.inpCount : NaN,
+  })).sort((a, b) => b.sessions - a.sessions);
+
+  const totalSessions = countries.reduce((a, c) => a + c.sessions, 0);
+
+  switch (metric) {
+    case "sessions": {
+      const top3 = countries.slice(0, 3);
+      const topPct = totalSessions > 0 ? (top3.reduce((a, c) => a + c.sessions, 0) / totalSessions * 100) : 0;
+      insights.push({ severity: "info", icon: "📊", text: `${countries.length} countries with traffic. Top 3 (${top3.map(c => c.name).join(", ")}) account for ${fmtPct(topPct)} of all sessions.` });
+      const lowTraffic = countries.filter(c => c.sessions < 10);
+      if (lowTraffic.length > 0) insights.push({ severity: "info", icon: "🌐", text: `${lowTraffic.length} countries have fewer than 10 sessions — limited statistical significance for those regions.` });
+      return { summary: `Session distribution across ${countries.length} countries. Identifies traffic concentration and geographic reach. Heavy concentration in few regions may indicate untapped markets or regional marketing opportunities.`, insights, recommendations: recs };
+    }
+    case "avgDur": {
+      const globalAvg = countries.reduce((a, c) => a + c.avgDur * c.sessions, 0) / Math.max(1, totalSessions);
+      const slow = countries.filter(c => c.avgDur > 3000 && c.sessions > 5).sort((a, b) => b.avgDur - a.avgDur);
+      const moderate = countries.filter(c => c.avgDur > 1500 && c.avgDur <= 3000 && c.sessions > 5);
+      const fast = countries.filter(c => c.avgDur <= 800 && c.sessions > 5);
+      if (slow.length > 0) {
+        insights.push({ severity: "critical", icon: "🐌", text: `${slow.length} region(s) exceed 3s avg duration. Worst: ${slow[0].name} at ${fmt(slow[0].avgDur)} (${fmtCount(slow[0].sessions)} sessions).` });
+        recs.push({ impact: "high", text: `Deploy CDN edge nodes or regional caches for: ${slow.slice(0, 3).map(c => c.name).join(", ")}. Users in these regions experience unacceptable latency.` });
+      }
+      if (moderate.length > 0) insights.push({ severity: "warning", icon: "⚠️", text: `${moderate.length} region(s) between 1.5-3s (yellow zone): ${moderate.slice(0, 3).map(c => c.name).join(", ")}.` });
+      if (fast.length > 0) insights.push({ severity: "good", icon: "⚡", text: `${fast.length} region(s) under 800ms. Fastest: ${fast[0].name} at ${fmt(fast[0].avgDur)}.` });
+      recs.push({ impact: "medium", text: `Global average: ${fmt(globalAvg)}. Target <1s for all regions. Regions >2x global avg likely lack nearby CDN presence.` });
+      return { summary: `Average duration analysis across ${countries.length} countries. Global weighted avg: ${fmt(globalAvg)}. Color thresholds: Green (<800ms), Yellow (800-1500ms), Orange (1500-3000ms), Red (>3000ms). Slow regions indicate missing CDN coverage or backend routing inefficiency.`, insights, recommendations: recs };
+    }
+    case "apdex": {
+      const poor = countries.filter(c => c.apdex < 0.5 && c.sessions > 5).sort((a, b) => a.apdex - b.apdex);
+      const fair = countries.filter(c => c.apdex >= 0.5 && c.apdex < 0.7 && c.sessions > 5);
+      const good = countries.filter(c => c.apdex >= 0.85 && c.sessions > 5);
+      if (poor.length > 0) {
+        insights.push({ severity: "critical", icon: "🔴", text: `${poor.length} region(s) have Apdex below 0.5 (unacceptable). Worst: ${poor[0].name} at ${poor[0].apdex.toFixed(2)}.` });
+        recs.push({ impact: "high", text: `Critical Apdex in: ${poor.slice(0, 3).map(c => c.name).join(", ")}. Majority of users are frustrated. Investigate regional infrastructure or third-party dependencies.` });
+      }
+      if (fair.length > 0) insights.push({ severity: "warning", icon: "🟡", text: `${fair.length} region(s) in fair range (0.5-0.7): ${fair.slice(0, 3).map(c => c.name).join(", ")}.` });
+      if (good.length > 0) insights.push({ severity: "good", icon: "🟢", text: `${good.length} region(s) have excellent Apdex (≥0.85). Best: ${good[0].name} at ${good[0].apdex.toFixed(2)}.` });
+      return { summary: `Apdex satisfaction analysis by country. Apdex measures user satisfaction: 1.0=all satisfied, 0.5=half frustrated, 0=all frustrated. Threshold T=${APDEX_T}ms. Poor Apdex regions are losing users to frustration.`, insights, recommendations: recs };
+    }
+    case "errRate": {
+      const highErr = countries.filter(c => c.errRate > 5 && c.sessions > 5).sort((a, b) => b.errRate - a.errRate);
+      const modErr = countries.filter(c => c.errRate > 2 && c.errRate <= 5 && c.sessions > 5);
+      if (highErr.length > 0) {
+        insights.push({ severity: "critical", icon: "🚨", text: `${highErr.length} region(s) have error rate >5%. Worst: ${highErr[0].name} at ${fmtPct(highErr[0].errRate)} (${fmtCount(highErr[0].sessions)} sessions).` });
+        recs.push({ impact: "high", text: `High error rates in: ${highErr.slice(0, 3).map(c => c.name).join(", ")}. Check for region-specific API failures, geo-blocked resources, or CDN configuration errors.` });
+      }
+      if (modErr.length > 0) insights.push({ severity: "warning", icon: "⚠️", text: `${modErr.length} region(s) between 2-5% error rate: ${modErr.slice(0, 3).map(c => c.name).join(", ")}.` });
+      const lowErr = countries.filter(c => c.errRate < 0.5 && c.sessions > 5);
+      if (lowErr.length > 0) insights.push({ severity: "good", icon: "✅", text: `${lowErr.length} region(s) have near-zero error rates (<0.5%).` });
+      return { summary: `Error rate geographic distribution. Identifies regions with elevated failures. Region-specific errors often indicate: geo-blocked third-party scripts, CDN misconfigurations, or locale-specific code paths failing.`, insights, recommendations: recs };
+    }
+    case "lcp": {
+      const withLcp = countries.filter(c => !isNaN(c.lcp) && c.sessions > 5);
+      const poorLcp = withLcp.filter(c => c.lcp > CWV.lcp.poor).sort((a, b) => b.lcp - a.lcp);
+      const needsWork = withLcp.filter(c => c.lcp > CWV.lcp.good && c.lcp <= CWV.lcp.poor);
+      const goodLcp = withLcp.filter(c => c.lcp <= CWV.lcp.good);
+      if (poorLcp.length > 0) {
+        insights.push({ severity: "critical", icon: "🖼️", text: `${poorLcp.length} region(s) have Poor LCP (>${CWV.lcp.poor}ms). Worst: ${poorLcp[0].name} at ${fmt(poorLcp[0].lcp)}.` });
+        recs.push({ impact: "high", text: `Poor LCP in: ${poorLcp.slice(0, 3).map(c => c.name).join(", ")}. Optimize hero images, preload critical resources, add regional CDN for static assets.` });
+      }
+      if (needsWork.length > 0) insights.push({ severity: "warning", icon: "🟡", text: `${needsWork.length} region(s) need LCP improvement (${CWV.lcp.good}-${CWV.lcp.poor}ms).` });
+      if (goodLcp.length > 0) insights.push({ severity: "good", icon: "🟢", text: `${goodLcp.length} region(s) have Good LCP (≤${CWV.lcp.good}ms).` });
+      return { summary: `Largest Contentful Paint by country. LCP measures perceived load speed. Google thresholds: Good ≤${CWV.lcp.good}ms, Poor >${CWV.lcp.poor}ms. Regional LCP differences indicate CDN/image optimization gaps.`, insights, recommendations: recs };
+    }
+    case "cls": {
+      const withCls = countries.filter(c => !isNaN(c.cls) && c.sessions > 5);
+      const poorCls = withCls.filter(c => c.cls > CWV.cls.poor).sort((a, b) => b.cls - a.cls);
+      const goodCls = withCls.filter(c => c.cls <= CWV.cls.good);
+      if (poorCls.length > 0) {
+        insights.push({ severity: "critical", icon: "📐", text: `${poorCls.length} region(s) have Poor CLS (>${CWV.cls.poor}). Worst: ${poorCls[0].name} at ${poorCls[0].cls.toFixed(3)}.` });
+        recs.push({ impact: "high", text: `Poor CLS may be caused by late-loading ads, fonts, or images without dimensions. Check: ${poorCls.slice(0, 3).map(c => c.name).join(", ")}.` });
+      }
+      if (goodCls.length > 0) insights.push({ severity: "good", icon: "🟢", text: `${goodCls.length} region(s) have Good CLS (≤${CWV.cls.good}).` });
+      return { summary: `Cumulative Layout Shift by country. CLS measures visual stability. Google thresholds: Good ≤${CWV.cls.good}, Poor >${CWV.cls.poor}. Region-specific CLS differences may indicate ad network or font loading variations.`, insights, recommendations: recs };
+    }
+    case "inp": {
+      const withInp = countries.filter(c => !isNaN(c.inp) && c.sessions > 5);
+      const poorInp = withInp.filter(c => c.inp > CWV.inp.poor).sort((a, b) => b.inp - a.inp);
+      const goodInp = withInp.filter(c => c.inp <= CWV.inp.good);
+      if (poorInp.length > 0) {
+        insights.push({ severity: "critical", icon: "👆", text: `${poorInp.length} region(s) have Poor INP (>${CWV.inp.poor}ms). Worst: ${poorInp[0].name} at ${fmt(poorInp[0].inp)}.` });
+        recs.push({ impact: "high", text: `Poor INP in: ${poorInp.slice(0, 3).map(c => c.name).join(", ")}. Indicates heavy main-thread work. Check for region-specific JS bundles or slow API responses blocking interaction.` });
+      }
+      if (goodInp.length > 0) insights.push({ severity: "good", icon: "🟢", text: `${goodInp.length} region(s) have Good INP (≤${CWV.inp.good}ms).` });
+      return { summary: `Interaction to Next Paint by country. INP measures responsiveness to user input. Google thresholds: Good ≤${CWV.inp.good}ms, Poor >${CWV.inp.poor}ms. Regional INP issues often correlate with device capabilities in that market.`, insights, recommendations: recs };
+    }
+    case "revenue": {
+      insights.push({ severity: "info", icon: "💰", text: `Revenue estimates based on session count × conversion rate × AOV. Top markets by estimated revenue contribute the most to business outcomes.` });
+      recs.push({ impact: "high", text: `Focus performance optimization on highest-revenue regions. A 100ms latency reduction in top markets can significantly impact conversion and revenue.` });
+      return { summary: `Estimated revenue distribution by country. Calculated from sessions × overall conversion rate × Average Order Value. Identifies which geographic markets contribute most to revenue and where performance optimization has the highest business impact.`, insights, recommendations: recs };
+    }
+    case "convRate": {
+      const convRecords = (conversionData?.data?.records ?? []) as any[];
+      if (convRecords.length === 0) {
+        return { summary: "Conversion rate data is loading or unavailable.", insights: [{ severity: "info", icon: "⏳", text: "Conversion data not yet available. Ensure funnel steps are configured." }], recommendations: [] };
+      }
+      const convEntries = convRecords.map((r: any) => ({ country: String(r.country ?? ""), rate: Number(r.conv_rate ?? 0), sessions: Number(r.entry_sessions ?? r.total_sessions ?? 0) })).filter((e: any) => e.sessions > 5);
+      const avgRate = convEntries.length > 0 ? convEntries.reduce((a, e) => a + e.rate, 0) / convEntries.length : 0;
+      const high = convEntries.filter(e => e.rate > avgRate * 1.5).sort((a, b) => b.rate - a.rate);
+      const low = convEntries.filter(e => e.rate < avgRate * 0.5 && e.rate > 0).sort((a, b) => a.rate - b.rate);
+      const zero = convEntries.filter(e => e.rate === 0);
+      if (high.length > 0) insights.push({ severity: "good", icon: "🎯", text: `${high.length} region(s) convert 50%+ above average (${fmtPct(avgRate)}). Best: ${high[0].country} at ${fmtPct(high[0].rate)}.` });
+      if (low.length > 0) {
+        insights.push({ severity: "warning", icon: "📉", text: `${low.length} region(s) convert 50%+ below average. Lowest: ${low[0].country} at ${fmtPct(low[0].rate)}.` });
+        recs.push({ impact: "high", text: `Low-converting regions: ${low.slice(0, 3).map(e => e.country).join(", ")}. Check localization, payment methods, currency support, and regional latency.` });
+      }
+      if (zero.length > 0) insights.push({ severity: "critical", icon: "🚨", text: `${zero.length} region(s) with traffic but 0% conversion.` });
+      return { summary: `Per-country funnel conversion rate. Average: ${fmtPct(avgRate)} across ${convEntries.length} countries. Color thresholds: Green (>5%), Yellow (2-5%), Red (<2%). Low-converting regions may indicate localization gaps, payment friction, or performance-driven abandonment.`, insights, recommendations: recs };
+    }
+    default:
+      return { summary: "Select a colorize-by metric to see geographic analysis.", insights: [], recommendations: [] };
+  }
 }
 
 function analyzeAnomalyDetection(quality: any, qualityPrev: any, overallApdex: number, overallApdexPrev: number, funnelCounts: number[], funnelCountsPrev: number[]): AIInsightsData {
@@ -6062,7 +6210,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     } else { if (tlRef.current) { clearInterval(tlRef.current); tlRef.current = null; } }
     return () => { if (tlRef.current) { clearInterval(tlRef.current); tlRef.current = null; } };
   }, [tlPlaying, tlMode]);
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGeoHeatmap(data, conversionData), [data, conversionData]));
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeMapByMetric(data, metric, conversionData), [data, metric, conversionData]));
   if (isLoading) return <Loading />;
 
   const rows = (data.data?.records ?? []) as any[];
@@ -6075,7 +6223,10 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
   });
 
   // Parse timelapse data into hourly snapshots
+  const tlLoading = timelapseData?.isLoading ?? false;
+  const tlError = timelapseData?.error;
   const tlRows = (timelapseData?.data?.records ?? []) as any[];
+  console.log("[TimeLapse] loading:", tlLoading, "error:", tlError, "rows:", tlRows.length, "keys:", timelapseData ? Object.keys(timelapseData) : "undef", "dataKeys:", timelapseData?.data ? Object.keys(timelapseData.data) : "undef");
   const hourBuckets = new Map<string, Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number }>>();
   tlRows.forEach((r: any) => {
     const hour = String(r.hour_bucket ?? "");
@@ -6295,17 +6446,22 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       </Flex>
 
       {/* Time-Lapse Controls */}
-      {mapView === "world" && tlTotal > 1 && (
+      {mapView === "world" && (
         <Flex alignItems="center" gap={12} style={{ background: "rgba(128,128,128,0.06)", borderRadius: 8, padding: "10px 16px", border: "1px solid rgba(128,128,128,0.15)" }}>
           <button
             onClick={() => {
+              if (tlTotal < 2) return;
               if (!tlMode) { setTlMode(true); setTlPlaying(true); setTlIndex(0); }
               else { setTlMode(false); setTlPlaying(false); if (tlRef.current) { clearInterval(tlRef.current); tlRef.current = null; } }
             }}
-            style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${tlMode ? ORANGE : "rgba(128,128,128,0.3)"}`, background: tlMode ? `${ORANGE}22` : "transparent", color: tlMode ? ORANGE : "rgba(128,128,128,0.7)", fontSize: 12, fontWeight: tlMode ? 700 : 400, cursor: "pointer" }}
+            style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${tlMode ? ORANGE : "rgba(128,128,128,0.3)"}`, background: tlMode ? `${ORANGE}22` : "transparent", color: tlTotal < 2 ? "rgba(128,128,128,0.35)" : tlMode ? ORANGE : "rgba(128,128,128,0.7)", fontSize: 12, fontWeight: tlMode ? 700 : 400, cursor: tlTotal < 2 ? "default" : "pointer" }}
           >
             {tlMode ? "⏹ Exit Time-Lapse" : "▶ Time-Lapse"}
           </button>
+          {tlLoading && <Text style={{ fontSize: 11, opacity: 0.5 }}>Loading hourly data…</Text>}
+          {!tlLoading && tlError && <Text style={{ fontSize: 11, color: RED }}>Error: {String(tlError?.message ?? tlError)}</Text>}
+          {!tlLoading && !tlError && tlTotal < 2 && <Text style={{ fontSize: 11, opacity: 0.4 }}>No hourly snapshots ({tlRows.length} rows)</Text>}
+          {!tlLoading && tlTotal >= 2 && !tlMode && <Text style={{ fontSize: 11, opacity: 0.4 }}>{tlTotal} hourly snapshots</Text>}
           {tlMode && (
             <>
               <button
