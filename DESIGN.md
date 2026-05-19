@@ -286,11 +286,14 @@ fetch user.events, from: now() - {timeframe}
 **Key Features**:
 - World map (d3-geo Natural Earth projection + world-atlas TopoJSON)
 - US state map (Albers USA projection + us-atlas TopoJSON)
-- 7 colorize-by metrics: Sessions, Avg Duration, Apdex, Error Rate, LCP, CLS, INP
+- 9 colorize-by metrics: Sessions, Avg Duration, Apdex, Error Rate, LCP, CLS, INP, Est. Revenue (AOV), Conversion Rate
+- Conversion Rate uses two-pass session-level DQL query (per-country funnel completion %)
+- **Time-Lapse animation mode**: plays through hourly map snapshots showing performance/traffic shifts across time zones; Play/Pause, scrubber slider, hour label
 - Clickable countries/states link to User Sessions
 - Hover tooltips with full metrics
+- Conv % column in ranked table
 
-**Queries**: Reuses `geoPerformanceQuery` + US-specific state aggregation from the same data.
+**Queries**: `geoPerformanceQuery` (primary), `geoConversionQuery` (per-country conv rate), `mapTimelapseQuery` (hourly buckets), US state aggregation.
 
 ---
 
@@ -1095,6 +1098,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-18 | 4.49.4 | **Map — Conversion Rate Colorize-By & Time-Lapse Animation**: Added Conversion Rate as 9th colorize-by option using two-pass session-level DQL query (`geoConversionQuery`). Added Time-Lapse animation mode that plays through hourly map snapshots showing performance/traffic shifts across time zones (Play/Pause, scrubber slider, hour label). Conv % column added to ranked table. Conv Rate legend added. **Geo Heatmap — AI Insights Enhanced**: `analyzeGeoHeatmap` now analyzes conversion data (high/low/zero-converting regions with recommendations) and ISP network data (slow ISPs with peering recommendations). Help panel and AI Assist tab descriptions updated. |
 | 2026-05-17 | 4.47.90 | **Hyperlyzer Tab — Multidimensional Radial Performance Explorer**: New tab (31st) ported from standalone Hyperlyzer app. Radial SVG chart with 4 quadrants (OS, Geo, User Action, Browser), 8 selectable metrics (Duration/Apdex/LCP/INP/CLS/TTFB/Load Event End/FCP), cross-dimensional click-to-filter stacking, finding cards with outlier detection, paginated side table with color-coded ratings and drilldown links. Component split: `RadialHyperChart.tsx` (reusable SVG chart) + `HyperlyzerTab.tsx` (tab wrapper with DQL queries). AI Insights integration. Help, Settings, and DESIGN.md updated. Tab count 30→31. |
 | 2026-05-15 | 4.47.88 | **Resource Waterfall — Session Drill-Down & Top 10 Slowest**: Added "Top 10 Slowest Resources" section showing individual resource requests ranked by duration with clickable session links. Added "Session Drill-Down" panel with session selector buttons — click to see all resources loaded in that specific session with a "View Full Session" replay link. New `resourceSessionDrillQuery` fetches per-session resource data (top 50 by duration). Help and AI Insights updated. |
 | 2026-05-15 | 4.47.86 | **SLO Tracker — Editable Targets & Create Dynatrace SLO**: SLO target values now user-editable inline (✎ icon per metric, persisted via `useUserAppState`). Reset button (↺) restores defaults. Added one-click "Create SLO" button per metric that opens Dynatrace SLO management app. |

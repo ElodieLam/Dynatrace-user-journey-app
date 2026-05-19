@@ -2415,7 +2415,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Click Issues</Strong>: Detects rage clicks (rapid repeated clicks indicating frustration) and dead clicks (clicks on non-responsive elements). Shows the worst offending elements, pages, and session impact to guide UX fixes.</Paragraph>
         <Paragraph><Strong>Perf Budgets</Strong>: User-configurable budget thresholds (click ✎ to edit, persisted per user). Tracks actual vs target with pass/fail/near-breach status. Projected time-to-breach per metric based on period-over-period trend. Alert banners when within 10% of breach with workflow trigger DQL suggestions. Hourly Apdex distribution for peak-hour analysis.</Paragraph>
         <Paragraph><Strong>Geo Heatmap</Strong>: Country and city-level performance with Apdex color-coding and satisfaction bars. Identifies regions with poor user experience for targeted CDN placement or infrastructure optimization. Includes city-level drill-down for granular insights. Country cards are clickable and open <Strong>User Sessions</Strong> filtered to that location.</Paragraph>
-        <Paragraph><Strong>Map</Strong>: Interactive choropleth map with World and US views, colorized by session count, average duration, Apdex, error rate, or estimated revenue (when AOV is set). Use the dropdown to switch between World (country-level) and US (state-level) views. Countries/states with data are clickable and link to <Strong>User Sessions</Strong>.</Paragraph>
+        <Paragraph><Strong>Map</Strong>: Interactive choropleth map with World and US views, colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and <Strong>Conversion Rate</Strong> (per-country funnel completion). Use the dropdown to switch between World (country-level) and US (state-level) views. Countries/states with data are clickable and link to <Strong>User Sessions</Strong>. Includes a <Strong>Time-Lapse</Strong> animation mode that plays through hourly map snapshots showing how performance and traffic shift across time zones throughout the day — use Play/Pause and the scrubber slider to navigate.</Paragraph>
         <Paragraph><Strong>Navigation Paths</Strong>: Shows actual user navigation flows (not just the expected funnel). Reveals unexpected paths, loops, and exit points. Flow visualization groups transitions by source page, highlighting funnel-aligned vs. off-path navigation. Page names are clickable and open the <Strong>Vitals</Strong> app for detailed analysis.</Paragraph>
         <Paragraph><Strong>Sankey</Strong>: Interactive Sankey flow diagram with 9 analysis sub-tabs organized above the chart. <Strong>Flow Chart</Strong> (default): 7 chart styles — Classic, Gradient, Directed Flow, Alluvial, State Machine, <Strong>Chord Diagram</Strong> (circular arc layout with clickable arcs for path highlighting, focus mode support, center label display), and <Strong>Transition Heatmap</Strong> (NxN grid with clickable row/column highlighting, selection summary, 52px cells). All styles support funnel highlighting, exit detection, and focus mode. <Strong>Conversion Paths</Strong>: Compares converted vs. abandoned session paths — shows differentiating pages, path lengths, and top transitions for each group. <Strong>Loop Analysis</Strong>: Detects A→B→A back-and-forth navigation patterns indicating user confusion, with error/LCP correlation. <Strong>Page Timing</Strong>: Average and P90 duration per page with health scores — identifies slow funnel bottlenecks. <Strong>Session Endpoints</Strong>: Where sessions end (browser close), bounce rate, and terminal page analysis with error correlation. <Strong>Revenue Paths</Strong> (AOV required): Top revenue-generating navigation paths and page touch rates for converting sessions. <Strong>Path Trends</Strong>: Period-over-period comparison of navigation patterns — detects new/dropped pages, frequency shifts, and transition changes. <Strong>Funnel Leakage</Strong>: Deep analysis of users who navigate away from the funnel — classifies sessions into recoverers (returned) vs lost users, compares their behavior, identifies exit step hotspots, maps off-funnel destinations, and correlates exit pages with CWV/errors for performance-driven optimization. <Strong>Funnel Velocity</Strong>: Measures time between funnel step transitions — shows median, P90, and average per step pair, journey time distribution histogram, and identifies the slowest transitions causing friction.</Paragraph>
         <Paragraph><Strong>Anomaly Detection</Strong>: Flags metrics with significant deviation from baseline (previous period). Shows stability score, per-metric severity (normal/medium/high/critical), per-step traffic anomalies, and a duration distribution histogram. Includes automated diagnosis with actionable recommendations. When AOV is set, shows Revenue at Risk from anomalous conversion drops.</Paragraph>
@@ -3470,7 +3470,7 @@ function analyzePerfBudgets(quality: any, overallApdex: number, overallConv: num
   return { summary, insights, recommendations: recs };
 }
 
-function analyzeGeoHeatmap(data: any): AIInsightsData {
+function analyzeGeoHeatmap(data: any, conversionData?: any, networkData?: any): AIInsightsData {
   const records = (data?.data?.records ?? []) as any[];
   const insights: InsightItem[] = [];
   const recs: RecommendationItem[] = [];
@@ -3488,7 +3488,45 @@ function analyzeGeoHeatmap(data: any): AIInsightsData {
   }
   if (fastRegions.length > 0) insights.push({ severity: "good", icon: "⚡", text: `${fastRegions.length} region(s) are performing 30%+ better than average. Top: ${fastRegions[0].country} at ${fmt(fastRegions[0].avg)}.` });
 
-  const summary = `Geo Heatmap provides country-and-city-level performance analysis, revealing how user experience varies by geographic region. This tab is critical for Infrastructure Architects planning CDN edge locations, Global Product Managers understanding regional user satisfaction, and Operations Teams identifying underperforming regions. It answers: Which countries or cities have the worst performance? Is our CDN delivering content efficiently to all regions? Are there regions where poor performance is suppressing conversion? Currently analyzing ${entries.length} regions with a global average latency of ${fmt(globalAvg)}. ${slowRegions.length > 0 ? `${slowRegions.length} region(s) have latency 50%+ above the global average — these users are having a measurably worse experience that may be driving regional conversion differences.` : "Performance is consistent across all regions, suggesting your CDN and infrastructure are well-distributed."} Each region shows session count, Apdex score, average duration, and satisfaction breakdown bars. Country cards are clickable and link to User Sessions filtered by location. City-level drill-down enables granular investigation. Use this data to justify CDN investments, regional server deployments, or geo-specific performance optimizations.`;
+  // Conversion rate analysis
+  const convRecords = (conversionData?.data?.records ?? []) as any[];
+  if (convRecords.length > 0) {
+    const convEntries = convRecords.map((r: any) => ({ country: String(r.country ?? ""), convRate: Number(r.conv_rate ?? 0), sessions: Number(r.entry_sessions ?? r.total_sessions ?? 0) })).filter((e: any) => e.sessions > 5);
+    const avgConv = convEntries.length > 0 ? convEntries.reduce((a: number, e: any) => a + e.convRate, 0) / convEntries.length : 0;
+    const highConv = convEntries.filter((e: any) => e.convRate > avgConv * 1.5).sort((a: any, b: any) => b.convRate - a.convRate);
+    const lowConv = convEntries.filter((e: any) => e.convRate < avgConv * 0.5 && e.convRate > 0).sort((a: any, b: any) => a.convRate - b.convRate);
+    const zeroConv = convEntries.filter((e: any) => e.convRate === 0);
+    if (highConv.length > 0) insights.push({ severity: "good", icon: "🎯", text: `${highConv.length} region(s) convert 50%+ above average (${fmtPct(avgConv)}). Best: ${highConv[0].country} at ${fmtPct(highConv[0].convRate)}.` });
+    if (lowConv.length > 0) {
+      insights.push({ severity: "warning", icon: "📉", text: `${lowConv.length} region(s) have conversion rate 50%+ below average. Lowest: ${lowConv[0].country} at ${fmtPct(lowConv[0].convRate)}.` });
+      recs.push({ impact: "high", text: `Investigate low-converting regions: ${lowConv.slice(0, 3).map((r: any) => r.country).join(", ")}. Check if localization, payment methods, or latency are suppressing conversion.` });
+    }
+    if (zeroConv.length > 0) insights.push({ severity: "critical", icon: "🚨", text: `${zeroConv.length} region(s) with traffic but 0% conversion: ${zeroConv.slice(0, 3).map((r: any) => r.country).join(", ")}.` });
+  }
+
+  // ISP / Network analysis
+  const netRecords = (networkData?.data?.records ?? []) as any[];
+  if (netRecords.length > 0) {
+    const ispMap = new Map<string, { sessions: number; avgDur: number; errors: number }>();
+    netRecords.forEach((r: any) => {
+      const isp = String(r.isp_name ?? "");
+      if (!isp || isp === "unknown") return;
+      const d = ispMap.get(isp) ?? { sessions: 0, avgDur: 0, errors: 0 };
+      const s = Number(r.sessions ?? 0);
+      d.avgDur = d.sessions > 0 ? (d.avgDur * d.sessions + Number(r.avg_dur ?? 0) * s) / (d.sessions + s) : Number(r.avg_dur ?? 0);
+      d.sessions += s;
+      d.errors += Number(r.errors ?? 0);
+      ispMap.set(isp, d);
+    });
+    const isps = Array.from(ispMap.entries()).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.sessions - a.sessions);
+    const slowIsps = isps.filter(i => i.avgDur > globalAvg * 1.5 && i.sessions > 10);
+    if (slowIsps.length > 0) {
+      insights.push({ severity: "warning", icon: "📡", text: `${slowIsps.length} ISP(s) deliver 50%+ slower than average. Worst: ${slowIsps[0].name} at ${fmt(slowIsps[0].avgDur)} (${fmtCount(slowIsps[0].sessions)} sessions).` });
+      recs.push({ impact: "medium", text: `ISP-specific slowness detected. Consider peering arrangements or edge nodes optimized for: ${slowIsps.slice(0, 2).map(i => i.name).join(", ")}.` });
+    }
+  }
+
+  const summary = `Geo Heatmap provides country-level performance and conversion analysis, revealing how user experience varies by geographic region. This tab is critical for Infrastructure Architects planning CDN edge locations, Global Product Managers understanding regional user satisfaction, and Operations Teams identifying underperforming regions. It answers: Which countries have the worst performance? Is our CDN delivering content efficiently? Are there regions where poor performance is suppressing conversion? Which ISPs cause poor experience? Currently analyzing ${entries.length} regions with a global average latency of ${fmt(globalAvg)}. ${slowRegions.length > 0 ? `${slowRegions.length} region(s) have latency 50%+ above the global average — these users are having a measurably worse experience that may be driving regional conversion differences.` : "Performance is consistent across all regions, suggesting your CDN and infrastructure are well-distributed."} The Conv % column shows per-country funnel completion rates. ISP Performance reveals which internet providers cause slowness. Use this data to justify CDN investments, regional server deployments, or geo-specific performance optimizations.`;
   return { summary, insights, recommendations: recs };
 }
 
@@ -3596,7 +3634,7 @@ function analyzeErrorsDropoffs(errors: any[], funnelCounts: number[], steps: Ste
 function analyzeGenericTab(tabName: string): AIInsightsData {
   const tabDescriptions: Record<string, string> = {
     "Executive Summary": "Executive Summary provides a report-card style overview designed for stakeholders, executives, and non-technical leadership. It delivers a weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alerts, CWV snapshot, and a full performance table. This tab answers: What is the overall health of our frontend? Is performance improving or declining? What are the top issues? Use Export PDF for presentations or Copy Text for Slack/Teams. It is designed for VPs of Engineering reviewing platform health, C-level executives needing quick status checks, and Product Directors preparing quarterly business reviews.",
-    "Map": "Map provides an interactive choropleth visualization of user performance data projected onto a world or US map. Countries and US states are colorized by session count, average duration, Apdex, error rate, or estimated revenue (when AOV is set). This tab is designed for Infrastructure Architects evaluating CDN coverage, Global Operations Teams monitoring regional health, and Marketing Analysts understanding geographic audience distribution. It answers: Where are our users? Which regions have the best/worst performance? Are there geographic gaps in our infrastructure? Switch between World (country-level) and US (state-level) views using the dropdown. Clickable regions link to User Sessions for drill-down investigation.",
+    "Map": "Map provides an interactive choropleth visualization of user performance data projected onto a world or US map. Countries and US states are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate (per-country funnel completion %). This tab is designed for Infrastructure Architects evaluating CDN coverage, Global Operations Teams monitoring regional health, and Marketing Analysts understanding geographic audience distribution. It answers: Where are our users? Which regions have the best/worst performance? Where is conversion highest/lowest geographically? Are there geographic gaps in our infrastructure? Switch between World (country-level) and US (state-level) views using the dropdown. Clickable regions link to User Sessions for drill-down investigation. A Time-Lapse animation mode plays through hourly map snapshots to show how performance and traffic shift across time zones throughout the day.",
     "Navigation Paths": "Navigation Paths reveals actual user navigation flows across your site — not just the expected funnel, but the real paths users take including unexpected routes, loops, re-visits, and exit points. This tab is designed for Information Architects optimizing site structure, UX Researchers studying user wayfinding behavior, and Product Managers discovering organic user journeys that differ from the designed funnel. It answers: Where do users actually go? Which pages do users visit that aren't in the funnel? Where do navigation loops occur? Which transitions carry the most traffic? Page names are clickable and link to the Vitals app for detailed performance analysis.",
     "What-If Analysis": "What-If Analysis models the impact of traffic increases on your application's performance, projecting how Apdex, latency, conversion, and error rate would change under higher load. This tab is built for Capacity Planning Engineers preparing for traffic events (Black Friday, product launches), Performance Engineers setting scaling thresholds, and Business Stakeholders understanding the revenue risk of traffic spikes. It answers: What happens if traffic doubles? At what point will performance degrade below acceptable thresholds? What is the projected revenue impact of performance degradation under load? When AOV is set, it shows a full Revenue Impact section with projected revenue, net change, conversion degradation loss, and a Perf Tax breakdown.",
     "Session Replay Spotlight": "Session Replay Spotlight surfaces the highest-impact session replays ranked by a composite impact score combining errors, crashes, bounces, and interaction density. This tab is designed for QA Engineers reproducing bugs, UX Researchers observing real user behavior, and Support Teams investigating customer-reported issues. It answers: Which sessions had the most problems? What devices and browsers are most affected? Each session links directly to Dynatrace Session Replay for instant visual debugging — watch exactly what the user saw, clicked, and experienced. Start debugging with the sessions that matter most instead of manually searching.",
@@ -5772,7 +5810,7 @@ function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, 
 // TAB: Geo Heatmap — NEW
 // ===========================================================================
 function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData }: { data: any; isLoading: boolean; frontend: string; networkData?: any; conversionData?: any }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGeoHeatmap(data), [data]));
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGeoHeatmap(data, conversionData, networkData), [data, conversionData, networkData]));
   if (isLoading) return <Loading />;
 
   const rows = (data.data?.records ?? []) as any[];
@@ -6003,12 +6041,61 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
   const [animKey, setAnimKey] = useState(0);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hasUserChanged, setHasUserChanged] = useState(false);
+  // Time-lapse state
+  const [tlPlaying, setTlPlaying] = useState(false);
+  const [tlIndex, setTlIndex] = useState(0);
+  const [tlMode, setTlMode] = useState(false);
+  const tlRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const tlTotalRef = React.useRef(0);
   // Sync with saved default if user hasn't manually changed yet
   useEffect(() => { if (!hasUserChanged) setMapView(defaultView); }, [defaultView, hasUserChanged]);
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGeoHeatmap(data), [data]));
+  // Time-lapse auto-advance interval
+  useEffect(() => {
+    if (tlPlaying && tlMode) {
+      tlRef.current = setInterval(() => {
+        setTlIndex((i) => {
+          const next = i + 1;
+          if (next >= tlTotalRef.current) { setTlPlaying(false); return i; }
+          return next;
+        });
+      }, 1200);
+    } else { if (tlRef.current) { clearInterval(tlRef.current); tlRef.current = null; } }
+    return () => { if (tlRef.current) { clearInterval(tlRef.current); tlRef.current = null; } };
+  }, [tlPlaying, tlMode]);
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGeoHeatmap(data, conversionData), [data, conversionData]));
   if (isLoading) return <Loading />;
 
   const rows = (data.data?.records ?? []) as any[];
+
+  // Build conversion rate lookup from conversionData
+  const convRateMap = new Map<string, number>();
+  ((conversionData?.data?.records ?? []) as any[]).forEach((r: any) => {
+    const iso = String(r.country ?? "").toUpperCase();
+    if (iso) convRateMap.set(iso, Number(r.conv_rate ?? 0));
+  });
+
+  // Parse timelapse data into hourly snapshots
+  const tlRows = (timelapseData?.data?.records ?? []) as any[];
+  const hourBuckets = new Map<string, Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number }>>();
+  tlRows.forEach((r: any) => {
+    const hour = String(r.hour_bucket ?? "");
+    const country = String(r.country ?? "").toUpperCase();
+    if (!hour || !country) return;
+    if (!hourBuckets.has(hour)) hourBuckets.set(hour, new Map());
+    const bucket = hourBuckets.get(hour)!;
+    bucket.set(country, {
+      sessions: Number(r.sessions ?? 0),
+      actions: Number(r.actions ?? 0),
+      avgDur: Number(r.avg_dur ?? 0),
+      errors: Number(r.errors ?? 0),
+      sat: Number(r.satisfied ?? 0),
+      tol: Number(r.tolerating ?? 0),
+      fru: Number(r.frustrated ?? 0),
+    });
+  });
+  const sortedHours = Array.from(hourBuckets.keys()).sort();
+  const tlTotal = sortedHours.length;
+  tlTotalRef.current = tlTotal;
 
   // Aggregate by ISO alpha-2 country code
   const countryMap = new Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number; lcpSum: number; lcpCount: number; clsSum: number; clsCount: number; inpSum: number; inpCount: number; countryName: string }>();
@@ -6060,7 +6147,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "cls": return isNaN(c.cls) ? 0 : c.cls;
       case "inp": return isNaN(c.inp) ? 0 : c.inp;
       case "revenue": return c.estRevenue;
-      case "convRate": return 0;
+      case "convRate": return convRateMap.get(c.iso) ?? 0;
     }
   };
 
@@ -6126,6 +6213,38 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     setAnimKey((k) => k + 1);
   };
 
+  // Time-lapse: compute per-country color from current hourly snapshot
+  const currentHourData = tlMode && sortedHours[tlIndex] ? hourBuckets.get(sortedHours[tlIndex]) : null;
+  const getTlColor = (iso: string): string => {
+    if (!currentHourData) return "rgba(255,255,255,0.04)";
+    const snap = currentHourData.get(iso);
+    if (!snap) return "rgba(255,255,255,0.04)";
+    const apdex = calcApdex(snap.sat, snap.tol, snap.actions);
+    const errRate = snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
+    switch (metric) {
+      case "sessions": {
+        const tlMaxSess = Math.max(...Array.from(currentHourData.values()).map(s => s.sessions), 1);
+        const intensity = snap.sessions / tlMaxSess;
+        return `rgb(${Math.round(20 + intensity * 35)}, ${Math.round(80 + intensity * 57)}, ${Math.round(120 + intensity * 135)})`;
+      }
+      case "avgDur": return snap.avgDur > 3000 ? RED : snap.avgDur > 1500 ? ORANGE : snap.avgDur > 800 ? YELLOW : GREEN;
+      case "apdex": return apdexClr(apdex);
+      case "errRate": return errRate > 5 ? RED : errRate > 2 ? ORANGE : errRate > 0.5 ? YELLOW : GREEN;
+      default: {
+        // For LCP/CLS/INP/revenue/convRate, fall back to aggregated data
+        const c = countries.find(cc => cc.iso === iso);
+        return c ? getColor(c) : "rgba(255,255,255,0.04)";
+      }
+    }
+  };
+  const getTlTooltip = (iso: string, countryName: string): string => {
+    if (!currentHourData) return `${countryName} — No data this hour`;
+    const snap = currentHourData.get(iso);
+    if (!snap) return `${countryName} — No data this hour`;
+    const apdex = calcApdex(snap.sat, snap.tol, snap.actions);
+    return `${countryName} (${iso})\nSessions: ${fmtCount(snap.sessions)}\nApdex: ${apdex.toFixed(2)}\nAvg Duration: ${fmt(snap.avgDur)}\nErrors: ${snap.errors}`;
+  };
+
   const animCSS = `
     @keyframes uj-map-fadein { from { opacity: 0; } to { opacity: 1; } }
     @keyframes uj-country-reveal { 0% { opacity: 0; } 100% { opacity: 1; } }
@@ -6156,7 +6275,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       <Flex alignItems="center" gap={16}>
         <Text style={{ fontSize: 12, opacity: 0.7 }}>Colorize by:</Text>
         <Flex gap={8}>
-          {(["sessions", "avgDur", "apdex", "errRate", "lcp", "cls", "inp", ...(aov > 0 ? ["revenue"] : [])] as MapMetric[]).map((m) => (
+          {(["sessions", "avgDur", "apdex", "errRate", "lcp", "cls", "inp", ...(aov > 0 ? ["revenue"] : []), "convRate"] as MapMetric[]).map((m) => (
             <button
               key={m}
               onClick={() => handleMetricChange(m)}
@@ -6174,6 +6293,43 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           ))}
         </Flex>
       </Flex>
+
+      {/* Time-Lapse Controls */}
+      {mapView === "world" && tlTotal > 1 && (
+        <Flex alignItems="center" gap={12} style={{ background: "rgba(128,128,128,0.06)", borderRadius: 8, padding: "10px 16px", border: "1px solid rgba(128,128,128,0.15)" }}>
+          <button
+            onClick={() => {
+              if (!tlMode) { setTlMode(true); setTlPlaying(true); setTlIndex(0); }
+              else { setTlMode(false); setTlPlaying(false); if (tlRef.current) { clearInterval(tlRef.current); tlRef.current = null; } }
+            }}
+            style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${tlMode ? ORANGE : "rgba(128,128,128,0.3)"}`, background: tlMode ? `${ORANGE}22` : "transparent", color: tlMode ? ORANGE : "rgba(128,128,128,0.7)", fontSize: 12, fontWeight: tlMode ? 700 : 400, cursor: "pointer" }}
+          >
+            {tlMode ? "⏹ Exit Time-Lapse" : "▶ Time-Lapse"}
+          </button>
+          {tlMode && (
+            <>
+              <button
+                onClick={() => { setTlPlaying(!tlPlaying); }}
+                style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "transparent", color: "rgba(128,128,128,0.8)", fontSize: 12, cursor: "pointer" }}
+              >
+                {tlPlaying ? "⏸ Pause" : "▶ Play"}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={tlTotal - 1}
+                value={tlIndex}
+                onChange={(e) => { setTlIndex(Number(e.target.value)); setTlPlaying(false); }}
+                style={{ flex: 1, cursor: "pointer", accentColor: BLUE }}
+              />
+              <Text style={{ fontSize: 12, fontWeight: 600, minWidth: 140, textAlign: "center" }}>
+                {sortedHours[tlIndex] ? new Date(sortedHours[tlIndex]).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+              </Text>
+              <Text style={{ fontSize: 11, opacity: 0.4 }}>{tlIndex + 1}/{tlTotal}</Text>
+            </>
+          )}
+        </Flex>
+      )}
 
       {mapView === "world" && (countries.length === 0 ? (
         <div className="uj-table-tile" style={{ padding: 24 }}><Text>No geographic data available</Text></div>
@@ -6198,6 +6354,27 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                   const d = pathGen(feat) ?? "";
                   const isHovered = hoveredId === numId;
                   const delay = Math.min(idx * 0.008, 0.8);
+
+                  // In timelapse mode, use hourly snapshot data for coloring
+                  if (tlMode && alpha2) {
+                    const hasTlData = currentHourData?.has(alpha2);
+                    const fillColor = hasTlData ? getTlColor(alpha2) : "rgba(255,255,255,0.04)";
+                    return (
+                      <g key={numId} style={{ cursor: c ? "pointer" : "default" }} onClick={() => c && openLink(sessionsFilterUrl(frontend, c.countryName))}>
+                        <path
+                          d={d}
+                          fill={fillColor}
+                          stroke={isHovered ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)"}
+                          strokeWidth={isHovered ? 1.5 : 0.4}
+                          style={{ transition: "fill 0.5s ease, stroke 0.15s ease", cursor: c ? "pointer" : "default" }}
+                          onMouseEnter={() => setHoveredId(numId)}
+                          onMouseLeave={() => setHoveredId(null)}
+                        >
+                          <title>{getTlTooltip(alpha2, c?.countryName ?? feat.properties?.name ?? alpha2)}</title>
+                        </path>
+                      </g>
+                    );
+                  }
 
                   if (c) {
                     return (
@@ -6268,6 +6445,11 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               <Flex alignItems="center" gap={4}><div style={{ width: 14, height: 14, borderRadius: 3, background: ORANGE }} /><Text style={{ fontSize: 12 }}>Needs Improvement</Text></Flex>
               <Flex alignItems="center" gap={4}><div style={{ width: 14, height: 14, borderRadius: 3, background: RED }} /><Text style={{ fontSize: 12 }}>Poor &gt;{CWV.inp.poor}ms</Text></Flex>
             </>}
+            {metric === "convRate" && <>
+              <Flex alignItems="center" gap={4}><div style={{ width: 14, height: 14, borderRadius: 3, background: GREEN }} /><Text style={{ fontSize: 12 }}>&gt;5%</Text></Flex>
+              <Flex alignItems="center" gap={4}><div style={{ width: 14, height: 14, borderRadius: 3, background: YELLOW }} /><Text style={{ fontSize: 12 }}>2-5%</Text></Flex>
+              <Flex alignItems="center" gap={4}><div style={{ width: 14, height: 14, borderRadius: 3, background: RED }} /><Text style={{ fontSize: 12 }}>&lt;2%</Text></Flex>
+            </>}
             <Text style={{ fontSize: 12, opacity: 0.3, marginLeft: 8 }}>({countries.length} countries with data)</Text>
           </Flex>
 
@@ -6286,6 +6468,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                 LCP: isNaN(c.lcp) ? null : Math.round(c.lcp),
                 CLS: isNaN(c.cls) ? null : c.cls,
                 INP: isNaN(c.inp) ? null : Math.round(c.inp),
+                "Conv %": convRateMap.get(c.iso) ?? 0,
               }))}
               columns={[
                 { id: "Country", header: "Country", accessor: "Country", cell: ({ value, row }: any) => {
@@ -6299,6 +6482,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                 { id: "LCP", header: "LCP (ms)", accessor: "LCP", sortType: "number" as any, cell: ({ value }: any) => value == null ? <Text style={{ opacity: 0.3 }}>—</Text> : <Text style={{ fontWeight: metric === "lcp" ? 700 : 400, color: value > CWV.lcp.poor ? RED : value > CWV.lcp.good ? ORANGE : GREEN }}>{fmt(value)}</Text> },
                 { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => value == null ? <Text style={{ opacity: 0.3 }}>—</Text> : <Text style={{ fontWeight: metric === "cls" ? 700 : 400, color: value > CWV.cls.poor ? RED : value > CWV.cls.good ? ORANGE : GREEN }}>{value.toFixed(3)}</Text> },
                 { id: "INP", header: "INP (ms)", accessor: "INP", sortType: "number" as any, cell: ({ value }: any) => value == null ? <Text style={{ opacity: 0.3 }}>—</Text> : <Text style={{ fontWeight: metric === "inp" ? 700 : 400, color: value > CWV.inp.poor ? RED : value > CWV.inp.good ? ORANGE : GREEN }}>{fmt(value)}</Text> },
+                { id: "Conv %", header: "Conv %", accessor: "Conv %", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ fontWeight: metric === "convRate" ? 700 : 400, color: value > 5 ? GREEN : value > 2 ? YELLOW : RED }}>{fmtPct(value)}</Strong> },
               ]}
             />
           </div>
