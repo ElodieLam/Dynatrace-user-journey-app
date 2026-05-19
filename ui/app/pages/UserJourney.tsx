@@ -1245,6 +1245,9 @@ function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[], buc
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
 | fieldsAdd country = geo.country.iso_code
+| fieldsAdd lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0
+| fieldsAdd cls_val = toDouble(web_vitals.cumulative_layout_shift)
+| fieldsAdd inp_ms = toDouble(web_vitals.interaction_to_next_paint) / 1000000.0
 ${bucketExpr}
 | summarize
     actions = count(),
@@ -1254,6 +1257,9 @@ ${bucketExpr}
     tolerating = countIf(satisfaction == "tolerating"),
     frustrated = countIf(satisfaction == "frustrated"),
     errors = countIf(characteristics.has_error == true),
+    lcp_avg = avg(lcp_ms),
+    cls_avg = avg(cls_val),
+    inp_avg = avg(inp_ms),
     by: {country, hour_bucket}
 | sort hour_bucket asc
 | limit ${limit}`;
@@ -6245,7 +6251,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
   const tlError = timelapseData?.error;
   const tlRows = (timelapseData?.data?.records ?? []) as any[];
   if (tlRows.length > 0) console.log("[TimeLapse] row0:", JSON.stringify(tlRows[0]), "hour_bucket type:", typeof tlRows[0]?.hour_bucket, "value:", tlRows[0]?.hour_bucket);
-  const hourBuckets = new Map<string, Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number }>>();
+  const hourBuckets = new Map<string, Map<string, { sessions: number; actions: number; avgDur: number; errors: number; sat: number; tol: number; fru: number; lcp: number; cls: number; inp: number }>>();
   tlRows.forEach((r: any) => {
     const rawHour = r.hour_bucket;
     const hour = typeof rawHour === "string" ? rawHour : (rawHour?.value ?? rawHour?.toString?.() ?? "");
@@ -6261,6 +6267,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       sat: Number(r.satisfied ?? 0),
       tol: Number(r.tolerating ?? 0),
       fru: Number(r.frustrated ?? 0),
+      lcp: Number(r.lcp_avg ?? 0),
+      cls: Number(r.cls_avg ?? 0),
+      inp: Number(r.inp_avg ?? 0),
     });
   });
   const sortedHours = Array.from(hourBuckets.keys()).sort();
@@ -6401,21 +6410,23 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "avgDur": return snap.avgDur > 3000 ? RED : snap.avgDur > 1500 ? ORANGE : snap.avgDur > 800 ? YELLOW : GREEN;
       case "apdex": return apdexClr(apdex);
       case "errRate": return errRate > 5 ? RED : errRate > 2 ? ORANGE : errRate > 0.5 ? YELLOW : GREEN;
+      case "lcp": return snap.lcp > CWV.lcp.poor ? RED : snap.lcp > CWV.lcp.good ? ORANGE : GREEN;
+      case "cls": return snap.cls > CWV.cls.poor ? RED : snap.cls > CWV.cls.good ? ORANGE : GREEN;
+      case "inp": return snap.inp > CWV.inp.poor ? RED : snap.inp > CWV.inp.good ? ORANGE : GREEN;
       default: {
-        // For LCP/CLS/INP/revenue/convRate: use session intensity to vary over time
-        // Scale brightness by session intensity so countries pulse with activity
+        // For revenue/convRate: use session intensity to vary brightness
+        const tlMaxSess2 = Math.max(...Array.from(currentHourData.values()).map(s => s.sessions), 1);
+        const int2 = snap.sessions / tlMaxSess2;
         const c = countries.find(cc => cc.iso === iso);
         if (!c) return "rgba(255,255,255,0.04)";
         const baseColor = getColor(c);
-        // Parse hex (#RRGGBB) or rgb(r,g,b) to get components
         let r = 0, g = 0, b = 0;
         const hexMatch = baseColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
         const rgbMatch = baseColor.match(/(\d+),\s*(\d+),\s*(\d+)/);
         if (hexMatch) { r = parseInt(hexMatch[1], 16); g = parseInt(hexMatch[2], 16); b = parseInt(hexMatch[3], 16); }
         else if (rgbMatch) { r = Number(rgbMatch[1]); g = Number(rgbMatch[2]); b = Number(rgbMatch[3]); }
         else return baseColor;
-        // Dim the color by intensity (low sessions = darker, high sessions = full brightness)
-        const dim = Math.max(0.2, intensity);
+        const dim = Math.max(0.2, int2);
         return `rgb(${Math.round(r * dim)}, ${Math.round(g * dim)}, ${Math.round(b * dim)})`;
       }
     }
@@ -6432,10 +6443,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "avgDur": return `${header}\nAvg Duration: ${fmt(snap.avgDur)}\nApdex: ${apdex.toFixed(2)}`;
       case "apdex": return `${header}\nApdex: ${apdex.toFixed(2)}\nSatisfied: ${snap.sat} | Tolerating: ${snap.tol} | Frustrated: ${snap.fru}`;
       case "errRate": return `${header}\nError Rate: ${fmtPct(errRate)}\nErrors: ${snap.errors} / ${snap.actions} actions`;
-      case "lcp": case "cls": case "inp": {
-        const label = metric === "lcp" ? "LCP" : metric === "cls" ? "CLS" : "INP";
-        return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}\n${label}: per-bucket N/A`;
-      }
+      case "lcp": return `${header}\nLCP: ${snap.lcp > 0 ? fmt(snap.lcp) : "N/A"}\nApdex: ${apdex.toFixed(2)}`;
+      case "cls": return `${header}\nCLS: ${snap.cls > 0 ? snap.cls.toFixed(3) : "N/A"}\nApdex: ${apdex.toFixed(2)}`;
+      case "inp": return `${header}\nINP: ${snap.inp > 0 ? fmt(snap.inp) : "N/A"}\nApdex: ${apdex.toFixed(2)}`;
       case "revenue": {
         return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}`;
       }
@@ -6975,6 +6985,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               case "avgDur": return snap.avgDur;
               case "apdex": return calcApdex(snap.sat, snap.tol, snap.actions);
               case "errRate": return snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
+              case "lcp": return snap.lcp;
+              case "cls": return snap.cls;
+              case "inp": return snap.inp;
               default: return snap.sessions;
             }
           }
@@ -7068,7 +7081,10 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                     case "avgDur": tipLine2 = `Avg Duration: ${fmt(tlSnap.avgDur)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
                     case "apdex": tipLine2 = `Apdex: ${tlApdex.toFixed(2)}\nSat: ${tlSnap.sat} | Tol: ${tlSnap.tol} | Fru: ${tlSnap.fru}`; break;
                     case "errRate": tipLine2 = `Error Rate: ${fmtPct(tlErrRate)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
-                    default: { const cRef = countries.find(cc => cc.iso === s.iso); tipLine2 = `${metricLabel[metric]}: ${cRef ? formatValue(cRef) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nError Rate: ${fmtPct(tlErrRate)}`; break; }
+                    case "lcp": tipLine2 = `LCP: ${tlSnap.lcp > 0 ? fmt(tlSnap.lcp) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    case "cls": tipLine2 = `CLS: ${tlSnap.cls > 0 ? tlSnap.cls.toFixed(3) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    case "inp": tipLine2 = `INP: ${tlSnap.inp > 0 ? fmt(tlSnap.inp) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nError Rate: ${fmtPct(tlErrRate)}`; break;
                   }
                 } else {
                   tipLine2 = `${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`;
