@@ -289,7 +289,7 @@ fetch user.events, from: now() - {timeframe}
 - 9 colorize-by metrics: Sessions, Avg Duration, Apdex, Error Rate, LCP, CLS, INP, Est. Revenue (AOV), Conversion Rate
 - Conversion Rate uses two-pass session-level DQL query (per-country funnel completion %)
 - **Time-Lapse animation mode** (World view): plays through map snapshots with configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour); Play/Pause, scrubber slider, time label. Clicking a country during Time-Lapse drills into User Sessions scoped to that country and the exact time bucket displayed.
-- **Globe view**: 3D orthographic sphere with data spikes showing metric magnitude per country. Atmospheric glow ring, country outlines, grid lines. Hold ◀/▶ arrows to smoothly rotate the globe. Spikes are clickable and link to User Sessions.
+- **Globe view**: 3D orthographic sphere with data spikes showing metric magnitude per country. Atmospheric glow ring, country outlines, grid lines. Hold ◀/▶ arrows to smoothly rotate the globe, or double-click an arrow to lock continuous rotation (double-click again or click any arrow to stop). Locked arrows highlight blue. Spikes are clickable and link to User Sessions.
 - Clickable countries/states/spikes link to User Sessions (in timelapse: scoped to current bucket timeframe)
 - Hover tooltips with full metrics
 - Conv % column in ranked table

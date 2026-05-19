@@ -2426,7 +2426,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Click Issues</Strong>: Detects rage clicks (rapid repeated clicks indicating frustration) and dead clicks (clicks on non-responsive elements). Shows the worst offending elements, pages, and session impact to guide UX fixes.</Paragraph>
         <Paragraph><Strong>Perf Budgets</Strong>: User-configurable budget thresholds (click ✎ to edit, persisted per user). Tracks actual vs target with pass/fail/near-breach status. Projected time-to-breach per metric based on period-over-period trend. Alert banners when within 10% of breach with workflow trigger DQL suggestions. Hourly Apdex distribution for peak-hour analysis.</Paragraph>
         <Paragraph><Strong>Geo Heatmap</Strong>: Country and city-level performance with Apdex color-coding and satisfaction bars. Identifies regions with poor user experience for targeted CDN placement or infrastructure optimization. Includes city-level drill-down for granular insights. Country cards are clickable and open <Strong>User Sessions</Strong> filtered to that location.</Paragraph>
-        <Paragraph><Strong>Maps</Strong>: Interactive geographic visualizations with three views: <Strong>World</Strong> (2D choropleth), <Strong>United States</Strong> (state-level), and <Strong>Globe</Strong> (3D sphere with data spikes). All views are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate. The Globe view displays data magnitude as colored spikes emanating from country positions on a rotatable 3D sphere — hold the ◀/▶ arrows to spin. World view includes a <Strong>Time-Lapse</Strong> animation mode with a configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour). Clicking a country during Time-Lapse drills into <Strong>User Sessions</Strong> scoped to that country AND the exact time bucket. Clicking countries/states/spikes in any view links to User Sessions.</Paragraph>
+        <Paragraph><Strong>Maps</Strong>: Interactive geographic visualizations with three views: <Strong>World</Strong> (2D choropleth), <Strong>United States</Strong> (state-level), and <Strong>Globe</Strong> (3D sphere with data spikes). All views are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate. The Globe view displays data magnitude as colored spikes emanating from country positions on a rotatable 3D sphere — hold the ◀/▶ arrows to spin, or double-click to lock continuous rotation (double-click again to stop). World view includes a <Strong>Time-Lapse</Strong> animation mode with a configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour). Clicking a country during Time-Lapse drills into <Strong>User Sessions</Strong> scoped to that country AND the exact time bucket. Clicking countries/states/spikes in any view links to User Sessions.</Paragraph>
         <Paragraph><Strong>Navigation Paths</Strong>: Shows actual user navigation flows (not just the expected funnel). Reveals unexpected paths, loops, and exit points. Flow visualization groups transitions by source page, highlighting funnel-aligned vs. off-path navigation. Page names are clickable and open the <Strong>Vitals</Strong> app for detailed analysis.</Paragraph>
         <Paragraph><Strong>Sankey</Strong>: Interactive Sankey flow diagram with 9 analysis sub-tabs organized above the chart. <Strong>Flow Chart</Strong> (default): 7 chart styles — Classic, Gradient, Directed Flow, Alluvial, State Machine, <Strong>Chord Diagram</Strong> (circular arc layout with clickable arcs for path highlighting, focus mode support, center label display), and <Strong>Transition Heatmap</Strong> (NxN grid with clickable row/column highlighting, selection summary, 52px cells). All styles support funnel highlighting, exit detection, and focus mode. <Strong>Conversion Paths</Strong>: Compares converted vs. abandoned session paths — shows differentiating pages, path lengths, and top transitions for each group. <Strong>Loop Analysis</Strong>: Detects A→B→A back-and-forth navigation patterns indicating user confusion, with error/LCP correlation. <Strong>Page Timing</Strong>: Average and P90 duration per page with health scores — identifies slow funnel bottlenecks. <Strong>Session Endpoints</Strong>: Where sessions end (browser close), bounce rate, and terminal page analysis with error correlation. <Strong>Revenue Paths</Strong> (AOV required): Top revenue-generating navigation paths and page touch rates for converting sessions. <Strong>Path Trends</Strong>: Period-over-period comparison of navigation patterns — detects new/dropped pages, frequency shifts, and transition changes. <Strong>Funnel Leakage</Strong>: Deep analysis of users who navigate away from the funnel — classifies sessions into recoverers (returned) vs lost users, compares their behavior, identifies exit step hotspots, maps off-funnel destinations, and correlates exit pages with CWV/errors for performance-driven optimization. <Strong>Funnel Velocity</Strong>: Measures time between funnel step transitions — shows median, P90, and average per step pair, journey time distribution histogram, and identifies the slowest transitions causing friction.</Paragraph>
         <Paragraph><Strong>Anomaly Detection</Strong>: Flags metrics with significant deviation from baseline (previous period). Shows stability score, per-metric severity (normal/medium/high/critical), per-step traffic anomalies, and a duration distribution histogram. Includes automated diagnosis with actionable recommendations. When AOV is set, shows Revenue at Risk from anomalous conversion drops.</Paragraph>
@@ -3794,7 +3794,7 @@ function analyzeErrorsDropoffs(errors: any[], funnelCounts: number[], steps: Ste
 function analyzeGenericTab(tabName: string): AIInsightsData {
   const tabDescriptions: Record<string, string> = {
     "Executive Summary": "Executive Summary provides a report-card style overview designed for stakeholders, executives, and non-technical leadership. It delivers a weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alerts, CWV snapshot, and a full performance table. This tab answers: What is the overall health of our frontend? Is performance improving or declining? What are the top issues? Use Export PDF for presentations or Copy Text for Slack/Teams. It is designed for VPs of Engineering reviewing platform health, C-level executives needing quick status checks, and Product Directors preparing quarterly business reviews.",
-    "Maps": "Maps provides interactive geographic visualizations of user performance data. Three views: World (2D choropleth), United States (state-level), and Globe (3D sphere with data spikes). All views support 9 colorize-by metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue, and Conversion Rate. The Globe view shows data magnitude as colored spikes emanating from country positions on a rotatable 3D sphere — hold left/right arrows to spin. Time-Lapse mode available in World view with configurable bucket sizes. Clicking countries drills into User Sessions.",
+    "Maps": "Maps provides interactive geographic visualizations of user performance data. Three views: World (2D choropleth), United States (state-level), and Globe (3D sphere with data spikes). All views support 9 colorize-by metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue, and Conversion Rate. The Globe view shows data magnitude as colored spikes emanating from country positions on a rotatable 3D sphere — hold left/right arrows to spin, or double-click to lock continuous rotation (double-click again to stop). Time-Lapse mode available in World view with configurable bucket sizes. Clicking countries drills into User Sessions.",
     "Navigation Paths": "Navigation Paths reveals actual user navigation flows across your site — not just the expected funnel, but the real paths users take including unexpected routes, loops, re-visits, and exit points. This tab is designed for Information Architects optimizing site structure, UX Researchers studying user wayfinding behavior, and Product Managers discovering organic user journeys that differ from the designed funnel. It answers: Where do users actually go? Which pages do users visit that aren't in the funnel? Where do navigation loops occur? Which transitions carry the most traffic? Page names are clickable and link to the Vitals app for detailed performance analysis.",
     "What-If Analysis": "What-If Analysis models the impact of traffic increases on your application's performance, projecting how Apdex, latency, conversion, and error rate would change under higher load. This tab is built for Capacity Planning Engineers preparing for traffic events (Black Friday, product launches), Performance Engineers setting scaling thresholds, and Business Stakeholders understanding the revenue risk of traffic spikes. It answers: What happens if traffic doubles? At what point will performance degrade below acceptable thresholds? What is the projected revenue impact of performance degradation under load? When AOV is set, it shows a full Revenue Impact section with projected revenue, net change, conversion degradation loss, and a Perf Tax breakdown.",
     "Session Replay Spotlight": "Session Replay Spotlight surfaces the highest-impact session replays ranked by a composite impact score combining errors, crashes, bounces, and interaction density. This tab is designed for QA Engineers reproducing bugs, UX Researchers observing real user behavior, and Support Teams investigating customer-reported issues. It answers: Which sessions had the most problems? What devices and browsers are most affected? Each session links directly to Dynatrace Session Replay for instant visual debugging — watch exactly what the user saw, clicked, and experienced. Start debugging with the sessions that matter most instead of manually searching.",
@@ -6212,12 +6212,40 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
   const tlTotalRef = React.useRef(0);
   // Globe rotation state (must be at top level — Rules of Hooks)
   const [rotLng, setRotLng] = useState(0);
+  const [spinLock, setSpinLock] = useState<-1 | 0 | 1>(0); // 0 = off, -1 = locked left, 1 = locked right
   const spinRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdingRef = React.useRef(false); // true while mouse is held down (non-lock spin)
   const startSpin = React.useCallback((dir: number) => {
     if (spinRef.current) return;
     spinRef.current = setInterval(() => setRotLng(prev => prev + dir * 0.8), 30);
   }, []);
   const stopSpin = React.useCallback(() => { if (spinRef.current) { clearInterval(spinRef.current); spinRef.current = null; } }, []);
+  const handleSpinDown = React.useCallback((dir: -1 | 1) => {
+    holdingRef.current = true;
+    if (spinLock) { // If already locked, unlock on any press
+      setSpinLock(0);
+      stopSpin();
+    } else {
+      startSpin(dir);
+    }
+  }, [spinLock, startSpin, stopSpin]);
+  const handleSpinUp = React.useCallback(() => {
+    holdingRef.current = false;
+    if (!spinLock) stopSpin();
+  }, [spinLock, stopSpin]);
+  const handleSpinLockToggle = React.useCallback((dir: -1 | 1) => {
+    if (spinLock === dir) {
+      // Already locked in this direction — unlock
+      setSpinLock(0);
+      stopSpin();
+    } else {
+      // Lock in this direction
+      stopSpin();
+      setSpinLock(dir);
+      startSpin(dir);
+    }
+    holdingRef.current = false;
+  }, [spinLock, startSpin, stopSpin]);
   useEffect(() => () => { if (spinRef.current) clearInterval(spinRef.current); }, []);
   // Sync with saved default if user hasn't manually changed yet
   useEffect(() => { if (!hasUserChanged) setMapView(defaultView); }, [defaultView, hasUserChanged]);
@@ -7053,17 +7081,21 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 
         return (
           <div style={{ position: "relative", background: "black", borderRadius: 12, padding: "24px 0", overflow: "hidden" }}>
-            {/* Left rotation arrow */}
+            {/* Left rotation arrow — hold to spin, double-click to lock */}
             <button
-              onMouseDown={() => startSpin(-1)} onMouseUp={stopSpin} onMouseLeave={stopSpin}
-              onTouchStart={() => startSpin(-1)} onTouchEnd={stopSpin}
-              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 18 }}
+              onMouseDown={() => handleSpinDown(-1)} onMouseUp={handleSpinUp} onMouseLeave={handleSpinUp}
+              onTouchStart={() => handleSpinDown(-1)} onTouchEnd={handleSpinUp}
+              onDoubleClick={() => handleSpinLockToggle(-1)}
+              title={spinLock === -1 ? "Double-click to unlock spin" : "Hold to spin · Double-click to lock"}
+              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, background: spinLock === -1 ? "rgba(100,180,255,0.25)" : "rgba(255,255,255,0.08)", border: `1px solid ${spinLock === -1 ? "rgba(100,180,255,0.6)" : "rgba(255,255,255,0.2)"}`, borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: spinLock === -1 ? "rgba(100,180,255,1)" : "rgba(255,255,255,0.7)", fontSize: 18 }}
             >◀</button>
-            {/* Right rotation arrow */}
+            {/* Right rotation arrow — hold to spin, double-click to lock */}
             <button
-              onMouseDown={() => startSpin(1)} onMouseUp={stopSpin} onMouseLeave={stopSpin}
-              onTouchStart={() => startSpin(1)} onTouchEnd={stopSpin}
-              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 18 }}
+              onMouseDown={() => handleSpinDown(1)} onMouseUp={handleSpinUp} onMouseLeave={handleSpinUp}
+              onTouchStart={() => handleSpinDown(1)} onTouchEnd={handleSpinUp}
+              onDoubleClick={() => handleSpinLockToggle(1)}
+              title={spinLock === 1 ? "Double-click to unlock spin" : "Hold to spin · Double-click to lock"}
+              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, background: spinLock === 1 ? "rgba(100,180,255,0.25)" : "rgba(255,255,255,0.08)", border: `1px solid ${spinLock === 1 ? "rgba(100,180,255,0.6)" : "rgba(255,255,255,0.2)"}`, borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: spinLock === 1 ? "rgba(100,180,255,1)" : "rgba(255,255,255,0.7)", fontSize: 18 }}
             >▶</button>
 
             <svg viewBox="0 0 800 560" style={{ width: "100%", display: "block" }}>
