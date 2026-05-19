@@ -6433,21 +6433,20 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "lcp": return snap.lcp > CWV.lcp.poor ? RED : snap.lcp > CWV.lcp.good ? ORANGE : GREEN;
       case "cls": return snap.cls > CWV.cls.poor ? RED : snap.cls > CWV.cls.good ? ORANGE : GREEN;
       case "inp": return snap.inp > CWV.inp.poor ? RED : snap.inp > CWV.inp.good ? ORANGE : GREEN;
-      default: {
-        // For revenue/convRate: use session intensity to vary brightness
-        const tlMaxSess2 = Math.max(...Array.from(currentHourData.values()).map(s => s.sessions), 1);
-        const int2 = snap.sessions / tlMaxSess2;
-        const c = countries.find(cc => cc.iso === iso);
-        if (!c) return "rgba(255,255,255,0.04)";
-        const baseColor = getColor(c);
-        let r = 0, g = 0, b = 0;
-        const hexMatch = baseColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
-        const rgbMatch = baseColor.match(/(\d+),\s*(\d+),\s*(\d+)/);
-        if (hexMatch) { r = parseInt(hexMatch[1], 16); g = parseInt(hexMatch[2], 16); b = parseInt(hexMatch[3], 16); }
-        else if (rgbMatch) { r = Number(rgbMatch[1]); g = Number(rgbMatch[2]); b = Number(rgbMatch[3]); }
-        else return baseColor;
-        const dim = Math.max(0.2, int2);
-        return `rgb(${Math.round(r * dim)}, ${Math.round(g * dim)}, ${Math.round(b * dim)})`;
+      case "revenue": {
+        const estRev = aov > 0 && overallConv > 0 ? snap.sessions * (overallConv / 100) * aov : 0;
+        const allRevs = Array.from(currentHourData.values()).map(s => aov > 0 && overallConv > 0 ? s.sessions * (overallConv / 100) * aov : 0);
+        const maxRev = Math.max(...allRevs, 1);
+        const int2 = estRev / maxRev;
+        return `rgb(${Math.round(20 + int2 * 10)}, ${Math.round(80 + int2 * 100)}, ${Math.round(50 + int2 * 50)})`;
+      }
+      case "convRate": {
+        const cr = convRateMap.get(iso) ?? 0;
+        const estConv = cr > 0 ? snap.sessions * (cr / 100) : 0;
+        const allConvs = Array.from(currentHourData.entries()).map(([k, s]) => s.sessions * ((convRateMap.get(k) ?? 0) / 100));
+        const maxConv = Math.max(...allConvs, 1);
+        const int2 = estConv / maxConv;
+        return cr > 5 ? `rgb(${Math.round(13 * int2)}, ${Math.round(60 + int2 * 96)}, ${Math.round(16 + int2 * 25)})` : cr > 2 ? `rgb(${Math.round(100 + int2 * 84)}, ${Math.round(80 + int2 * 54)}, ${Math.round(int2 * 11)})` : `rgb(${Math.round(80 + int2 * 114)}, ${Math.round(int2 * 25)}, ${Math.round(int2 * 48)})`;
       }
     }
   };
@@ -6472,7 +6471,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       }
       case "convRate": {
         const cr = convRateMap.get(iso) ?? 0;
-        return `${header}\nConversion Rate: ${fmtPct(cr)}\nApdex: ${apdex.toFixed(2)}`;
+        const estConv = Math.round(snap.sessions * (cr / 100));
+        return `${header}\nConversion Rate: ${fmtPct(cr)}\nEst. Conversions: ${fmtCount(estConv)}\nApdex: ${apdex.toFixed(2)}`;
       }
       default: return `${header}\nApdex: ${apdex.toFixed(2)}\nAvg Duration: ${fmt(snap.avgDur)}\nErrors: ${snap.errors}`;
     }
@@ -6990,6 +6990,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               case "lcp": return snap.lcp;
               case "cls": return snap.cls;
               case "inp": return snap.inp;
+              case "revenue": return aov > 0 && overallConv > 0 ? snap.sessions * (overallConv / 100) * aov : snap.sessions;
+              case "convRate": return snap.sessions * ((convRateMap.get(c.iso) ?? 0) / 100) || snap.sessions;
               default: return snap.sessions;
             }
           }
@@ -7092,7 +7094,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                     }
                     case "convRate": {
                       const cr = convRateMap.get(s.iso) ?? 0;
-                      tipLine2 = `Conversion Rate: ${fmtPct(cr)}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                      const estConv = Math.round(tlSnap.sessions * (cr / 100));
+                      tipLine2 = `Conversion Rate: ${fmtPct(cr)}\nEst. Conversions: ${fmtCount(estConv)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
                     }
                     default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nError Rate: ${fmtPct(tlErrRate)}`; break;
                   }
