@@ -6488,7 +6488,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       </Flex>
 
       {/* Time-Lapse Controls */}
-      {mapView === "world" && (
+      {(mapView === "world" || mapView === "globe") && (
         <Flex alignItems="center" gap={12} style={{ background: "rgba(128,128,128,0.06)", borderRadius: 8, padding: "10px 16px", border: "1px solid rgba(128,128,128,0.15)", flexWrap: "wrap" }}>
           <button
             onClick={() => {
@@ -6926,16 +6926,31 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           return [x, y, visible];
         };
 
-        // Build spike data
-        const maxVal = Math.max(...countries.map(getValue), 1);
+        // Build spike data — timelapse-aware
+        const getSpikeVal = (c: typeof countries[0]): number => {
+          if (tlMode && currentHourData) {
+            const snap = currentHourData.get(c.iso);
+            if (!snap) return 0;
+            switch (metric) {
+              case "sessions": return snap.sessions;
+              case "avgDur": return snap.avgDur;
+              case "apdex": return calcApdex(snap.sat, snap.tol, snap.actions);
+              case "errRate": return snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
+              default: return snap.sessions;
+            }
+          }
+          return getValue(c);
+        };
+        const maxVal = Math.max(...countries.map(getSpikeVal), 1);
         const spikes = countries.map(c => {
           const centroid = CENTROIDS[c.iso];
           if (!centroid) return null;
           const [px, py, visible] = project(centroid[0], centroid[1]);
           if (!visible) return null;
-          const val = getValue(c);
+          const val = getSpikeVal(c);
+          if (val === 0) return null;
           const normalizedHeight = Math.max(8, (val / maxVal) * 120);
-          const color = getColor(c);
+          const color = tlMode ? getTlColor(c.iso) : getColor(c);
           // Spike direction: outward from globe center
           const dx = px - CX, dy = py - CY;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -6944,8 +6959,10 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
         }).filter(Boolean) as { iso: string; x1: number; y1: number; x2: number; y2: number; color: string; val: number; name: string }[];
 
         // Render simplified country outlines on globe
+        const MAX_SEG = 40; // max pixel distance between consecutive path points before breaking
         const globePaths = (worldGeo as any).features.map((feat: any) => {
           const numId = String(feat.id);
+          const alpha2 = ISO_NUMERIC_TO_ALPHA2[numId] ?? "";
           const c = dataByNumericId.get(numId);
           const coords = feat.geometry?.coordinates;
           if (!coords || coords.length === 0) return null;
@@ -6954,17 +6971,30 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           for (const ring of rings) {
             if (!ring || ring.length < 3) continue;
             let started = false;
+            let lastX = 0, lastY = 0;
             for (let i = 0; i < ring.length; i += 3) {
               const pt = ring[i];
               if (!pt) continue;
               const [x, y, vis] = project(pt[1], pt[0]);
               if (!vis) { started = false; continue; }
+              // Break path if gap is too large (polygon wraps around back of globe)
+              if (started) {
+                const dx = x - lastX, dy = y - lastY;
+                if (dx * dx + dy * dy > MAX_SEG * MAX_SEG) { started = false; }
+              }
               pathD += started ? `L${x.toFixed(1)},${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`;
               started = true;
+              lastX = x; lastY = y;
             }
           }
           if (!pathD) return null;
-          return <path key={numId} d={pathD} fill={c ? "rgba(30,80,140,0.4)" : "rgba(20,40,80,0.3)"} stroke="rgba(60,140,220,0.25)" strokeWidth={0.4} />;
+          // Use timelapse color if active, else default
+          let fill = c ? "rgba(30,80,140,0.4)" : "rgba(20,40,80,0.3)";
+          if (tlMode && alpha2) {
+            const hasTl = currentHourData?.has(alpha2);
+            fill = hasTl ? getTlColor(alpha2) : "rgba(20,40,80,0.15)";
+          }
+          return <path key={numId} d={pathD} fill={fill} stroke="rgba(60,140,220,0.25)" strokeWidth={0.4} style={{ transition: "fill 0.5s ease" }} />;
         });
 
         return (
@@ -7029,6 +7059,12 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                   <title>{`${s.name} (${s.iso})\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`}</title>
                 </g>
               ))}
+              {/* Timelapse timestamp overlay */}
+              {tlMode && sortedHours[tlIndex] && (
+                <text x={CX} y={30} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={14} fontWeight={600} fontFamily="monospace">
+                  {new Date(sortedHours[tlIndex].replace(" ", "T") + ":00Z").toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </text>
+              )}
             </svg>
           </div>
         );
