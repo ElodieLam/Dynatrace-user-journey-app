@@ -46,10 +46,11 @@ const FUNNEL_STYLE_OPTIONS: { value: FunnelStyle; label: string }[] = [
 ];
 const DEFAULT_FUNNEL_STYLE: FunnelStyle = "classic";
 const FUNNEL_STYLE_STATE_KEY = "uj-funnel-style";
-type MapViewSetting = "world" | "us";
+type MapViewSetting = "world" | "us" | "globe";
 const MAP_VIEW_OPTIONS: { value: MapViewSetting; label: string }[] = [
   { value: "world", label: "World" },
   { value: "us", label: "United States" },
+  { value: "globe", label: "Globe" },
 ];
 const DEFAULT_MAP_VIEW: MapViewSetting = "world";
 const GREEN = "#0D9C29";
@@ -85,7 +86,7 @@ const APDEX_4T = 12000;
 const TAB_KEYS = [
   "Funnel Overview", "Trends", "Web Vitals", "Step Details", "Worst Sessions",
   "Exceptions", "Click Issues", "Perf Budgets",
-  "Geo Heatmap", "Map", "Navigation Paths", "Sankey", "Anomaly Detection",
+  "Geo Heatmap", "Maps", "Navigation Paths", "Sankey", "Anomaly Detection",
   "Conversion Attribution", "Executive Summary", "Segmentation",
   "Errors & Drop-offs", "What-If Analysis", "Root Cause Correlation", "Predictive Forecasting",
   "Resource Waterfall", "Change Intelligence",
@@ -2419,7 +2420,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Click Issues</Strong>: Detects rage clicks (rapid repeated clicks indicating frustration) and dead clicks (clicks on non-responsive elements). Shows the worst offending elements, pages, and session impact to guide UX fixes.</Paragraph>
         <Paragraph><Strong>Perf Budgets</Strong>: User-configurable budget thresholds (click ✎ to edit, persisted per user). Tracks actual vs target with pass/fail/near-breach status. Projected time-to-breach per metric based on period-over-period trend. Alert banners when within 10% of breach with workflow trigger DQL suggestions. Hourly Apdex distribution for peak-hour analysis.</Paragraph>
         <Paragraph><Strong>Geo Heatmap</Strong>: Country and city-level performance with Apdex color-coding and satisfaction bars. Identifies regions with poor user experience for targeted CDN placement or infrastructure optimization. Includes city-level drill-down for granular insights. Country cards are clickable and open <Strong>User Sessions</Strong> filtered to that location.</Paragraph>
-        <Paragraph><Strong>Map</Strong>: Interactive choropleth map with World and US views, colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and <Strong>Conversion Rate</Strong> (per-country funnel completion). Use the dropdown to switch between World (country-level) and US (state-level) views. Countries/states with data are clickable and link to <Strong>User Sessions</Strong>. Includes a <Strong>Time-Lapse</Strong> animation mode with a configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour) — use Play/Pause and the scrubber slider to navigate. The number of snapshots equals the number of distinct time buckets with user activity in the selected timeframe. Clicking a country during Time-Lapse drills into <Strong>User Sessions</Strong> scoped to that country AND the exact time bucket currently displayed. The bucket dropdown adjusts both the DQL query granularity and the drill-down timeframe.</Paragraph>
+        <Paragraph><Strong>Maps</Strong>: Interactive geographic visualizations with three views: <Strong>World</Strong> (2D choropleth), <Strong>United States</Strong> (state-level), and <Strong>Globe</Strong> (3D sphere with data spikes). All views are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate. The Globe view displays data magnitude as colored spikes emanating from country positions on a rotatable 3D sphere — hold the ◀/▶ arrows to spin. World view includes a <Strong>Time-Lapse</Strong> animation mode with a configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour). Clicking a country during Time-Lapse drills into <Strong>User Sessions</Strong> scoped to that country AND the exact time bucket. Clicking countries/states/spikes in any view links to User Sessions.</Paragraph>
         <Paragraph><Strong>Navigation Paths</Strong>: Shows actual user navigation flows (not just the expected funnel). Reveals unexpected paths, loops, and exit points. Flow visualization groups transitions by source page, highlighting funnel-aligned vs. off-path navigation. Page names are clickable and open the <Strong>Vitals</Strong> app for detailed analysis.</Paragraph>
         <Paragraph><Strong>Sankey</Strong>: Interactive Sankey flow diagram with 9 analysis sub-tabs organized above the chart. <Strong>Flow Chart</Strong> (default): 7 chart styles — Classic, Gradient, Directed Flow, Alluvial, State Machine, <Strong>Chord Diagram</Strong> (circular arc layout with clickable arcs for path highlighting, focus mode support, center label display), and <Strong>Transition Heatmap</Strong> (NxN grid with clickable row/column highlighting, selection summary, 52px cells). All styles support funnel highlighting, exit detection, and focus mode. <Strong>Conversion Paths</Strong>: Compares converted vs. abandoned session paths — shows differentiating pages, path lengths, and top transitions for each group. <Strong>Loop Analysis</Strong>: Detects A→B→A back-and-forth navigation patterns indicating user confusion, with error/LCP correlation. <Strong>Page Timing</Strong>: Average and P90 duration per page with health scores — identifies slow funnel bottlenecks. <Strong>Session Endpoints</Strong>: Where sessions end (browser close), bounce rate, and terminal page analysis with error correlation. <Strong>Revenue Paths</Strong> (AOV required): Top revenue-generating navigation paths and page touch rates for converting sessions. <Strong>Path Trends</Strong>: Period-over-period comparison of navigation patterns — detects new/dropped pages, frequency shifts, and transition changes. <Strong>Funnel Leakage</Strong>: Deep analysis of users who navigate away from the funnel — classifies sessions into recoverers (returned) vs lost users, compares their behavior, identifies exit step hotspots, maps off-funnel destinations, and correlates exit pages with CWV/errors for performance-driven optimization. <Strong>Funnel Velocity</Strong>: Measures time between funnel step transitions — shows median, P90, and average per step pair, journey time distribution histogram, and identifies the slowest transitions causing friction.</Paragraph>
         <Paragraph><Strong>Anomaly Detection</Strong>: Flags metrics with significant deviation from baseline (previous period). Shows stability score, per-metric severity (normal/medium/high/critical), per-step traffic anomalies, and a duration distribution histogram. Includes automated diagnosis with actionable recommendations. When AOV is set, shows Revenue at Risk from anomalous conversion drops.</Paragraph>
@@ -3053,7 +3054,7 @@ export function UserJourney() {
             case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} />; break;
             case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} />; break;
             case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} />; break;
-            case "Map": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} />; break;
+            case "Maps": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} />; break;
             case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} />; break;
             case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} />; break;
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} />; break;
@@ -3787,7 +3788,7 @@ function analyzeErrorsDropoffs(errors: any[], funnelCounts: number[], steps: Ste
 function analyzeGenericTab(tabName: string): AIInsightsData {
   const tabDescriptions: Record<string, string> = {
     "Executive Summary": "Executive Summary provides a report-card style overview designed for stakeholders, executives, and non-technical leadership. It delivers a weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alerts, CWV snapshot, and a full performance table. This tab answers: What is the overall health of our frontend? Is performance improving or declining? What are the top issues? Use Export PDF for presentations or Copy Text for Slack/Teams. It is designed for VPs of Engineering reviewing platform health, C-level executives needing quick status checks, and Product Directors preparing quarterly business reviews.",
-    "Map": "Map provides an interactive choropleth visualization of user performance data projected onto a world or US map. Countries and US states are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate (per-country funnel completion %). This tab is designed for Infrastructure Architects evaluating CDN coverage, Global Operations Teams monitoring regional health, and Marketing Analysts understanding geographic audience distribution. It answers: Where are our users? Which regions have the best/worst performance? Where is conversion highest/lowest geographically? Are there geographic gaps in our infrastructure? Switch between World (country-level) and US (state-level) views using the dropdown. Clickable regions link to User Sessions for drill-down investigation. A Time-Lapse animation mode plays through map snapshots with configurable granularity (1 min, 5 min, 10 min, 30 min, or 1 hour) to show how performance and traffic shift across time zones. Clicking a country during timelapse drills into sessions for that country scoped to the exact time bucket shown.",
+    "Maps": "Maps provides interactive geographic visualizations of user performance data. Three views: World (2D choropleth), United States (state-level), and Globe (3D sphere with data spikes). All views support 9 colorize-by metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue, and Conversion Rate. The Globe view shows data magnitude as colored spikes emanating from country positions on a rotatable 3D sphere — hold left/right arrows to spin. Time-Lapse mode available in World view with configurable bucket sizes. Clicking countries drills into User Sessions.",
     "Navigation Paths": "Navigation Paths reveals actual user navigation flows across your site — not just the expected funnel, but the real paths users take including unexpected routes, loops, re-visits, and exit points. This tab is designed for Information Architects optimizing site structure, UX Researchers studying user wayfinding behavior, and Product Managers discovering organic user journeys that differ from the designed funnel. It answers: Where do users actually go? Which pages do users visit that aren't in the funnel? Where do navigation loops occur? Which transitions carry the most traffic? Page names are clickable and link to the Vitals app for detailed performance analysis.",
     "What-If Analysis": "What-If Analysis models the impact of traffic increases on your application's performance, projecting how Apdex, latency, conversion, and error rate would change under higher load. This tab is built for Capacity Planning Engineers preparing for traffic events (Black Friday, product launches), Performance Engineers setting scaling thresholds, and Business Stakeholders understanding the revenue risk of traffic spikes. It answers: What happens if traffic doubles? At what point will performance degrade below acceptable thresholds? What is the projected revenue impact of performance degradation under load? When AOV is set, it shows a full Revenue Impact section with projected revenue, net change, conversion degradation loss, and a Perf Tax breakdown.",
     "Session Replay Spotlight": "Session Replay Spotlight surfaces the highest-impact session replays ranked by a composite impact score combining errors, crashes, bounces, and interaction density. This tab is designed for QA Engineers reproducing bugs, UX Researchers observing real user behavior, and Support Teams investigating customer-reported issues. It answers: Which sessions had the most problems? What devices and browsers are most affected? Each session links directly to Dynatrace Session Replay for instant visual debugging — watch exactly what the user saw, clicked, and experienced. Start debugging with the sessions that matter most instead of manually searching.",
@@ -6189,7 +6190,7 @@ type MapMetric = "sessions" | "avgDur" | "apdex" | "errRate" | "lcp" | "cls" | "
 type TlBucket = "1m" | "5m" | "10m" | "30m" | "1h";
 const TL_BUCKET_LABELS: Record<TlBucket, string> = { "1m": "1 min", "5m": "5 min", "10m": "10 min", "30m": "30 min", "1h": "1 hour" };
 const TL_BUCKET_MS: Record<TlBucket, number> = { "1m": 60000, "5m": 300000, "10m": 600000, "30m": 1800000, "1h": 3600000 };
-type MapView = "world" | "us";
+type MapView = "world" | "us" | "globe";
 
 function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0, overallConv = 0, timelapseData, conversionData, tlBucket = "1h", onBucketChange }: { data: any; isLoading: boolean; frontend: string; defaultView?: MapView; aov?: number; overallConv?: number; timelapseData?: any; conversionData?: any; tlBucket?: TlBucket; onBucketChange?: (b: TlBucket) => void }) {
   const [metric, setMetric] = useState<MapMetric>("sessions");
@@ -6442,7 +6443,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       {aiPanel}
       <style>{animCSS}</style>
       <Flex alignItems="center" justifyContent="space-between">
-        <SectionHeader title="Map" />
+        <SectionHeader title="Maps" />
         <Flex alignItems="center" gap={8}>
           <Text style={{ fontSize: 13, opacity: 0.5 }}>View</Text>
           <Select value={mapView} onChange={(val) => { if (val) { setMapView(val as MapView); setHasUserChanged(true); setAnimKey(k => k + 1); } }}>
@@ -6450,6 +6451,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
             <Select.Content>
               <Select.Option value="world">World</Select.Option>
               <Select.Option value="us">United States</Select.Option>
+              <Select.Option value="globe">Globe</Select.Option>
             </Select.Content>
           </Select>
         </Flex>
@@ -6880,6 +6882,156 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               </>
             )}
           </>
+        );
+      })()}
+
+      {/* Globe View — 3D sphere with data spikes */}
+      {mapView === "globe" && (() => {
+        // Country centroids [lat, lng] for spike placement
+        const CENTROIDS: Record<string, [number, number]> = {
+          US: [37.09, -95.71], CA: [56.13, -106.35], MX: [23.63, -102.55], BR: [-14.24, -51.93], AR: [-38.42, -63.62],
+          CO: [4.57, -74.30], CL: [-35.68, -71.54], PE: [-9.19, -75.02], VE: [6.42, -66.59],
+          GB: [55.38, -3.44], DE: [51.17, 10.45], FR: [46.23, 2.21], ES: [40.46, -3.75], IT: [41.87, 12.57],
+          NL: [52.13, 5.29], BE: [50.50, 4.47], CH: [46.82, 8.23], AT: [47.52, 14.55], PL: [51.92, 19.15],
+          SE: [60.13, 18.64], NO: [60.47, 8.47], FI: [61.92, 25.75], DK: [56.26, 9.50], IE: [53.14, -7.69],
+          PT: [39.40, -8.22], CZ: [49.82, 15.47], RO: [45.94, 24.97], HU: [47.16, 19.50], GR: [39.07, 21.82],
+          RU: [61.52, 105.32], UA: [48.38, 31.17], TR: [38.96, 35.24],
+          CN: [35.86, 104.20], JP: [36.20, 138.25], KR: [35.91, 127.77], IN: [20.59, 78.96], ID: [-0.79, 113.92],
+          TH: [15.87, 100.99], VN: [14.06, 108.28], PH: [12.88, 121.77], MY: [4.21, 101.98], SG: [1.35, 103.82],
+          AU: [-25.27, 133.78], NZ: [-40.90, 174.89], ZA: [-30.56, 22.94], NG: [9.08, 8.68], EG: [26.82, 30.80],
+          KE: [-0.02, 37.91], SA: [23.89, 45.08], AE: [23.42, 53.85], IL: [31.05, 34.85], PK: [30.38, 69.35],
+          BD: [23.68, 90.36], TW: [23.70, 120.96], HK: [22.40, 114.11],
+        };
+        const RAD = Math.PI / 180;
+        const R = 200; // Globe radius
+        const CX = 400, CY = 280; // Center of SVG
+
+        // Rotation state uses a ref + interval for smooth spin
+        const [rotLng, setRotLng] = React.useState(0);
+        const spinRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+        const startSpin = (dir: number) => {
+          if (spinRef.current) return;
+          spinRef.current = setInterval(() => setRotLng(prev => prev + dir * 0.8), 30);
+        };
+        const stopSpin = () => { if (spinRef.current) { clearInterval(spinRef.current); spinRef.current = null; } };
+        React.useEffect(() => () => { if (spinRef.current) clearInterval(spinRef.current); }, []);
+
+        // Orthographic projection
+        const project = (lat: number, lng: number): [number, number, boolean] => {
+          const lam = (lng - rotLng) * RAD;
+          const phi = lat * RAD;
+          const cosC = Math.cos(phi) * Math.cos(lam);
+          const visible = cosC > 0;
+          const x = CX + R * Math.cos(phi) * Math.sin(lam);
+          const y = CY - R * Math.sin(phi);
+          return [x, y, visible];
+        };
+
+        // Build spike data
+        const maxVal = Math.max(...countries.map(getValue), 1);
+        const spikes = countries.map(c => {
+          const centroid = CENTROIDS[c.iso];
+          if (!centroid) return null;
+          const [px, py, visible] = project(centroid[0], centroid[1]);
+          if (!visible) return null;
+          const val = getValue(c);
+          const normalizedHeight = Math.max(8, (val / maxVal) * 120);
+          const color = getColor(c);
+          // Spike direction: outward from globe center
+          const dx = px - CX, dy = py - CY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const nx = dx / dist, ny = dy / dist;
+          return { iso: c.iso, x1: px, y1: py, x2: px + nx * normalizedHeight, y2: py + ny * normalizedHeight, color, val, name: c.countryName };
+        }).filter(Boolean) as { iso: string; x1: number; y1: number; x2: number; y2: number; color: string; val: number; name: string }[];
+
+        // Render simplified country outlines on globe
+        const globePaths = (worldGeo as any).features.map((feat: any) => {
+          const numId = String(feat.id);
+          const c = dataByNumericId.get(numId);
+          const coords = feat.geometry?.coordinates;
+          if (!coords || coords.length === 0) return null;
+          const rings: number[][][] = feat.geometry.type === "Polygon" ? [coords[0]] : feat.geometry.type === "MultiPolygon" ? coords.map((p: any) => p[0]) : [];
+          let pathD = "";
+          for (const ring of rings) {
+            if (!ring || ring.length < 3) continue;
+            let started = false;
+            for (let i = 0; i < ring.length; i += 3) {
+              const pt = ring[i];
+              if (!pt) continue;
+              const [x, y, vis] = project(pt[1], pt[0]);
+              if (!vis) { started = false; continue; }
+              pathD += started ? `L${x.toFixed(1)},${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`;
+              started = true;
+            }
+          }
+          if (!pathD) return null;
+          return <path key={numId} d={pathD} fill={c ? "rgba(30,80,140,0.4)" : "rgba(20,40,80,0.3)"} stroke="rgba(60,140,220,0.25)" strokeWidth={0.4} />;
+        });
+
+        return (
+          <div style={{ position: "relative", background: "black", borderRadius: 12, padding: "24px 0", overflow: "hidden" }}>
+            {/* Left rotation arrow */}
+            <button
+              onMouseDown={() => startSpin(-1)} onMouseUp={stopSpin} onMouseLeave={stopSpin}
+              onTouchStart={() => startSpin(-1)} onTouchEnd={stopSpin}
+              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 18 }}
+            >◀</button>
+            {/* Right rotation arrow */}
+            <button
+              onMouseDown={() => startSpin(1)} onMouseUp={stopSpin} onMouseLeave={stopSpin}
+              onTouchStart={() => startSpin(1)} onTouchEnd={stopSpin}
+              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 18 }}
+            >▶</button>
+
+            <svg viewBox="0 0 800 560" style={{ width: "100%", display: "block" }}>
+              <defs>
+                <radialGradient id="uj-globe-glow" cx="50%" cy="50%" r="50%">
+                  <stop offset="85%" stopColor="transparent" />
+                  <stop offset="95%" stopColor="rgba(100,180,255,0.15)" />
+                  <stop offset="100%" stopColor="rgba(100,180,255,0.4)" />
+                </radialGradient>
+                <radialGradient id="uj-globe-surface" cx="35%" cy="30%" r="65%">
+                  <stop offset="0%" stopColor="rgba(15,25,50,1)" />
+                  <stop offset="100%" stopColor="rgba(2,5,12,1)" />
+                </radialGradient>
+              </defs>
+              <rect width="800" height="560" fill="black" />
+              {/* Atmosphere glow ring */}
+              <circle cx={CX} cy={CY} r={R + 12} fill="none" stroke="rgba(180,220,255,0.6)" strokeWidth={2} />
+              <circle cx={CX} cy={CY} r={R + 6} fill="none" stroke="rgba(100,180,255,0.2)" strokeWidth={8} />
+              {/* Globe sphere */}
+              <circle cx={CX} cy={CY} r={R} fill="url(#uj-globe-surface)" />
+              {/* Country outlines */}
+              <g>{globePaths}</g>
+              {/* Grid lines */}
+              {[-60, -30, 0, 30, 60].map(lat => {
+                let d = "";
+                for (let lng = -180; lng <= 180; lng += 5) {
+                  const [x, y, vis] = project(lat, lng);
+                  if (!vis) { d += " "; continue; }
+                  d += (d.endsWith(" ") || !d) ? `M${x.toFixed(0)},${y.toFixed(0)}` : `L${x.toFixed(0)},${y.toFixed(0)}`;
+                }
+                return <path key={`lat${lat}`} d={d} fill="none" stroke="rgba(60,120,180,0.08)" strokeWidth={0.5} />;
+              })}
+              {Array.from({ length: 12 }, (_, i) => i * 30 - 180).map(lng => {
+                let d = "";
+                for (let lat = -80; lat <= 80; lat += 5) {
+                  const [x, y, vis] = project(lat, lng);
+                  if (!vis) { d += " "; continue; }
+                  d += (d.endsWith(" ") || !d) ? `M${x.toFixed(0)},${y.toFixed(0)}` : `L${x.toFixed(0)},${y.toFixed(0)}`;
+                }
+                return <path key={`lng${lng}`} d={d} fill="none" stroke="rgba(60,120,180,0.08)" strokeWidth={0.5} />;
+              })}
+              {/* Data spikes */}
+              {spikes.map(s => (
+                <g key={s.iso} style={{ cursor: "pointer" }} onClick={() => openLink(sessionsFilterUrl(frontend, s.name))}>
+                  <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.color} strokeWidth={2.5} strokeLinecap="round" opacity={0.9} />
+                  <circle cx={s.x1} cy={s.y1} r={2.5} fill={s.color} opacity={0.8} />
+                  <title>{`${s.name} (${s.iso})\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`}</title>
+                </g>
+              ))}
+            </svg>
+          </div>
         );
       })()}
     </Flex>
