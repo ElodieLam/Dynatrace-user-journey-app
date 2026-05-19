@@ -6429,18 +6429,14 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "apdex": return `${header}\nApdex: ${apdex.toFixed(2)}\nSatisfied: ${snap.sat} | Tolerating: ${snap.tol} | Frustrated: ${snap.fru}`;
       case "errRate": return `${header}\nError Rate: ${fmtPct(errRate)}\nErrors: ${snap.errors} / ${snap.actions} actions`;
       case "lcp": case "cls": case "inp": {
-        const c = countries.find(cc => cc.iso === iso);
-        const val = metric === "lcp" ? c?.lcp : metric === "cls" ? c?.cls : c?.inp;
         const label = metric === "lcp" ? "LCP" : metric === "cls" ? "CLS" : "INP";
-        return `${header}\n${label}: ${val != null ? (metric === "cls" ? val.toFixed(3) : fmt(val)) : "N/A"} (period avg)\nHourly Apdex: ${apdex.toFixed(2)}`;
+        return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}\n${label}: per-bucket N/A`;
       }
       case "revenue": {
-        const c = countries.find(cc => cc.iso === iso);
-        return `${header}\nEst. Revenue: ${c ? "$" + fmtCount(c.estRevenue) : "N/A"} (period)\nHourly Apdex: ${apdex.toFixed(2)}`;
+        return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}`;
       }
       case "convRate": {
-        const rate = convRateMap.get(iso) ?? 0;
-        return `${header}\nConversion Rate: ${fmtPct(rate)} (period)\nHourly Apdex: ${apdex.toFixed(2)}`;
+        return `${header}\nApdex: ${apdex.toFixed(2)}\nError Rate: ${fmtPct(errRate)}`;
       }
       default: return `${header}\nApdex: ${apdex.toFixed(2)}\nAvg Duration: ${fmt(snap.avgDur)}\nErrors: ${snap.errors}`;
     }
@@ -7065,33 +7061,32 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               <circle cx={CX} cy={CY} r={R} fill="url(#uj-globe-surface)" />
               {/* Country outlines */}
               <g>{globePaths}</g>
-              {/* Grid lines (skip equator — it renders as a distracting straight line) */}
-              {[-60, -30, 30, 60].map(lat => {
-                let d = "";
-                for (let lng = -180; lng <= 180; lng += 5) {
-                  const [x, y, vis] = projectStrict(lat, lng);
-                  if (!vis) { d += " "; continue; }
-                  d += (d.endsWith(" ") || !d) ? `M${x.toFixed(0)},${y.toFixed(0)}` : `L${x.toFixed(0)},${y.toFixed(0)}`;
-                }
-                return <path key={`lat${lat}`} d={d} fill="none" stroke="rgba(60,120,180,0.06)" strokeWidth={0.3} />;
-              })}
-              {Array.from({ length: 12 }, (_, i) => i * 30 - 180).map(lng => {
-                let d = "";
-                for (let lat = -80; lat <= 80; lat += 5) {
-                  const [x, y, vis] = projectStrict(lat, lng);
-                  if (!vis) { d += " "; continue; }
-                  d += (d.endsWith(" ") || !d) ? `M${x.toFixed(0)},${y.toFixed(0)}` : `L${x.toFixed(0)},${y.toFixed(0)}`;
-                }
-                return <path key={`lng${lng}`} d={d} fill="none" stroke="rgba(60,120,180,0.06)" strokeWidth={0.3} />;
-              })}
               {/* Data spikes */}
-              {spikes.map(s => (
-                <g key={s.iso} style={{ cursor: "pointer" }} onClick={() => openLink(sessionsFilterUrl(frontend, s.name))}>
-                  <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.color} strokeWidth={2.5} strokeLinecap="round" opacity={0.9} />
-                  <circle cx={s.x1} cy={s.y1} r={2.5} fill={s.color} opacity={0.8} />
-                  <title>{`${decodeName(s.iso, s.name)}\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`}</title>
-                </g>
-              ))}
+              {spikes.map(s => {
+                const tlSnap = tlMode && currentHourData ? currentHourData.get(s.iso) : null;
+                const tlApdex = tlSnap ? calcApdex(tlSnap.sat, tlSnap.tol, tlSnap.actions) : 0;
+                const tipLine1 = decodeName(s.iso, s.name);
+                let tipLine2: string;
+                if (tlMode && tlSnap) {
+                  // Show per-bucket data
+                  switch (metric) {
+                    case "sessions": tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
+                    case "avgDur": tipLine2 = `Avg Duration: ${fmt(tlSnap.avgDur)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
+                    case "apdex": tipLine2 = `Apdex: ${tlApdex.toFixed(2)}\nSat: ${tlSnap.sat} | Tol: ${tlSnap.tol} | Fru: ${tlSnap.fru}`; break;
+                    case "errRate": { const er = tlSnap.actions > 0 ? (tlSnap.errors / tlSnap.actions) * 100 : 0; tipLine2 = `Error Rate: ${fmtPct(er)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break; }
+                    default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`; break;
+                  }
+                } else {
+                  tipLine2 = `${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`;
+                }
+                return (
+                  <g key={s.iso} style={{ cursor: "pointer" }} onClick={() => openLink(sessionsFilterUrl(frontend, s.name))}>
+                    <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.color} strokeWidth={2.5} strokeLinecap="round" opacity={0.9} />
+                    <circle cx={s.x1} cy={s.y1} r={2.5} fill={s.color} opacity={0.8} />
+                    <title>{`${tipLine1}\n${tipLine2}`}</title>
+                  </g>
+                );
+              })}
               {/* Timelapse timestamp overlay */}
               {tlMode && sortedHours[tlIndex] && (
                 <text x={CX} y={30} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={14} fontWeight={600} fontFamily="monospace">
