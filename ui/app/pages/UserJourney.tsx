@@ -1232,15 +1232,19 @@ function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): s
 }
 
 // NEW: Hourly Map Timelapse Query
-function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[]): string {
+function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[], bucket: TlBucket = "1h"): string {
   const period = periodClause(days);
+  const bucketExpr = bucket === "1h"
+    ? `| fieldsAdd hour_bucket = formatTimestamp(start_time, format: "yyyy-MM-dd HH:00")`
+    : `| fieldsAdd bucket_ts = bin(start_time, ${bucket})\n| fieldsAdd hour_bucket = formatTimestamp(bucket_ts, format: "yyyy-MM-dd HH:mm")`;
+  const limit = bucket === "1h" ? 5000 : bucket === "30m" ? 8000 : 10000;
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
 | fieldsAdd country = geo.country.iso_code
-| fieldsAdd hour_bucket = formatTimestamp(start_time, format: "yyyy-MM-dd HH:00")
+${bucketExpr}
 | summarize
     actions = count(),
     sessions = countDistinct(dt.rum.session.id),
@@ -1251,7 +1255,7 @@ function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[]): st
     errors = countIf(characteristics.has_error == true),
     by: {country, hour_bucket}
 | sort hour_bucket asc
-| limit 2000`;
+| limit ${limit}`;
 }
 
 // NEW: OS Version Segmentation Query
@@ -2415,7 +2419,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Click Issues</Strong>: Detects rage clicks (rapid repeated clicks indicating frustration) and dead clicks (clicks on non-responsive elements). Shows the worst offending elements, pages, and session impact to guide UX fixes.</Paragraph>
         <Paragraph><Strong>Perf Budgets</Strong>: User-configurable budget thresholds (click ✎ to edit, persisted per user). Tracks actual vs target with pass/fail/near-breach status. Projected time-to-breach per metric based on period-over-period trend. Alert banners when within 10% of breach with workflow trigger DQL suggestions. Hourly Apdex distribution for peak-hour analysis.</Paragraph>
         <Paragraph><Strong>Geo Heatmap</Strong>: Country and city-level performance with Apdex color-coding and satisfaction bars. Identifies regions with poor user experience for targeted CDN placement or infrastructure optimization. Includes city-level drill-down for granular insights. Country cards are clickable and open <Strong>User Sessions</Strong> filtered to that location.</Paragraph>
-        <Paragraph><Strong>Map</Strong>: Interactive choropleth map with World and US views, colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and <Strong>Conversion Rate</Strong> (per-country funnel completion). Use the dropdown to switch between World (country-level) and US (state-level) views. Countries/states with data are clickable and link to <Strong>User Sessions</Strong>. Includes a <Strong>Time-Lapse</Strong> animation mode that plays through hourly map snapshots showing how performance and traffic shift across time zones throughout the day — use Play/Pause and the scrubber slider to navigate. The number of snapshots equals the number of distinct hours with user activity in the selected timeframe (e.g., "Last 24 hours" yields up to 24 snapshots, "Last 7 days" up to 168). Hours with no traffic are omitted.</Paragraph>
+        <Paragraph><Strong>Map</Strong>: Interactive choropleth map with World and US views, colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and <Strong>Conversion Rate</Strong> (per-country funnel completion). Use the dropdown to switch between World (country-level) and US (state-level) views. Countries/states with data are clickable and link to <Strong>User Sessions</Strong>. Includes a <Strong>Time-Lapse</Strong> animation mode with a configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour) — use Play/Pause and the scrubber slider to navigate. The number of snapshots equals the number of distinct time buckets with user activity in the selected timeframe. Clicking a country during Time-Lapse drills into <Strong>User Sessions</Strong> scoped to that country AND the exact time bucket currently displayed. The bucket dropdown adjusts both the DQL query granularity and the drill-down timeframe.</Paragraph>
         <Paragraph><Strong>Navigation Paths</Strong>: Shows actual user navigation flows (not just the expected funnel). Reveals unexpected paths, loops, and exit points. Flow visualization groups transitions by source page, highlighting funnel-aligned vs. off-path navigation. Page names are clickable and open the <Strong>Vitals</Strong> app for detailed analysis.</Paragraph>
         <Paragraph><Strong>Sankey</Strong>: Interactive Sankey flow diagram with 9 analysis sub-tabs organized above the chart. <Strong>Flow Chart</Strong> (default): 7 chart styles — Classic, Gradient, Directed Flow, Alluvial, State Machine, <Strong>Chord Diagram</Strong> (circular arc layout with clickable arcs for path highlighting, focus mode support, center label display), and <Strong>Transition Heatmap</Strong> (NxN grid with clickable row/column highlighting, selection summary, 52px cells). All styles support funnel highlighting, exit detection, and focus mode. <Strong>Conversion Paths</Strong>: Compares converted vs. abandoned session paths — shows differentiating pages, path lengths, and top transitions for each group. <Strong>Loop Analysis</Strong>: Detects A→B→A back-and-forth navigation patterns indicating user confusion, with error/LCP correlation. <Strong>Page Timing</Strong>: Average and P90 duration per page with health scores — identifies slow funnel bottlenecks. <Strong>Session Endpoints</Strong>: Where sessions end (browser close), bounce rate, and terminal page analysis with error correlation. <Strong>Revenue Paths</Strong> (AOV required): Top revenue-generating navigation paths and page touch rates for converting sessions. <Strong>Path Trends</Strong>: Period-over-period comparison of navigation patterns — detects new/dropped pages, frequency shifts, and transition changes. <Strong>Funnel Leakage</Strong>: Deep analysis of users who navigate away from the funnel — classifies sessions into recoverers (returned) vs lost users, compares their behavior, identifies exit step hotspots, maps off-funnel destinations, and correlates exit pages with CWV/errors for performance-driven optimization. <Strong>Funnel Velocity</Strong>: Measures time between funnel step transitions — shows median, P90, and average per step pair, journey time distribution histogram, and identifies the slowest transitions causing friction.</Paragraph>
         <Paragraph><Strong>Anomaly Detection</Strong>: Flags metrics with significant deviation from baseline (previous period). Shows stability score, per-metric severity (normal/medium/high/critical), per-step traffic anomalies, and a duration distribution histogram. Includes automated diagnosis with actionable recommendations. When AOV is set, shows Revenue at Risk from anomalous conversion drops.</Paragraph>
@@ -2723,7 +2727,8 @@ export function UserJourney() {
   // NEW: Enhanced tab queries
   const geoNetworkData = useDql({ query: geoNetworkQuery(timeframeDays, frontend) }, refetchOpts);
   const geoConversionData = useDql({ query: geoConversionQuery(timeframeDays, frontend, steps) }, refetchOpts);
-  const mapTimelapseData = useDql({ query: mapTimelapseQuery(timeframeDays, frontend, steps) }, refetchOpts);
+  const [mapTlBucket, setMapTlBucket] = useState<TlBucket>("1h");
+  const mapTimelapseData = useDql({ query: mapTimelapseQuery(timeframeDays, frontend, steps, mapTlBucket) }, refetchOpts);
   const osVersionData = useDql({ query: osVersionQuery(timeframeDays, frontend, steps) }, refetchOpts);
   const navPathConvData = useDql({ query: navPathConversionQuery(timeframeDays, frontend, steps) }, refetchOpts);
   const clickReplayData = useDql({ query: clickIssuesReplayQuery(timeframeDays, frontend) }, refetchOpts);
@@ -2857,7 +2862,7 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.49.8</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.49.12</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
@@ -3048,7 +3053,7 @@ export function UserJourney() {
             case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} />; break;
             case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} />; break;
             case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} />; break;
-            case "Map": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} />; break;
+            case "Map": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} />; break;
             case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} />; break;
             case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} />; break;
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} />; break;
@@ -3782,7 +3787,7 @@ function analyzeErrorsDropoffs(errors: any[], funnelCounts: number[], steps: Ste
 function analyzeGenericTab(tabName: string): AIInsightsData {
   const tabDescriptions: Record<string, string> = {
     "Executive Summary": "Executive Summary provides a report-card style overview designed for stakeholders, executives, and non-technical leadership. It delivers a weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alerts, CWV snapshot, and a full performance table. This tab answers: What is the overall health of our frontend? Is performance improving or declining? What are the top issues? Use Export PDF for presentations or Copy Text for Slack/Teams. It is designed for VPs of Engineering reviewing platform health, C-level executives needing quick status checks, and Product Directors preparing quarterly business reviews.",
-    "Map": "Map provides an interactive choropleth visualization of user performance data projected onto a world or US map. Countries and US states are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate (per-country funnel completion %). This tab is designed for Infrastructure Architects evaluating CDN coverage, Global Operations Teams monitoring regional health, and Marketing Analysts understanding geographic audience distribution. It answers: Where are our users? Which regions have the best/worst performance? Where is conversion highest/lowest geographically? Are there geographic gaps in our infrastructure? Switch between World (country-level) and US (state-level) views using the dropdown. Clickable regions link to User Sessions for drill-down investigation. A Time-Lapse animation mode plays through hourly map snapshots to show how performance and traffic shift across time zones throughout the day.",
+    "Map": "Map provides an interactive choropleth visualization of user performance data projected onto a world or US map. Countries and US states are colorized by 9 metrics: session count, average duration, Apdex, error rate, LCP, CLS, INP, estimated revenue (when AOV is set), and Conversion Rate (per-country funnel completion %). This tab is designed for Infrastructure Architects evaluating CDN coverage, Global Operations Teams monitoring regional health, and Marketing Analysts understanding geographic audience distribution. It answers: Where are our users? Which regions have the best/worst performance? Where is conversion highest/lowest geographically? Are there geographic gaps in our infrastructure? Switch between World (country-level) and US (state-level) views using the dropdown. Clickable regions link to User Sessions for drill-down investigation. A Time-Lapse animation mode plays through map snapshots with configurable granularity (1 min, 5 min, 10 min, 30 min, or 1 hour) to show how performance and traffic shift across time zones. Clicking a country during timelapse drills into sessions for that country scoped to the exact time bucket shown.",
     "Navigation Paths": "Navigation Paths reveals actual user navigation flows across your site — not just the expected funnel, but the real paths users take including unexpected routes, loops, re-visits, and exit points. This tab is designed for Information Architects optimizing site structure, UX Researchers studying user wayfinding behavior, and Product Managers discovering organic user journeys that differ from the designed funnel. It answers: Where do users actually go? Which pages do users visit that aren't in the funnel? Where do navigation loops occur? Which transitions carry the most traffic? Page names are clickable and link to the Vitals app for detailed performance analysis.",
     "What-If Analysis": "What-If Analysis models the impact of traffic increases on your application's performance, projecting how Apdex, latency, conversion, and error rate would change under higher load. This tab is built for Capacity Planning Engineers preparing for traffic events (Black Friday, product launches), Performance Engineers setting scaling thresholds, and Business Stakeholders understanding the revenue risk of traffic spikes. It answers: What happens if traffic doubles? At what point will performance degrade below acceptable thresholds? What is the projected revenue impact of performance degradation under load? When AOV is set, it shows a full Revenue Impact section with projected revenue, net change, conversion degradation loss, and a Perf Tax breakdown.",
     "Session Replay Spotlight": "Session Replay Spotlight surfaces the highest-impact session replays ranked by a composite impact score combining errors, crashes, bounces, and interaction density. This tab is designed for QA Engineers reproducing bugs, UX Researchers observing real user behavior, and Support Teams investigating customer-reported issues. It answers: Which sessions had the most problems? What devices and browsers are most affected? Each session links directly to Dynatrace Session Replay for instant visual debugging — watch exactly what the user saw, clicked, and experienced. Start debugging with the sessions that matter most instead of manually searching.",
@@ -6181,9 +6186,12 @@ const STATE_TO_NAME: Record<string, string> = {
 };
 
 type MapMetric = "sessions" | "avgDur" | "apdex" | "errRate" | "lcp" | "cls" | "inp" | "revenue" | "convRate";
+type TlBucket = "1m" | "5m" | "10m" | "30m" | "1h";
+const TL_BUCKET_LABELS: Record<TlBucket, string> = { "1m": "1 min", "5m": "5 min", "10m": "10 min", "30m": "30 min", "1h": "1 hour" };
+const TL_BUCKET_MS: Record<TlBucket, number> = { "1m": 60000, "5m": 300000, "10m": 600000, "30m": 1800000, "1h": 3600000 };
 type MapView = "world" | "us";
 
-function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0, overallConv = 0, timelapseData, conversionData }: { data: any; isLoading: boolean; frontend: string; defaultView?: MapView; aov?: number; overallConv?: number; timelapseData?: any; conversionData?: any }) {
+function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0, overallConv = 0, timelapseData, conversionData, tlBucket = "1h", onBucketChange }: { data: any; isLoading: boolean; frontend: string; defaultView?: MapView; aov?: number; overallConv?: number; timelapseData?: any; conversionData?: any; tlBucket?: TlBucket; onBucketChange?: (b: TlBucket) => void }) {
   const [metric, setMetric] = useState<MapMetric>("sessions");
   const [mapView, setMapView] = useState<MapView>(defaultView);
   const [animKey, setAnimKey] = useState(0);
@@ -6470,7 +6478,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 
       {/* Time-Lapse Controls */}
       {mapView === "world" && (
-        <Flex alignItems="center" gap={12} style={{ background: "rgba(128,128,128,0.06)", borderRadius: 8, padding: "10px 16px", border: "1px solid rgba(128,128,128,0.15)" }}>
+        <Flex alignItems="center" gap={12} style={{ background: "rgba(128,128,128,0.06)", borderRadius: 8, padding: "10px 16px", border: "1px solid rgba(128,128,128,0.15)", flexWrap: "wrap" }}>
           <button
             onClick={() => {
               if (tlTotal < 2) return;
@@ -6481,6 +6489,15 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           >
             {tlMode ? "⏹ Exit Time-Lapse" : "▶ Time-Lapse"}
           </button>
+          <select
+            value={tlBucket}
+            onChange={(e) => { onBucketChange?.(e.target.value as TlBucket); setTlIndex(0); setTlPlaying(false); }}
+            style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(128,128,128,0.08)", color: "inherit", fontSize: 11, cursor: "pointer" }}
+          >
+            {(["1m", "5m", "10m", "30m", "1h"] as TlBucket[]).map((b) => (
+              <option key={b} value={b}>{TL_BUCKET_LABELS[b]}</option>
+            ))}
+          </select>
           {tlLoading && <Text style={{ fontSize: 11, opacity: 0.5 }}>Loading hourly data…</Text>}
           {!tlLoading && tlError && <Text style={{ fontSize: 11, color: RED }}>Error: {String(tlError?.message ?? tlError)}</Text>}
           {!tlLoading && !tlError && tlTotal < 2 && <Text style={{ fontSize: 11, opacity: 0.4 }}>No hourly snapshots ({tlRows.length} rows)</Text>}
@@ -6502,7 +6519,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                 style={{ flex: 1, cursor: "pointer", accentColor: BLUE }}
               />
               <Text style={{ fontSize: 12, fontWeight: 600, minWidth: 140, textAlign: "center" }}>
-                {sortedHours[tlIndex] ? new Date(sortedHours[tlIndex]).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                {sortedHours[tlIndex] ? new Date(sortedHours[tlIndex].replace(" ", "T") + ":00Z").toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
               </Text>
               <Text style={{ fontSize: 11, opacity: 0.4 }}>{tlIndex + 1}/{tlTotal}</Text>
             </>
@@ -6538,9 +6555,22 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                   if (tlMode && alpha2) {
                     const hasTlData = currentHourData?.has(alpha2);
                     const fillColor = hasTlData ? getTlColor(alpha2) : "rgba(255,255,255,0.04)";
+                    const handleTlClick = () => {
+                      if (!c) return;
+                      const bucketStr = sortedHours[tlIndex];
+                      if (bucketStr) {
+                        // Parse bucket string "2026-05-18 10:00" → ISO range
+                        const startDate = new Date(bucketStr.replace(" ", "T") + ":00Z");
+                        const endDate = new Date(startDate.getTime() + TL_BUCKET_MS[tlBucket]);
+                        const tfVal = encodeURIComponent(`${startDate.toISOString()};${endDate.toISOString()}`);
+                        const filter = `Frontends = ${frontend} Location = "${c.countryName}"`;
+                        openLink(`${ENV_URL}/ui/apps/dynatrace.users.sessions/sessions/sessions?tf=${tfVal}&perspective=general#filtering=${encodeURIComponent(filter)}`);
+                      } else {
+                        openLink(sessionsFilterUrl(frontend, c.countryName));
+                      }
+                    };
                     return (
-                      <g key={numId} style={{ cursor: c ? "pointer" : "default" }} onClick={() => c && openLink(sessionsFilterUrl(frontend, c.countryName))}>
-                        <path
+                      <g key={numId} style={{ cursor: c ? "pointer" : "default" }} onClick={handleTlClick}>                        <path
                           d={d}
                           fill={fillColor}
                           stroke={isHovered ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)"}

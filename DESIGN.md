@@ -288,8 +288,8 @@ fetch user.events, from: now() - {timeframe}
 - US state map (Albers USA projection + us-atlas TopoJSON)
 - 9 colorize-by metrics: Sessions, Avg Duration, Apdex, Error Rate, LCP, CLS, INP, Est. Revenue (AOV), Conversion Rate
 - Conversion Rate uses two-pass session-level DQL query (per-country funnel completion %)
-- **Time-Lapse animation mode**: plays through hourly map snapshots showing performance/traffic shifts across time zones; Play/Pause, scrubber slider, hour label
-- Clickable countries/states link to User Sessions
+- **Time-Lapse animation mode**: plays through map snapshots with configurable bucket size (1 min, 5 min, 10 min, 30 min, 1 hour); Play/Pause, scrubber slider, time label. Clicking a country during Time-Lapse drills into User Sessions scoped to that country and the exact time bucket displayed.
+- Clickable countries/states link to User Sessions (in timelapse: scoped to current bucket timeframe)
 - Hover tooltips with full metrics
 - Conv % column in ranked table
 
@@ -1098,6 +1098,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-18 | 4.49.12 | **Map — Configurable Time-Lapse Buckets & Drilldown**: Time-Lapse bucket size now configurable via dropdown (1 min, 5 min, 10 min, 30 min, 1 hour — default 1h). Clicking a country during Time-Lapse drills into User Sessions scoped to that country AND the exact time bucket displayed. **Metric-Aware AI Insights**: `analyzeMapByMetric` function provides dedicated analysis for each colorize-by metric (traffic distribution, latency hotspots, Apdex satisfaction, error concentration, CWV geographic gaps, revenue distribution, conversion geography). AI panel re-runs analysis when metric selection changes. **Timelapse Tooltips**: Tooltip content now reflects the selected colorize-by metric instead of always showing Apdex/Sessions/Duration/Errors. |
 | 2026-05-18 | 4.49.4 | **Map — Conversion Rate Colorize-By & Time-Lapse Animation**: Added Conversion Rate as 9th colorize-by option using two-pass session-level DQL query (`geoConversionQuery`). Added Time-Lapse animation mode that plays through hourly map snapshots showing performance/traffic shifts across time zones (Play/Pause, scrubber slider, hour label). Conv % column added to ranked table. Conv Rate legend added. **Geo Heatmap — AI Insights Enhanced**: `analyzeGeoHeatmap` now analyzes conversion data (high/low/zero-converting regions with recommendations) and ISP network data (slow ISPs with peering recommendations). Help panel and AI Assist tab descriptions updated. |
 | 2026-05-17 | 4.47.90 | **Hyperlyzer Tab — Multidimensional Radial Performance Explorer**: New tab (31st) ported from standalone Hyperlyzer app. Radial SVG chart with 4 quadrants (OS, Geo, User Action, Browser), 8 selectable metrics (Duration/Apdex/LCP/INP/CLS/TTFB/Load Event End/FCP), cross-dimensional click-to-filter stacking, finding cards with outlier detection, paginated side table with color-coded ratings and drilldown links. Component split: `RadialHyperChart.tsx` (reusable SVG chart) + `HyperlyzerTab.tsx` (tab wrapper with DQL queries). AI Insights integration. Help, Settings, and DESIGN.md updated. Tab count 30→31. |
 | 2026-05-15 | 4.47.88 | **Resource Waterfall — Session Drill-Down & Top 10 Slowest**: Added "Top 10 Slowest Resources" section showing individual resource requests ranked by duration with clickable session links. Added "Session Drill-Down" panel with session selector buttons — click to see all resources loaded in that specific session with a "View Full Session" replay link. New `resourceSessionDrillQuery` fetches per-session resource data (top 50 by duration). Help and AI Insights updated. |
