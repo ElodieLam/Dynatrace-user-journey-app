@@ -6414,6 +6414,38 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 
   // Time-lapse: compute per-country color from current hourly snapshot
   const currentHourData = tlMode && sortedHours[tlIndex] ? hourBuckets.get(sortedHours[tlIndex]) : null;
+
+  // Precompute global maxes across ALL buckets (so normalization changes per bucket)
+  const globalMaxRev = React.useMemo(() => {
+    if (!tlMode || sortedHours.length === 0) return 1;
+    let mx = 0;
+    for (const [, bkt] of hourBuckets) {
+      for (const [, s] of bkt) {
+        const rev = aov > 0 && overallConv > 0 ? s.sessions * (overallConv / 100) * aov : 0;
+        if (rev > mx) mx = rev;
+      }
+    }
+    return mx || 1;
+  }, [tlMode, sortedHours.length, aov, overallConv]);
+  const globalMaxConv = React.useMemo(() => {
+    if (!tlMode || sortedHours.length === 0) return 1;
+    let mx = 0;
+    for (const [, bkt] of hourBuckets) {
+      for (const [iso, s] of bkt) {
+        const conv = s.sessions * ((convRateMap.get(iso) ?? 0) / 100);
+        if (conv > mx) mx = conv;
+      }
+    }
+    return mx || 1;
+  }, [tlMode, sortedHours.length]);
+  const globalMaxSess = React.useMemo(() => {
+    if (!tlMode || sortedHours.length === 0) return 1;
+    let mx = 0;
+    for (const [, bkt] of hourBuckets) {
+      for (const [, s] of bkt) { if (s.sessions > mx) mx = s.sessions; }
+    }
+    return mx || 1;
+  }, [tlMode, sortedHours.length]);
   const getTlColor = (iso: string): string => {
     if (!currentHourData) return "rgba(255,255,255,0.04)";
     const snap = currentHourData.get(iso);
@@ -6421,8 +6453,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     const apdex = calcApdex(snap.sat, snap.tol, snap.actions);
     const errRate = snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
     // Session intensity (used as time-varying dimension for metrics without per-bucket data)
-    const tlMaxSess = Math.max(...Array.from(currentHourData.values()).map(s => s.sessions), 1);
-    const intensity = snap.sessions / tlMaxSess;
+    const intensity = snap.sessions / globalMaxSess;
     switch (metric) {
       case "sessions": {
         return `rgb(${Math.round(20 + intensity * 35)}, ${Math.round(80 + intensity * 57)}, ${Math.round(120 + intensity * 135)})`;
@@ -6435,17 +6466,13 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "inp": return snap.inp > CWV.inp.poor ? RED : snap.inp > CWV.inp.good ? ORANGE : GREEN;
       case "revenue": {
         const estRev = aov > 0 && overallConv > 0 ? snap.sessions * (overallConv / 100) * aov : 0;
-        const allRevs = Array.from(currentHourData.values()).map(s => aov > 0 && overallConv > 0 ? s.sessions * (overallConv / 100) * aov : 0);
-        const maxRev = Math.max(...allRevs, 1);
-        const int2 = estRev / maxRev;
+        const int2 = estRev / globalMaxRev;
         return `rgb(${Math.round(20 + int2 * 10)}, ${Math.round(80 + int2 * 100)}, ${Math.round(50 + int2 * 50)})`;
       }
       case "convRate": {
         const cr = convRateMap.get(iso) ?? 0;
         const estConv = cr > 0 ? snap.sessions * (cr / 100) : 0;
-        const allConvs = Array.from(currentHourData.entries()).map(([k, s]) => s.sessions * ((convRateMap.get(k) ?? 0) / 100));
-        const maxConv = Math.max(...allConvs, 1);
-        const int2 = estConv / maxConv;
+        const int2 = estConv / globalMaxConv;
         return cr > 5 ? `rgb(${Math.round(13 * int2)}, ${Math.round(60 + int2 * 96)}, ${Math.round(16 + int2 * 25)})` : cr > 2 ? `rgb(${Math.round(100 + int2 * 84)}, ${Math.round(80 + int2 * 54)}, ${Math.round(int2 * 11)})` : `rgb(${Math.round(80 + int2 * 114)}, ${Math.round(int2 * 25)}, ${Math.round(int2 * 48)})`;
       }
     }
@@ -6997,7 +7024,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           }
           return getValue(c);
         };
-        const maxVal = Math.max(...countries.map(getSpikeVal), 1);
+        // Use global max for revenue/convRate so spikes actually shrink/grow across buckets
+        const perBucketMax = Math.max(...countries.map(getSpikeVal), 1);
+        const maxVal = (tlMode && metric === "revenue") ? globalMaxRev : (tlMode && metric === "convRate") ? globalMaxConv : perBucketMax;
         const spikes = countries.map(c => {
           const centroid = CENTROIDS[c.iso];
           if (!centroid) return null;
