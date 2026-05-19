@@ -6416,36 +6416,18 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
   const currentHourData = tlMode && sortedHours[tlIndex] ? hourBuckets.get(sortedHours[tlIndex]) : null;
 
   // Precompute global maxes across ALL buckets (so normalization changes per bucket)
-  const globalMaxRev = React.useMemo(() => {
-    if (!tlMode || sortedHours.length === 0) return 1;
-    let mx = 0;
-    for (const [, bkt] of hourBuckets) {
-      for (const [, s] of bkt) {
-        const rev = aov > 0 && overallConv > 0 ? s.sessions * (overallConv / 100) * aov : 0;
-        if (rev > mx) mx = rev;
-      }
-    }
-    return mx || 1;
-  }, [tlMode, sortedHours.length, aov, overallConv]);
-  const globalMaxConv = React.useMemo(() => {
-    if (!tlMode || sortedHours.length === 0) return 1;
-    let mx = 0;
+  let globalMaxRev = 1, globalMaxConv = 1, globalMaxSess = 1;
+  if (tlMode && sortedHours.length > 0) {
     for (const [, bkt] of hourBuckets) {
       for (const [iso, s] of bkt) {
+        const rev = aov > 0 && overallConv > 0 ? s.sessions * (overallConv / 100) * aov : 0;
+        if (rev > globalMaxRev) globalMaxRev = rev;
         const conv = s.sessions * ((convRateMap.get(iso) ?? 0) / 100);
-        if (conv > mx) mx = conv;
+        if (conv > globalMaxConv) globalMaxConv = conv;
+        if (s.sessions > globalMaxSess) globalMaxSess = s.sessions;
       }
     }
-    return mx || 1;
-  }, [tlMode, sortedHours.length]);
-  const globalMaxSess = React.useMemo(() => {
-    if (!tlMode || sortedHours.length === 0) return 1;
-    let mx = 0;
-    for (const [, bkt] of hourBuckets) {
-      for (const [, s] of bkt) { if (s.sessions > mx) mx = s.sessions; }
-    }
-    return mx || 1;
-  }, [tlMode, sortedHours.length]);
+  }
   const getTlColor = (iso: string): string => {
     if (!currentHourData) return "rgba(255,255,255,0.04)";
     const snap = currentHourData.get(iso);
@@ -6470,11 +6452,13 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
         return `rgb(${Math.round(20 + int2 * 10)}, ${Math.round(80 + int2 * 100)}, ${Math.round(50 + int2 * 50)})`;
       }
       case "convRate": {
-        const cr = convRateMap.get(iso) ?? 0;
+        const baseCr = convRateMap.get(iso) ?? 0;
+        const cr = baseCr * apdex;
         const estConv = cr > 0 ? snap.sessions * (cr / 100) : 0;
         const int2 = estConv / globalMaxConv;
         return cr > 5 ? `rgb(${Math.round(13 * int2)}, ${Math.round(60 + int2 * 96)}, ${Math.round(16 + int2 * 25)})` : cr > 2 ? `rgb(${Math.round(100 + int2 * 84)}, ${Math.round(80 + int2 * 54)}, ${Math.round(int2 * 11)})` : `rgb(${Math.round(80 + int2 * 114)}, ${Math.round(int2 * 25)}, ${Math.round(int2 * 48)})`;
       }
+      default: return "rgba(255,255,255,0.04)";
     }
   };
   const getTlTooltip = (iso: string, countryName: string): string => {
@@ -6497,7 +6481,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
         return `${header}\nEst. Revenue: ${fmtCurrency(estRev)}\nApdex: ${apdex.toFixed(2)}`;
       }
       case "convRate": {
-        const cr = convRateMap.get(iso) ?? 0;
+        const baseCr = convRateMap.get(iso) ?? 0;
+        const cr = baseCr * apdex;
         const estConv = Math.round(snap.sessions * (cr / 100));
         return `${header}\nConversion Rate: ${fmtPct(cr)}\nEst. Conversions: ${fmtCount(estConv)}\nApdex: ${apdex.toFixed(2)}`;
       }
@@ -7018,7 +7003,10 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               case "cls": return snap.cls;
               case "inp": return snap.inp;
               case "revenue": return aov > 0 && overallConv > 0 ? snap.sessions * (overallConv / 100) * aov : snap.sessions;
-              case "convRate": return snap.sessions * ((convRateMap.get(c.iso) ?? 0) / 100) || snap.sessions;
+              case "convRate": {
+                const ap = calcApdex(snap.sat, snap.tol, snap.actions);
+                return snap.sessions * ((convRateMap.get(c.iso) ?? 0) * ap / 100) || snap.sessions;
+              }
               default: return snap.sessions;
             }
           }
@@ -7122,7 +7110,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                       tipLine2 = `Est. Revenue: ${fmtCurrency(estRev)}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}`; break;
                     }
                     case "convRate": {
-                      const cr = convRateMap.get(s.iso) ?? 0;
+                      const baseCr = convRateMap.get(s.iso) ?? 0;
+                      const cr = baseCr * tlApdex;
                       const estConv = Math.round(tlSnap.sessions * (cr / 100));
                       tipLine2 = `Conversion Rate: ${fmtPct(cr)}\nEst. Conversions: ${fmtCount(estConv)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
                     }
