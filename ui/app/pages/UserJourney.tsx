@@ -6391,19 +6391,28 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     if (!snap) return "rgba(255,255,255,0.04)";
     const apdex = calcApdex(snap.sat, snap.tol, snap.actions);
     const errRate = snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
+    // Session intensity (used as time-varying dimension for metrics without per-bucket data)
+    const tlMaxSess = Math.max(...Array.from(currentHourData.values()).map(s => s.sessions), 1);
+    const intensity = snap.sessions / tlMaxSess;
     switch (metric) {
       case "sessions": {
-        const tlMaxSess = Math.max(...Array.from(currentHourData.values()).map(s => s.sessions), 1);
-        const intensity = snap.sessions / tlMaxSess;
         return `rgb(${Math.round(20 + intensity * 35)}, ${Math.round(80 + intensity * 57)}, ${Math.round(120 + intensity * 135)})`;
       }
       case "avgDur": return snap.avgDur > 3000 ? RED : snap.avgDur > 1500 ? ORANGE : snap.avgDur > 800 ? YELLOW : GREEN;
       case "apdex": return apdexClr(apdex);
       case "errRate": return errRate > 5 ? RED : errRate > 2 ? ORANGE : errRate > 0.5 ? YELLOW : GREEN;
       default: {
-        // For LCP/CLS/INP/revenue/convRate, fall back to aggregated data
+        // For LCP/CLS/INP/revenue/convRate: use session intensity to vary over time
+        // Base hue from aggregated metric, brightness from current bucket activity
         const c = countries.find(cc => cc.iso === iso);
-        return c ? getColor(c) : "rgba(255,255,255,0.04)";
+        if (!c) return "rgba(255,255,255,0.04)";
+        const baseColor = getColor(c);
+        // Modulate opacity by session intensity so countries pulse with activity
+        const alpha = Math.max(0.15, intensity);
+        // Extract RGB from baseColor and apply intensity
+        const m = baseColor.match(/(\d+),\s*(\d+),\s*(\d+)/);
+        if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha.toFixed(2)})`;
+        return baseColor;
       }
     }
   };
@@ -7017,8 +7026,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
             }
           }
           if (!pathD) return null;
-          const fill = c ? "rgba(30,80,140,0.4)" : "rgba(20,40,80,0.3)";
-          return <path key={numId} d={pathD} fill={fill} stroke="rgba(60,140,220,0.25)" strokeWidth={0.4} />;
+          const stroke = c ? "rgba(60,160,220,0.35)" : "rgba(60,140,220,0.18)";
+          return <path key={numId} d={pathD} fill="none" stroke={stroke} strokeWidth={0.5} />;
         });
 
         return (
