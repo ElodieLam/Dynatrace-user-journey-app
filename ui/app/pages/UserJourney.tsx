@@ -6911,6 +6911,26 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           KE: [-0.02, 37.91], SA: [23.89, 45.08], AE: [23.42, 53.85], IL: [31.05, 34.85], PK: [30.38, 69.35],
           BD: [23.68, 90.36], TW: [23.70, 120.96], HK: [22.40, 114.11],
         };
+        // ISO alpha-2 → full country name (fallback when DQL country_name is just the code)
+        const ISO_NAMES: Record<string, string> = {
+          US: "United States", CA: "Canada", MX: "Mexico", BR: "Brazil", AR: "Argentina",
+          CO: "Colombia", CL: "Chile", PE: "Peru", VE: "Venezuela",
+          GB: "United Kingdom", DE: "Germany", FR: "France", ES: "Spain", IT: "Italy",
+          NL: "Netherlands", BE: "Belgium", CH: "Switzerland", AT: "Austria", PL: "Poland",
+          SE: "Sweden", NO: "Norway", FI: "Finland", DK: "Denmark", IE: "Ireland",
+          PT: "Portugal", CZ: "Czechia", RO: "Romania", HU: "Hungary", GR: "Greece",
+          RU: "Russia", UA: "Ukraine", TR: "Turkey",
+          CN: "China", JP: "Japan", KR: "South Korea", IN: "India", ID: "Indonesia",
+          TH: "Thailand", VN: "Vietnam", PH: "Philippines", MY: "Malaysia", SG: "Singapore",
+          AU: "Australia", NZ: "New Zealand", ZA: "South Africa", NG: "Nigeria", EG: "Egypt",
+          KE: "Kenya", SA: "Saudi Arabia", AE: "United Arab Emirates", IL: "Israel", PK: "Pakistan",
+          BD: "Bangladesh", TW: "Taiwan", HK: "Hong Kong",
+        };
+        const decodeName = (iso: string, fallback: string): string => {
+          // If fallback already looks like a real name (not just the 2-char code), use it
+          if (fallback && fallback.length > 3 && fallback !== iso) return `${fallback} (${iso})`;
+          return `${ISO_NAMES[iso] ?? fallback} (${iso})`;
+        };
         const RAD = Math.PI / 180;
         const R = 200; // Globe radius
         const CX = 400, CY = 280; // Center of SVG
@@ -6921,6 +6941,16 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           const phi = lat * RAD;
           const cosC = Math.cos(phi) * Math.cos(lam);
           const visible = cosC > 0;
+          const x = CX + R * Math.cos(phi) * Math.sin(lam);
+          const y = CY - R * Math.sin(phi);
+          return [x, y, visible];
+        };
+        // Stricter visibility for polygon outlines (avoids rim artifacts)
+        const projectStrict = (lat: number, lng: number): [number, number, boolean] => {
+          const lam = (lng - rotLng) * RAD;
+          const phi = lat * RAD;
+          const cosC = Math.cos(phi) * Math.cos(lam);
+          const visible = cosC > 0.15; // reject points near the rim
           const x = CX + R * Math.cos(phi) * Math.sin(lam);
           const y = CY - R * Math.sin(phi);
           return [x, y, visible];
@@ -6959,10 +6989,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
         }).filter(Boolean) as { iso: string; x1: number; y1: number; x2: number; y2: number; color: string; val: number; name: string }[];
 
         // Render simplified country outlines on globe
-        const MAX_SEG = 40; // max pixel distance between consecutive path points before breaking
+        const MAX_SEG = 30; // max pixel distance between consecutive path points before breaking
         const globePaths = (worldGeo as any).features.map((feat: any) => {
           const numId = String(feat.id);
-          const alpha2 = ISO_NUMERIC_TO_ALPHA2[numId] ?? "";
           const c = dataByNumericId.get(numId);
           const coords = feat.geometry?.coordinates;
           if (!coords || coords.length === 0) return null;
@@ -6975,7 +7004,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
             for (let i = 0; i < ring.length; i += 3) {
               const pt = ring[i];
               if (!pt) continue;
-              const [x, y, vis] = project(pt[1], pt[0]);
+              const [x, y, vis] = projectStrict(pt[1], pt[0]);
               if (!vis) { started = false; continue; }
               // Break path if gap is too large (polygon wraps around back of globe)
               if (started) {
@@ -6988,13 +7017,8 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
             }
           }
           if (!pathD) return null;
-          // Use timelapse color if active, else default
-          let fill = c ? "rgba(30,80,140,0.4)" : "rgba(20,40,80,0.3)";
-          if (tlMode && alpha2) {
-            const hasTl = currentHourData?.has(alpha2);
-            fill = hasTl ? getTlColor(alpha2) : "rgba(20,40,80,0.15)";
-          }
-          return <path key={numId} d={pathD} fill={fill} stroke="rgba(60,140,220,0.25)" strokeWidth={0.4} style={{ transition: "fill 0.5s ease" }} />;
+          const fill = c ? "rgba(30,80,140,0.4)" : "rgba(20,40,80,0.3)";
+          return <path key={numId} d={pathD} fill={fill} stroke="rgba(60,140,220,0.25)" strokeWidth={0.4} />;
         });
 
         return (
@@ -7032,31 +7056,31 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               <circle cx={CX} cy={CY} r={R} fill="url(#uj-globe-surface)" />
               {/* Country outlines */}
               <g>{globePaths}</g>
-              {/* Grid lines */}
-              {[-60, -30, 0, 30, 60].map(lat => {
+              {/* Grid lines (skip equator — it renders as a distracting straight line) */}
+              {[-60, -30, 30, 60].map(lat => {
                 let d = "";
                 for (let lng = -180; lng <= 180; lng += 5) {
-                  const [x, y, vis] = project(lat, lng);
+                  const [x, y, vis] = projectStrict(lat, lng);
                   if (!vis) { d += " "; continue; }
                   d += (d.endsWith(" ") || !d) ? `M${x.toFixed(0)},${y.toFixed(0)}` : `L${x.toFixed(0)},${y.toFixed(0)}`;
                 }
-                return <path key={`lat${lat}`} d={d} fill="none" stroke="rgba(60,120,180,0.08)" strokeWidth={0.5} />;
+                return <path key={`lat${lat}`} d={d} fill="none" stroke="rgba(60,120,180,0.06)" strokeWidth={0.3} />;
               })}
               {Array.from({ length: 12 }, (_, i) => i * 30 - 180).map(lng => {
                 let d = "";
                 for (let lat = -80; lat <= 80; lat += 5) {
-                  const [x, y, vis] = project(lat, lng);
+                  const [x, y, vis] = projectStrict(lat, lng);
                   if (!vis) { d += " "; continue; }
                   d += (d.endsWith(" ") || !d) ? `M${x.toFixed(0)},${y.toFixed(0)}` : `L${x.toFixed(0)},${y.toFixed(0)}`;
                 }
-                return <path key={`lng${lng}`} d={d} fill="none" stroke="rgba(60,120,180,0.08)" strokeWidth={0.5} />;
+                return <path key={`lng${lng}`} d={d} fill="none" stroke="rgba(60,120,180,0.06)" strokeWidth={0.3} />;
               })}
               {/* Data spikes */}
               {spikes.map(s => (
                 <g key={s.iso} style={{ cursor: "pointer" }} onClick={() => openLink(sessionsFilterUrl(frontend, s.name))}>
                   <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.color} strokeWidth={2.5} strokeLinecap="round" opacity={0.9} />
                   <circle cx={s.x1} cy={s.y1} r={2.5} fill={s.color} opacity={0.8} />
-                  <title>{`${s.name} (${s.iso})\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`}</title>
+                  <title>{`${decodeName(s.iso, s.name)}\n${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`}</title>
                 </g>
               ))}
               {/* Timelapse timestamp overlay */}
