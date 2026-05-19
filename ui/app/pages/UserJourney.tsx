@@ -7068,7 +7068,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                     case "avgDur": tipLine2 = `Avg Duration: ${fmt(tlSnap.avgDur)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
                     case "apdex": tipLine2 = `Apdex: ${tlApdex.toFixed(2)}\nSat: ${tlSnap.sat} | Tol: ${tlSnap.tol} | Fru: ${tlSnap.fru}`; break;
                     case "errRate": tipLine2 = `Error Rate: ${fmtPct(tlErrRate)}\nSessions: ${fmtCount(tlSnap.sessions)}`; break;
-                    default: tipLine2 = `Sessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nAvg Duration: ${fmt(tlSnap.avgDur)}\nError Rate: ${fmtPct(tlErrRate)}`; break;
+                    default: { const cRef = countries.find(cc => cc.iso === s.iso); tipLine2 = `${metricLabel[metric]}: ${cRef ? formatValue(cRef) : "N/A"}\nSessions: ${fmtCount(tlSnap.sessions)}\nApdex: ${tlApdex.toFixed(2)}\nError Rate: ${fmtPct(tlErrRate)}`; break; }
                   }
                 } else {
                   tipLine2 = `${metricLabel[metric]}: ${formatValue(countries.find(cc => cc.iso === s.iso)!)}`;
