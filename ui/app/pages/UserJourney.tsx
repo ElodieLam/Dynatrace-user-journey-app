@@ -6997,37 +6997,24 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           return { iso: c.iso, x1: px, y1: py, x2: px + nx * normalizedHeight, y2: py + ny * normalizedHeight, color, val, name: c.countryName };
         }).filter(Boolean) as { iso: string; x1: number; y1: number; x2: number; y2: number; color: string; val: number; name: string }[];
 
-        // Render simplified country outlines on globe
-        const MAX_SEG = 30; // max pixel distance between consecutive path points before breaking
-        const globePaths = (worldGeo as any).features.map((feat: any) => {
+        // Render country outlines as dots (avoids SVG path/fill artifacts at equator)
+        const globeDots: { x: number; y: number; hasData: boolean }[] = [];
+        (worldGeo as any).features.forEach((feat: any) => {
           const numId = String(feat.id);
           const c = dataByNumericId.get(numId);
           const coords = feat.geometry?.coordinates;
-          if (!coords || coords.length === 0) return null;
+          if (!coords || coords.length === 0) return;
           const rings: number[][][] = feat.geometry.type === "Polygon" ? [coords[0]] : feat.geometry.type === "MultiPolygon" ? coords.map((p: any) => p[0]) : [];
-          let pathD = "";
           for (const ring of rings) {
             if (!ring || ring.length < 3) continue;
-            let started = false;
-            let lastX = 0, lastY = 0;
-            for (let i = 0; i < ring.length; i += 3) {
+            for (let i = 0; i < ring.length; i += 4) {
               const pt = ring[i];
               if (!pt) continue;
               const [x, y, vis] = projectStrict(pt[1], pt[0]);
-              if (!vis) { started = false; continue; }
-              // Break path if gap is too large (polygon wraps around back of globe)
-              if (started) {
-                const dx = x - lastX, dy = y - lastY;
-                if (dx * dx + dy * dy > MAX_SEG * MAX_SEG) { started = false; }
-              }
-              pathD += started ? `L${x.toFixed(1)},${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`;
-              started = true;
-              lastX = x; lastY = y;
+              if (!vis) continue;
+              globeDots.push({ x, y, hasData: !!c });
             }
           }
-          if (!pathD) return null;
-          const stroke = c ? "rgba(60,160,220,0.35)" : "rgba(60,140,220,0.18)";
-          return <path key={numId} d={pathD} fill="none" stroke={stroke} strokeWidth={0.5} />;
         });
 
         return (
@@ -7063,8 +7050,10 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               <circle cx={CX} cy={CY} r={R + 6} fill="none" stroke="rgba(100,180,255,0.2)" strokeWidth={8} />
               {/* Globe sphere */}
               <circle cx={CX} cy={CY} r={R} fill="url(#uj-globe-surface)" />
-              {/* Country outlines */}
-              <g>{globePaths}</g>
+              {/* Country outlines (dots) */}
+              {globeDots.map((d, i) => (
+                <circle key={i} cx={d.x} cy={d.y} r={0.6} fill={d.hasData ? "rgba(80,180,240,0.5)" : "rgba(60,140,200,0.25)"} />
+              ))}
               {/* Data spikes */}
               {spikes.map(s => {
                 const tlSnap = tlMode && currentHourData ? currentHourData.get(s.iso) : null;
