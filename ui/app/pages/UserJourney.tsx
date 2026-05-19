@@ -6403,16 +6403,20 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
       case "errRate": return errRate > 5 ? RED : errRate > 2 ? ORANGE : errRate > 0.5 ? YELLOW : GREEN;
       default: {
         // For LCP/CLS/INP/revenue/convRate: use session intensity to vary over time
-        // Base hue from aggregated metric, brightness from current bucket activity
+        // Scale brightness by session intensity so countries pulse with activity
         const c = countries.find(cc => cc.iso === iso);
         if (!c) return "rgba(255,255,255,0.04)";
         const baseColor = getColor(c);
-        // Modulate opacity by session intensity so countries pulse with activity
-        const alpha = Math.max(0.15, intensity);
-        // Extract RGB from baseColor and apply intensity
-        const m = baseColor.match(/(\d+),\s*(\d+),\s*(\d+)/);
-        if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha.toFixed(2)})`;
-        return baseColor;
+        // Parse hex (#RRGGBB) or rgb(r,g,b) to get components
+        let r = 0, g = 0, b = 0;
+        const hexMatch = baseColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+        const rgbMatch = baseColor.match(/(\d+),\s*(\d+),\s*(\d+)/);
+        if (hexMatch) { r = parseInt(hexMatch[1], 16); g = parseInt(hexMatch[2], 16); b = parseInt(hexMatch[3], 16); }
+        else if (rgbMatch) { r = Number(rgbMatch[1]); g = Number(rgbMatch[2]); b = Number(rgbMatch[3]); }
+        else return baseColor;
+        // Dim the color by intensity (low sessions = darker, high sessions = full brightness)
+        const dim = Math.max(0.2, intensity);
+        return `rgb(${Math.round(r * dim)}, ${Math.round(g * dim)}, ${Math.round(b * dim)})`;
       }
     }
   };
