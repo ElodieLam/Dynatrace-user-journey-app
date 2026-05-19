@@ -6392,6 +6392,26 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     setAnimKey((k) => k + 1);
   };
 
+  // ISO alpha-2 → full country name (fallback when DQL country_name is just the code)
+  const ISO_NAMES: Record<string, string> = {
+    US: "United States", CA: "Canada", MX: "Mexico", BR: "Brazil", AR: "Argentina",
+    CO: "Colombia", CL: "Chile", PE: "Peru", VE: "Venezuela",
+    GB: "United Kingdom", DE: "Germany", FR: "France", ES: "Spain", IT: "Italy",
+    NL: "Netherlands", BE: "Belgium", CH: "Switzerland", AT: "Austria", PL: "Poland",
+    SE: "Sweden", NO: "Norway", FI: "Finland", DK: "Denmark", IE: "Ireland",
+    PT: "Portugal", CZ: "Czechia", RO: "Romania", HU: "Hungary", GR: "Greece",
+    RU: "Russia", UA: "Ukraine", TR: "Turkey",
+    CN: "China", JP: "Japan", KR: "South Korea", IN: "India", ID: "Indonesia",
+    TH: "Thailand", VN: "Vietnam", PH: "Philippines", MY: "Malaysia", SG: "Singapore",
+    AU: "Australia", NZ: "New Zealand", ZA: "South Africa", NG: "Nigeria", EG: "Egypt",
+    KE: "Kenya", SA: "Saudi Arabia", AE: "United Arab Emirates", IL: "Israel", PK: "Pakistan",
+    BD: "Bangladesh", TW: "Taiwan", HK: "Hong Kong",
+  };
+  const decodeName = (iso: string, fallback: string): string => {
+    if (fallback && fallback.length > 3 && fallback !== iso) return `${fallback} (${iso})`;
+    return `${ISO_NAMES[iso] ?? fallback} (${iso})`;
+  };
+
   // Time-lapse: compute per-country color from current hourly snapshot
   const currentHourData = tlMode && sortedHours[tlIndex] ? hourBuckets.get(sortedHours[tlIndex]) : null;
   const getTlColor = (iso: string): string => {
@@ -6432,12 +6452,12 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
     }
   };
   const getTlTooltip = (iso: string, countryName: string): string => {
-    if (!currentHourData) return `${countryName} — No data this hour`;
+    if (!currentHourData) return `${decodeName(iso, countryName)} — No data this hour`;
     const snap = currentHourData.get(iso);
-    if (!snap) return `${countryName} — No data this hour`;
+    if (!snap) return `${decodeName(iso, countryName)} — No data this hour`;
     const apdex = calcApdex(snap.sat, snap.tol, snap.actions);
     const errRate = snap.actions > 0 ? (snap.errors / snap.actions) * 100 : 0;
-    const header = `${countryName} (${iso})\nSessions: ${fmtCount(snap.sessions)}`;
+    const header = `${decodeName(iso, countryName)}\nSessions: ${fmtCount(snap.sessions)}`;
     switch (metric) {
       case "sessions": return `${header}\nActions: ${fmtCount(snap.actions)}\nApdex: ${apdex.toFixed(2)}`;
       case "avgDur": return `${header}\nAvg Duration: ${fmt(snap.avgDur)}\nApdex: ${apdex.toFixed(2)}`;
@@ -6630,14 +6650,14 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                           onMouseEnter={() => setHoveredId(numId)}
                           onMouseLeave={() => setHoveredId(null)}
                         >
-                          <title>{`${c.countryName} (${c.iso})\n${metricLabel[metric]}: ${formatValue(c)}\nSessions: ${fmtCount(c.sessions)}\nApdex: ${c.apdex.toFixed(2)}\nAvg Duration: ${fmt(c.avgDur)}\nError Rate: ${fmtPct(c.errRate)}`}</title>
+                          <title>{`${decodeName(c.iso, c.countryName)}\n${metricLabel[metric]}: ${formatValue(c)}\nSessions: ${fmtCount(c.sessions)}\nApdex: ${c.apdex.toFixed(2)}\nAvg Duration: ${fmt(c.avgDur)}\nError Rate: ${fmtPct(c.errRate)}`}</title>
                         </path>
                       </g>
                     );
                   }
                   return (
                     <path key={numId} d={d} className="uj-country-empty uj-country-path" style={{ animationDelay: `${delay}s` }}>
-                      <title>{feat.properties?.name ?? alpha2 ?? numId} — No data</title>
+                      <title>{decodeName(alpha2, feat.properties?.name ?? alpha2)} — No data</title>
                     </path>
                   );
                 })}
@@ -6931,26 +6951,6 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
           AU: [-25.27, 133.78], NZ: [-40.90, 174.89], ZA: [-30.56, 22.94], NG: [9.08, 8.68], EG: [26.82, 30.80],
           KE: [-0.02, 37.91], SA: [23.89, 45.08], AE: [23.42, 53.85], IL: [31.05, 34.85], PK: [30.38, 69.35],
           BD: [23.68, 90.36], TW: [23.70, 120.96], HK: [22.40, 114.11],
-        };
-        // ISO alpha-2 → full country name (fallback when DQL country_name is just the code)
-        const ISO_NAMES: Record<string, string> = {
-          US: "United States", CA: "Canada", MX: "Mexico", BR: "Brazil", AR: "Argentina",
-          CO: "Colombia", CL: "Chile", PE: "Peru", VE: "Venezuela",
-          GB: "United Kingdom", DE: "Germany", FR: "France", ES: "Spain", IT: "Italy",
-          NL: "Netherlands", BE: "Belgium", CH: "Switzerland", AT: "Austria", PL: "Poland",
-          SE: "Sweden", NO: "Norway", FI: "Finland", DK: "Denmark", IE: "Ireland",
-          PT: "Portugal", CZ: "Czechia", RO: "Romania", HU: "Hungary", GR: "Greece",
-          RU: "Russia", UA: "Ukraine", TR: "Turkey",
-          CN: "China", JP: "Japan", KR: "South Korea", IN: "India", ID: "Indonesia",
-          TH: "Thailand", VN: "Vietnam", PH: "Philippines", MY: "Malaysia", SG: "Singapore",
-          AU: "Australia", NZ: "New Zealand", ZA: "South Africa", NG: "Nigeria", EG: "Egypt",
-          KE: "Kenya", SA: "Saudi Arabia", AE: "United Arab Emirates", IL: "Israel", PK: "Pakistan",
-          BD: "Bangladesh", TW: "Taiwan", HK: "Hong Kong",
-        };
-        const decodeName = (iso: string, fallback: string): string => {
-          // If fallback already looks like a real name (not just the 2-char code), use it
-          if (fallback && fallback.length > 3 && fallback !== iso) return `${fallback} (${iso})`;
-          return `${ISO_NAMES[iso] ?? fallback} (${iso})`;
         };
         const RAD = Math.PI / 180;
         const R = 200; // Globe radius
