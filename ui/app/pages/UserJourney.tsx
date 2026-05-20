@@ -1311,16 +1311,25 @@ function osVersionQuery(days: number, frontend: string, steps: StepDef[]): strin
 // NEW: Navigation Path Conversion Query
 function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
+  const lastStepFilter = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
+| filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
 | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
-| fieldsAdd is_conv = ${lastStep}
+| summarize total_events = count(), by: {dt.rum.session.id, pageName}
+| lookup [
+    fetch user.events, ${period}
+    | filter frontend.name == "${frontend}"
+    | filter ${lastStepFilter}
+    | summarize conv_flag = count(), by: {dt.rum.session.id}
+  ], sourceField:dt.rum.session.id, lookupField:dt.rum.session.id, prefix:"c."
+| fieldsAdd converted = isNotNull(c.conv_flag)
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
-    conv_sessions = countDistinctIf(dt.rum.session.id, is_conv == true),
+    conv_sessions = countDistinctIf(dt.rum.session.id, converted == true),
     by: {pageName}
 | fieldsAdd conv_rate = if(total_sessions > 0, toDouble(conv_sessions) / toDouble(total_sessions) * 100.0, else: 0.0)
+| filter total_sessions >= 3
 | sort total_sessions desc
 | limit 30`;
 }
@@ -7402,7 +7411,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     <span style={{ fontSize: 14, visibility: "hidden" }}>→</span>
                     <div style={{ flex: 1 }}><Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Destination</Text></div>
                     <Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, minWidth: 40, textAlign: "right" }}>Count</Text>
-                    <Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, minWidth: 35, textAlign: "right" }}>Share</Text>
+                    <Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, minWidth: 35, textAlign: "right" }}>% of Flow</Text>
                   </Flex>
                   {src.targets.slice(0, 5).map((t, ti) => {
                     const pct = src.total > 0 ? (t.count / src.total) * 100 : 0;
