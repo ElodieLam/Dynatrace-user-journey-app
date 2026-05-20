@@ -2322,13 +2322,13 @@ function ComparisonSplitFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[];
 // ---------------------------------------------------------------------------
 function MultiplierSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <Flex flexDirection="column" gap={8} style={{ marginBottom: 16 }}>
+    <Flex flexDirection="column" gap={8} style={{ marginBottom: 16, overflow: "visible" }}>
       <Flex gap={12} alignItems="center">
         <Strong>Traffic Change:</Strong>
         <Strong style={{ color: BLUE, fontSize: 18 }}>+{value}%</Strong>
       </Flex>
-      <input type="range" min={0} max={TRAFFIC_MULTIPLIERS.length - 1} value={TRAFFIC_MULTIPLIERS.indexOf(value)} onChange={(e) => onChange(TRAFFIC_MULTIPLIERS[Number(e.target.value)])} className="uj-slider" />
-      <div style={{ position: "relative", width: "100%", height: 18 }}>
+      <input type="range" min={0} max={TRAFFIC_MULTIPLIERS.length - 1} value={TRAFFIC_MULTIPLIERS.indexOf(value)} onChange={(e) => onChange(TRAFFIC_MULTIPLIERS[Number(e.target.value)])} className="uj-slider" style={{ marginRight: 24 }} />
+      <div style={{ position: "relative", width: "calc(100% - 24px)", height: 18, overflow: "visible" }}>
         {TRAFFIC_MULTIPLIERS.map((v, i) => (
           TRAFFIC_TICK_LABELS.has(v) ? <span key={v} style={{ position: "absolute", left: `${(i / (TRAFFIC_MULTIPLIERS.length - 1)) * 100}%`, transform: "translateX(-50%)", fontSize: 12, color: v === value ? BLUE : "rgba(128,128,128,0.6)", fontWeight: v === value ? 700 : 400 }}>{v}%</span> : null
         ))}
@@ -8984,11 +8984,11 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
       <MultiplierSlider value={pctChange} onChange={setPctChange} />
 
       {/* Latency Improvement Slider */}
-      <div className="uj-table-tile" style={{ padding: "14px 20px" }}>
-        <Flex alignItems="center" gap={16}>
+      <div className="uj-table-tile" style={{ padding: "14px 20px", overflow: "visible" }}>
+        <Flex alignItems="center" gap={16} style={{ overflow: "visible" }}>
           <Text style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Latency Improvement</Text>
           <input type="range" min={0} max={50} step={5} value={latencyImprovement} onChange={(e) => setLatencyImprovement(Number(e.target.value))} style={{ flex: 1, accentColor: CYAN, minWidth: 100 }} />
-          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", whiteSpace: "nowrap" }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
+          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", whiteSpace: "nowrap", flexShrink: 0, minWidth: 80 }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
         </Flex>
         <Text style={{ fontSize: 11, opacity: 0.4, marginTop: 4 }}>Simulate the impact of latency optimization (e.g. CDN, caching, code optimization). Reduces projected latency and partially offsets conversion degradation.</Text>
       </div>
