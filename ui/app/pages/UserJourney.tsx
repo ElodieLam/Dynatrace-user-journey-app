@@ -14990,18 +14990,18 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData }
       {/* Full error table */}
       <SectionHeader title="Error Cluster Details" />
       <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={clusters.map(c => ({
-        "Error Name": c.name, Occurrences: c.occurrences, Sessions: c.sessions,
+        "Error Name": c.name, _errorId: c.errorId, Occurrences: c.occurrences, Sessions: c.sessions,
         "Impact %": totalErrors > 0 ? Number(((c.occurrences / totalErrors) * 100).toFixed(1)) : 0,
         "Sample Message": c.sampleMessage.substring(0, 80),
       }))} columns={[
-        { id: "Error Name", header: "Error Name", accessor: "Error Name", cell: ({ value }: any) => <Strong style={{ color: RED }}>{String(value).substring(0, 35)}</Strong> },
+        { id: "Error Name", header: "Error Name", accessor: "Error Name", cell: ({ value, rowData }: any) => { const eid = rowData?._errorId; const filter = encodeURIComponent(`"Frontend" = "${frontend}"`); const url = `${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=${tfParam()}&sort=affected_users%3Adescending&perspective=impact#filtering=${filter}&search=${encodeURIComponent(String(value).substring(0, 60))}`; return <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: RED, textDecoration: "none", fontWeight: 600 }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">{String(value).substring(0, 35)}</a>; } },
         { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
         { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{fmtCount(value)}</Strong> },
         { id: "Impact %", header: "Impact %", accessor: "Impact %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 20 ? "rgba(194,25,48,0.15)" : value >= 5 ? "rgba(184,134,11,0.15)" : "rgba(128,128,128,0.1)", color: value >= 20 ? RED : value >= 5 ? YELLOW : "inherit", fontWeight: 700, textAlign: "center" }}>{value}%</span> },
         { id: "Sample Message", header: "Sample", accessor: "Sample Message", cell: ({ value }: any) => <Text style={{ fontSize: 11, opacity: 0.6 }}>{value}</Text> },
       ]} /></div>
 
-      <div className="uj-table-tile" style={{ padding: 16 }}>
+      <div style={{ padding: 16, background: "rgba(128,128,128,0.04)", border: "1px solid rgba(128,128,128,0.15)", borderRadius: 12 }}>
         <Text style={{ fontSize: 13, opacity: 0.7 }}>
           🐛 <Strong>Error Clustering</Strong> groups similar errors by type to help prioritize fixes. The "Impact %" shows how much of total error volume each cluster represents. Focus on clusters with high occurrence counts and high session impact first — these are the errors affecting the most users.
         </Text>
