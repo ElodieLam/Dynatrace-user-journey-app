@@ -8987,8 +8987,8 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
       <div className="uj-table-tile" style={{ padding: "14px 20px" }}>
         <Flex alignItems="center" gap={16}>
           <Text style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Latency Improvement</Text>
-          <input type="range" min={0} max={50} step={5} value={latencyImprovement} onChange={(e) => setLatencyImprovement(Number(e.target.value))} style={{ flex: 1, accentColor: CYAN }} />
-          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", minWidth: 60, textAlign: "right" }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
+          <input type="range" min={0} max={50} step={5} value={latencyImprovement} onChange={(e) => setLatencyImprovement(Number(e.target.value))} style={{ flex: 1, accentColor: CYAN, minWidth: 100 }} />
+          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", whiteSpace: "nowrap" }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
         </Flex>
         <Text style={{ fontSize: 11, opacity: 0.4, marginTop: 4 }}>Simulate the impact of latency optimization (e.g. CDN, caching, code optimization). Reduces projected latency and partially offsets conversion degradation.</Text>
       </div>
