@@ -11965,7 +11965,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
                   const fillColor = node.layer === 0 ? "rgba(69,137,255,0.15)" : hasProblem ? "rgba(194,25,48,0.12)" : "rgba(128,128,128,0.08)";
                   const borderColor = node.layer === 0 ? BLUE : hasProblem ? RED : "rgba(128,128,128,0.3)";
                   const iconLabel = node.layer === 0 ? "🌐" : hasProblem ? "⚠️" : "⚙️";
-                  const serviceUrl = node.id !== "APP" ? `${ENV_URL}/ui/apps/dynatrace.classic.services/#serviceOverview;id=${encodeURIComponent(node.id)}` : "";
+                  const serviceUrl = node.id !== "APP" ? `${ENV_URL}/ui/apps/dynatrace.services/explorer/services?perspective=performance&sort=entity%3Aascending&detailsId=${encodeURIComponent(node.id)}&sidebarOpen=false#filtering=dt.entity.service.name+%3D+${encodeURIComponent(node.name)}+` : "";
                   const nodeContent = (
                     <g key={node.id} style={{ cursor: node.id !== "APP" ? "pointer" : "default" }}>
                       <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6} fill={fillColor} stroke={borderColor} strokeWidth={1.5} />
