@@ -1681,6 +1681,7 @@ function sessionEngagementQuery(days: number, frontend: string, steps: StepDef[]
     max_dur = max(dur_ms),
     errors = countIf(characteristics.has_error == true),
     funnel_depth = countDistinct(step_tag),
+    start_ts = min(start_time),
     by: {dt.rum.session.id, deviceType, browserName}
 | fieldsAdd
 ${iAnyLines}
@@ -14481,7 +14482,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
 
   const records = (data?.data?.records ?? []) as any[];
   // Each record: sessionId, action_count, max_depth, error_count, converted (0/1)
-  type EngSession = { sessionId: string; actions: number; depth: number; errors: number; converted: boolean; score: number };
+  type EngSession = { sessionId: string; startTs: string; actions: number; depth: number; errors: number; converted: boolean; score: number };
   const sessions: EngSession[] = records.map((r: any) => {
     const actions = Number(r.actions ?? 0);
     const depth = Number(r.funnel_depth ?? 0);
@@ -14494,7 +14495,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
     const depthScore = Math.min(1, depth / maxDepth) * 40;
     const errorPenalty = Math.min(30, errors * 10);
     const score = Math.max(0, Math.min(100, actionScore + depthScore + 30 - errorPenalty));
-    return { sessionId: String(r["dt.rum.session.id"] ?? ""), actions, depth, errors, converted, score };
+    return { sessionId: String(r["dt.rum.session.id"] ?? ""), startTs: String(r.start_ts ?? ""), actions, depth, errors, converted, score };
   });
 
   if (sessions.length === 0) return <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}><SectionHeader title="Session Engagement Score" /><div className="uj-table-tile" style={{ padding: 24 }}><Text>No session engagement data available.</Text></div></Flex>;
@@ -14592,9 +14593,9 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
         <>
           <SectionHeader title="High-Intent Non-Converters — Engaged users who didn't convert" />
           <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={highIntentNonConv.slice(0, 50).map(s => ({
-            "Session ID": s.sessionId.substring(0, 20), SessionFull: s.sessionId, Score: Number(s.score.toFixed(1)), Actions: s.actions, "Max Depth": s.depth, Errors: s.errors,
+            "Session ID": s.sessionId.substring(0, 20), SessionFull: s.sessionId, StartTs: s.startTs, Score: Number(s.score.toFixed(1)), Actions: s.actions, "Max Depth": s.depth, Errors: s.errors,
           }))} columns={[
-            { id: "Session ID", header: "Session", accessor: "Session ID", cell: ({ value, rowData }: any) => { const fullId = rowData?.SessionFull ?? value; return <a href={sessionReplayUrl(fullId)} target="_blank" rel="noopener noreferrer" style={{ color: CYAN, fontSize: 12, textDecoration: "none", fontFamily: "monospace" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Users & Sessions">{value}</a>; } },
+            { id: "Session ID", header: "Session", accessor: "Session ID", cell: ({ value, rowData }: any) => { const fullId = rowData?.SessionFull ?? value; const ts = rowData?.StartTs; return <a href={sessionReplayUrl(fullId, ts)} target="_blank" rel="noopener noreferrer" style={{ color: CYAN, fontSize: 12, textDecoration: "none", fontFamily: "monospace" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Users & Sessions">{value}</a>; } },
             { id: "Score", header: "Score", accessor: "Score", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: GREEN }}>{value}</Strong> },
             { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> },
             { id: "Max Depth", header: "Max Depth", accessor: "Max Depth", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{value}</Strong> },
