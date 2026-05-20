@@ -7427,8 +7427,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
           {/* Sankey-like Navigation Flow Diagram */}
           <SectionHeader title="Navigation Flow Diagram" />
           {(() => {
-            // Build layered graph for Sankey visualization
-            // Assign layers: first funnel step pages → layer 0, then BFS outward
+            // Build layered graph for Sankey visualization — show ALL pages
             const allPages = new Set<string>();
             paths.forEach((p: any) => { allPages.add(String(p.step1 ?? "")); allPages.add(String(p.step2 ?? "")); });
             allPages.delete("");
@@ -7442,10 +7441,10 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                 }
               });
             });
-            // Pages not in funnel: assign based on avg position in transitions
-            for (const page of allPages) {
-              if (!pageLayer.has(page)) {
-                // Find what layers its sources/targets are in
+            // Multiple passes for unassigned pages — use BFS from assigned pages
+            for (let pass = 0; pass < 3; pass++) {
+              for (const page of allPages) {
+                if (pageLayer.has(page)) continue;
                 const srcLayers: number[] = []; const tgtLayers: number[] = [];
                 paths.forEach((p: any) => {
                   if (String(p.step2) === page && pageLayer.has(String(p.step1))) srcLayers.push(pageLayer.get(String(p.step1))!);
@@ -7453,12 +7452,18 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                 });
                 if (srcLayers.length > 0) pageLayer.set(page, Math.round(srcLayers.reduce((a, b) => a + b, 0) / srcLayers.length) + 1);
                 else if (tgtLayers.length > 0) pageLayer.set(page, Math.round(tgtLayers.reduce((a, b) => a + b, 0) / tgtLayers.length) - 1);
-                else pageLayer.set(page, Math.floor(steps.length / 2));
               }
             }
-            // Clamp layers to 0..maxLayer
-            const maxLayer = Math.max(steps.length - 1, 3);
+            // Any remaining unassigned pages go to middle
+            for (const page of allPages) { if (!pageLayer.has(page)) pageLayer.set(page, Math.floor(steps.length / 2)); }
+
+            // Clamp layers — but allow one extra layer beyond funnel for overflow pages
+            const maxLayer = steps.length; // one beyond last funnel step
             for (const [p, l] of pageLayer) pageLayer.set(p, Math.max(0, Math.min(maxLayer, l)));
+
+            // Prevent too many pages in one layer — if >8 in a layer, split overflow to adjacent layer
+            const layerCounts = new Map<number, number>();
+            for (const [, l] of pageLayer) layerCounts.set(l, (layerCounts.get(l) ?? 0) + 1);
 
             // Group pages by layer, sort by traffic volume
             const layerPages = new Map<number, { name: string; volume: number }[]>();
@@ -7470,20 +7475,18 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             }
             for (const [, arr] of layerPages) arr.sort((a, b) => b.volume - a.volume);
 
-            // Limit to top N per layer for readability
-            const MAX_PER_LAYER = 6;
-            for (const [layer, arr] of layerPages) layerPages.set(layer, arr.slice(0, MAX_PER_LAYER));
+            // Show ALL pages (no per-layer limit)
             const visiblePages = new Set<string>();
             for (const [, arr] of layerPages) arr.forEach(p => visiblePages.add(p.name));
 
             // Layout constants
-            const nodeW = 200, nodeH = 52, padX = 60, padY = 20;
+            const nodeW = 220, nodeH = 52, padX = 60, padY = 24;
             const layers = Array.from(layerPages.keys()).sort((a, b) => a - b);
             const numLayers = layers.length || 1;
-            const colWidth = nodeW + 120; // generous horizontal spacing between columns
+            const colWidth = nodeW + 140; // generous horizontal spacing between columns
             const W = padX * 2 + numLayers * colWidth;
             const maxNodesInLayer = Math.max(...Array.from(layerPages.values()).map(a => a.length), 1);
-            const H = Math.max(420, maxNodesInLayer * (nodeH + padY) + 80);
+            const H = Math.max(450, maxNodesInLayer * (nodeH + padY) + 100);
 
             // Compute node positions
             const nodePos = new Map<string, { x: number; y: number; h: number; vol: number }>();
@@ -7496,13 +7499,13 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               });
             });
 
-            // Build links (only between visible nodes)
+            // Build links (between visible nodes — forward and same-layer)
             const links: { src: string; tgt: string; value: number }[] = [];
             paths.forEach((p: any) => {
               const s = String(p.step1 ?? ""); const t = String(p.step2 ?? ""); const v = Number(p.occurrences ?? 0);
               if (visiblePages.has(s) && visiblePages.has(t) && s !== t) {
                 const sl = pageLayer.get(s) ?? 0; const tl = pageLayer.get(t) ?? 0;
-                if (tl > sl) links.push({ src: s, tgt: t, value: v }); // only forward links
+                if (tl >= sl) links.push({ src: s, tgt: t, value: v }); // forward + same-layer links
               }
             });
             const maxLinkVal = Math.max(...links.map(l => l.value), 1);
@@ -7541,7 +7544,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
                     const conv = convMap.get(name);
                     const borderColor = isFunnel ? GREEN : BLUE;
-                    const shortName = name.length > 28 ? name.substring(0, 26) + "…" : name;
+                    const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
                     return (
                       <g key={name}>
                         <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6}
