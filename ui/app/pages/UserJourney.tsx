@@ -3837,6 +3837,55 @@ function analyzeErrorsDropoffs(errors: any[], funnelCounts: number[], steps: Ste
   return { summary, insights, recommendations: recs };
 }
 
+function analyzeNavigationPaths(data: any, convRows: any[], steps: StepDef[]): AIInsightsData {
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  const paths = (data?.data?.records ?? []) as any[];
+  const totalTransitions = paths.reduce((a: number, p: any) => a + Number(p.occurrences ?? 0), 0);
+
+  // Build conversion map
+  const pageConv = convRows.map((r: any) => ({ page: String(r.pageName ?? "unknown"), sessions: Number(r.total_sessions ?? 0), convRate: Number(r.conv_rate ?? 0) })).filter((p: any) => p.sessions >= 5);
+  const avgConv = pageConv.length > 0 ? pageConv.reduce((a: number, p: any) => a + p.convRate, 0) / pageConv.length : 0;
+  const highConv = pageConv.filter(p => p.convRate > avgConv * 1.5).sort((a, b) => b.convRate - a.convRate);
+  const lowConv = pageConv.filter(p => p.convRate < avgConv * 0.5 && p.sessions >= 10).sort((a, b) => a.convRate - b.convRate);
+
+  // Source analysis
+  const sourceMap = new Map<string, { targets: string[]; total: number }>();
+  paths.forEach((p: any) => {
+    const src = String(p.step1 ?? "unknown"); const count = Number(p.occurrences ?? 0);
+    const d = sourceMap.get(src) ?? { targets: [], total: 0 };
+    d.targets.push(String(p.step2 ?? "unknown")); d.total += count;
+    sourceMap.set(src, d);
+  });
+
+  if (highConv.length > 0 && lowConv.length > 0) {
+    insights.push({ severity: "warning", icon: "🔍", text: `Path conversion varies ${(highConv[0].convRate / Math.max(0.1, lowConv[0].convRate)).toFixed(1)}x between best ("${highConv[0].page}" at ${highConv[0].convRate.toFixed(1)}%) and worst ("${lowConv[0].page}" at ${lowConv[0].convRate.toFixed(1)}%) pages. Steering users to high-converting paths is a quick win.` });
+    recs.push({ impact: "high", text: `Redirect navigation toward "${highConv[0].page}" which converts at ${highConv[0].convRate.toFixed(1)}% — ${(highConv[0].convRate / Math.max(0.1, avgConv)).toFixed(1)}x above average. Consider surfacing this page earlier via CTAs, search prominence, or navigation restructuring.` });
+  }
+  if (lowConv.length > 0) {
+    recs.push({ impact: "medium", text: `Investigate "${lowConv[0].page}" (${lowConv[0].convRate.toFixed(1)}% conv) — users who reach this page rarely convert. It may be a dead-end or distraction. Consider removing it from primary navigation or adding clearer CTAs to guide users back toward the funnel.` });
+  }
+
+  const highBranching = Array.from(sourceMap.entries()).filter(([, d]) => d.targets.length > 4);
+  if (highBranching.length > 0) {
+    insights.push({ severity: "info", icon: "🌐", text: `${highBranching.length} page(s) have high branching (5+ destinations). "${highBranching[0][0]}" branches into ${highBranching[0][1].targets.length} paths — potential user confusion point.` });
+    recs.push({ impact: "medium", text: `Reduce branching on "${highBranching[0][0]}" by simplifying navigation options or using progressive disclosure to guide users toward funnel-aligned destinations.` });
+  }
+
+  // Funnel alignment
+  const funnelPages = new Set(steps.flatMap(s => s.identifiers));
+  const offFunnelTransitions = paths.filter((p: any) => !funnelPages.has(String(p.step2 ?? ""))).reduce((a: number, p: any) => a + Number(p.occurrences ?? 0), 0);
+  const offFunnelPct = totalTransitions > 0 ? (offFunnelTransitions / totalTransitions) * 100 : 0;
+  if (offFunnelPct > 50) {
+    insights.push({ severity: "warning", icon: "⚠️", text: `${fmtPct(offFunnelPct)} of transitions go to off-funnel pages. Users are frequently leaving the intended journey.` });
+  } else {
+    insights.push({ severity: "good", icon: "✅", text: `${fmtPct(100 - offFunnelPct)} of transitions stay on funnel-aligned pages — good navigation focus.` });
+  }
+
+  const summary = `Navigation Paths reveals actual user navigation flows and now includes AI-driven path optimization recommendations. The tab automatically identifies which page sequences correlate with higher conversion rates and surfaces actionable insights at the top — telling you which paths convert better without manual filtering. Currently tracking ${fmtCount(totalTransitions)} transitions across ${paths.length} unique paths. ${pageConv.length > 0 ? `Average page conversion is ${avgConv.toFixed(1)}% with a ${(highConv.length > 0 && lowConv.length > 0 ? (highConv[0].convRate / Math.max(0.1, lowConv[0].convRate)).toFixed(1) : "N/A")}x spread between best and worst pages.` : "No conversion data available."} Conversion rate overlay is shown inline on each path segment. This tab is designed for Information Architects optimizing site structure, CRO specialists identifying high-converting paths, and Product Managers discovering which organic user journeys outperform the designed funnel.`;
+  return { summary, insights, recommendations: recs };
+}
+
 function analyzeGenericTab(tabName: string): AIInsightsData {
   const tabDescriptions: Record<string, string> = {
     "Executive Summary": "Executive Summary provides a report-card style overview designed for stakeholders, executives, and non-technical leadership. It delivers a weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alerts, CWV snapshot, and a full performance table. This tab answers: What is the overall health of our frontend? Is performance improving or declining? What are the top issues? Use Export PDF for presentations or Copy Text for Slack/Teams. It is designed for VPs of Engineering reviewing platform health, C-level executives needing quick status checks, and Product Directors preparing quarterly business reviews.",
@@ -7224,7 +7273,12 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 // TAB: Navigation Paths — NEW
 // ===========================================================================
 function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Navigation Paths"), []));
+  const convRows = ((navPathConvData?.data?.records ?? []) as any[]);
+  const pageConv = convRows.map((r: any) => ({ page: String(r.pageName ?? "unknown"), sessions: Number(r.total_sessions ?? 0), convRate: Number(r.conv_rate ?? 0) })).filter((p: any) => p.sessions >= 5);
+  const avgConv = pageConv.length > 0 ? pageConv.reduce((a: number, p: any) => a + p.convRate, 0) / pageConv.length : 0;
+  const convMap = new Map(pageConv.map(p => [p.page, p.convRate]));
+
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeNavigationPaths(data, convRows, steps), [data, convRows, steps]));
   if (isLoading) return <Loading />;
 
   const paths = (data.data?.records ?? []) as any[];
@@ -7247,9 +7301,53 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
     .map(([name, d]) => ({ name, ...d, targets: d.targets.sort((a, b) => b.count - a.count) }))
     .sort((a, b) => b.total - a.total);
 
+  // --- AI Path Recommendations: find best/worst converting paths ---
+  const highConv = pageConv.filter((p: any) => p.convRate > avgConv * 1.5).sort((a: any, b: any) => b.convRate - a.convRate).slice(0, 5);
+  const lowConv = pageConv.filter((p: any) => p.convRate < avgConv * 0.5 && p.sessions >= 10).sort((a: any, b: any) => a.convRate - b.convRate).slice(0, 5);
+  const pathRecs: { text: string; type: "positive" | "negative" | "info" }[] = [];
+  // Find multi-step path insights
+  if (highConv.length > 0 && sources.length > 1) {
+    const topPage = highConv[0].page;
+    const routesToTop = sources.filter(s => s.targets.some(t => t.name === topPage));
+    if (routesToTop.length > 0) {
+      const srcConv = convMap.get(routesToTop[0].name) ?? 0;
+      const ratio = avgConv > 0 ? (highConv[0].convRate / avgConv).toFixed(1) : "N/A";
+      pathRecs.push({ text: `Users who navigate ${routesToTop[0].name} → ${topPage} convert at ${highConv[0].convRate.toFixed(1)}% — ${ratio}x better than average (${avgConv.toFixed(1)}%). Consider surfacing "${topPage}" earlier in the journey.`, type: "positive" });
+    }
+  }
+  if (lowConv.length > 0 && highConv.length > 0) {
+    pathRecs.push({ text: `Users reaching "${lowConv[0].page}" convert at only ${lowConv[0].convRate.toFixed(1)}% vs. ${highConv[0].convRate.toFixed(1)}% for "${highConv[0].page}". Redirect traffic from low-converting to high-converting paths.`, type: "negative" });
+  }
+  if (sources.length > 3) {
+    const deepPaths = sources.filter(s => s.targets.length > 4);
+    if (deepPaths.length > 0) pathRecs.push({ text: `"${deepPaths[0].name}" branches into ${deepPaths[0].targets.length} different destinations — high branching may indicate user confusion. Consider guided navigation or progressive disclosure.`, type: "info" });
+  }
+  if (avgConv > 0 && highConv.length >= 2) {
+    pathRecs.push({ text: `Top converting pages (${highConv.slice(0, 3).map(p => p.page.substring(0, 30)).join(", ")}) share a common trait: users who visit them are ${((highConv[0].convRate / avgConv)).toFixed(1)}x more likely to complete the funnel. Optimize navigation to guide users toward these pages.`, type: "positive" });
+  }
+
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
+
+      {/* AI Path Optimization Recommendations — at the top */}
+      {pathRecs.length > 0 && (
+        <div className="uj-table-tile" style={{ borderRadius: 8, padding: 16, border: `1px solid ${BLUE}` }}>
+          <Flex alignItems="center" gap={8} style={{ marginBottom: 10 }}>
+            <span style={{ fontSize: 20 }}>🧭</span>
+            <Strong style={{ fontSize: 16 }}>AI Path Optimization</Strong>
+          </Flex>
+          <Flex flexDirection="column" gap={8}>
+            {pathRecs.map((rec, i) => (
+              <Flex key={i} alignItems="flex-start" gap={8}>
+                <span style={{ fontSize: 14, marginTop: 1 }}>{rec.type === "positive" ? "✅" : rec.type === "negative" ? "⚠️" : "💡"}</span>
+                <Text style={{ fontSize: 13 }}>{rec.text}</Text>
+              </Flex>
+            ))}
+          </Flex>
+        </div>
+      )}
+
       <SectionHeader title="Navigation Paths Analysis" />
       <Text style={{ fontSize: 12, opacity: 0.5 }}>Actual user navigation flows. Reveals unexpected paths, loops, and exit points outside the intended funnel.</Text>
 
@@ -7267,16 +7365,24 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
           <Text className="uj-kpi-label">Avg Session Depth</Text>
           <Heading level={2} className="uj-kpi-value" style={{ color: CYAN }}>{avgDepth.toFixed(1)} pages</Heading>
         </div>
+        {avgConv > 0 && (
+          <div className="uj-kpi-card">
+            <Text className="uj-kpi-label">Avg Page Conv Rate</Text>
+            <Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtPct(avgConv)}</Heading>
+          </div>
+        )}
       </Flex>
 
       {paths.length === 0 ? (
         <div className="uj-table-tile" style={{ padding: 24 }}><Text>No navigation path data available</Text></div>
       ) : (
         <>
-          {/* Flow visualization */}
+          {/* Flow visualization with conversion overlay */}
           <SectionHeader title="Top Navigation Flows" />
           <Flex flexDirection="column" gap={12}>
-            {sources.slice(0, 8).map((src) => (
+            {sources.slice(0, 8).map((src) => {
+              const srcConvRate = convMap.get(src.name);
+              return (
               <div key={src.name} className="uj-flow-card">
                 <Flex alignItems="center" gap={8} style={{ marginBottom: 10 }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: BLUE }} />
@@ -7287,12 +7393,14 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   ) : (
                     <Strong style={{ fontSize: 13 }}>{src.name.length > 60 ? src.name.substring(0, 60) + "..." : src.name}</Strong>
                   )}
+                  {srcConvRate !== undefined && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: srcConvRate > avgConv ? `${GREEN}18` : `${RED}18`, color: srcConvRate > avgConv ? GREEN : RED, fontWeight: 600, marginLeft: 4 }}>Conv: {fmtPct(srcConvRate)}</span>}
                   <Text style={{ fontSize: 12, opacity: 0.4, marginLeft: "auto" }}>{fmtCount(src.total)} transitions</Text>
                 </Flex>
                 <Flex flexDirection="column" gap={4} style={{ paddingLeft: 20 }}>
                   {src.targets.slice(0, 5).map((t, ti) => {
                     const pct = src.total > 0 ? (t.count / src.total) * 100 : 0;
                     const isFunnel = steps.some((s) => s.identifiers.some(id => identifierMatchesLabel(id, t.name)));
+                    const tgtConvRate = convMap.get(t.name);
                     const color = isFunnel ? GREEN : CYAN;
                     return (
                       <Flex key={ti} alignItems="center" gap={8}>
@@ -7307,6 +7415,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                               <Text style={{ fontSize: 13 }}>{t.name.length > 50 ? t.name.substring(0, 50) + "..." : t.name}</Text>
                             )}
                             {isFunnel && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 3, background: `${GREEN}18`, color: GREEN }}>funnel</span>}
+                            {tgtConvRate !== undefined && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: tgtConvRate > avgConv ? `${GREEN}12` : `${RED}12`, color: tgtConvRate > avgConv ? GREEN : RED, fontWeight: 600 }}>{fmtPct(tgtConvRate)}</span>}
                           </Flex>
                           <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden", marginTop: 2 }}>
                             <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, opacity: 0.7 }} />
@@ -7322,8 +7431,24 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   )}
                 </Flex>
               </div>
-            ))}
+              );
+            })}
           </Flex>
+
+          {/* Conversion Rate by Page */}
+          {pageConv.length > 0 && (
+            <>
+              <SectionHeader title="Conversion Rate by Page" />
+              <div className="uj-table-tile"><DataTable sortable data={pageConv.slice(0, 20).map((p: any) => ({
+                Page: p.page, Sessions: p.sessions, "Conv Rate": p.convRate, "vs Avg": p.convRate - avgConv,
+              }))} columns={[
+                { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{String(value).substring(0, 50)}</Text> },
+                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+                { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > avgConv * 1.5 ? GREEN : value > avgConv * 0.5 ? YELLOW : RED }}>{fmtPct(value)}</Strong> },
+                { id: "vs Avg", header: "vs Avg", accessor: "vs Avg", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? GREEN : RED, fontWeight: 600 }}>{value > 0 ? "+" : ""}{value.toFixed(1)}pp</Text> },
+              ]} /></div>
+            </>
+          )}
 
           {/* Full transition table */}
           <SectionHeader title="All Transitions" />
@@ -7338,6 +7463,8 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                 Transitions: Number(p.occurrences ?? 0),
                 "% of Total": totalTransitions > 0 ? (Number(p.occurrences ?? 0) / totalTransitions) * 100 : 0,
                 "Avg Depth": Number(p.avg_depth ?? 0),
+                "From Conv": convMap.get(String(p.step1 ?? "")) ?? null,
+                "To Conv": convMap.get(String(p.step2 ?? "")) ?? null,
               }))}
               columns={[
                 { id: "From", header: "From", accessor: "From", cell: ({ value, row }: any) => {
@@ -7350,64 +7477,13 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                 }},
                 { id: "Transitions", header: "Count", accessor: "Transitions", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
                 { id: "% of Total", header: "% of Total", accessor: "% of Total", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtPct(value)}</Text> },
+                { id: "To Conv", header: "Dest Conv %", accessor: "To Conv", sortType: "number" as any, cell: ({ value }: any) => value != null ? <Text style={{ color: value > avgConv ? GREEN : value > avgConv * 0.5 ? YELLOW : RED, fontWeight: 600 }}>{fmtPct(value)}</Text> : <Text style={{ opacity: 0.3 }}>—</Text> },
                 { id: "Avg Depth", header: "Avg Depth", accessor: "Avg Depth", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: CYAN }}>{value.toFixed(1)}</Text> },
               ]}
             />
           </div>
         </>
       )}
-
-      {/* AI Path Optimization Recommendations */}
-      <SectionHeader title="AI Path Optimization Insights" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>ML-driven analysis of which navigation paths correlate with higher conversion rates.</Text>
-      {(() => {
-        const convRows = (navPathConvData?.data?.records ?? []) as any[];
-        if (convRows.length < 2) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>Insufficient data for path optimization analysis.</Text></div>;
-        const pageConv = convRows.map((r: any) => ({ page: String(r.pageName ?? "unknown"), sessions: Number(r.total_sessions ?? 0), convRate: Number(r.conv_rate ?? 0) })).filter((p: any) => p.sessions >= 5);
-        const avgConv = pageConv.length > 0 ? pageConv.reduce((a: number, p: any) => a + p.convRate, 0) / pageConv.length : 0;
-        const highConv = pageConv.filter((p: any) => p.convRate > avgConv * 1.5).sort((a: any, b: any) => b.convRate - a.convRate).slice(0, 5);
-        const lowConv = pageConv.filter((p: any) => p.convRate < avgConv * 0.5 && p.sessions >= 10).sort((a: any, b: any) => a.convRate - b.convRate).slice(0, 5);
-        // Build path flow recommendations from source data
-        const flowRecs: string[] = [];
-        if (highConv.length > 0 && sources.length > 1) {
-          const topPage = highConv[0].page;
-          const routesToTop = sources.filter(s => s.targets.some(t => t.name === topPage));
-          if (routesToTop.length > 0) flowRecs.push(`Users who navigate through "${routesToTop[0].name}" → "${topPage}" convert at ${highConv[0].convRate.toFixed(1)}% — ${(highConv[0].convRate / Math.max(0.1, avgConv)).toFixed(1)}x above average. Consider surfacing this path earlier in the user journey.`);
-        }
-        if (lowConv.length > 0) flowRecs.push(`Pages with lowest conversion include "${lowConv[0].page}" (${lowConv[0].convRate.toFixed(1)}%). Users reaching this page rarely convert — investigate if this is a dead end or distraction in the funnel.`);
-        if (sources.length > 3) {
-          const deepPaths = sources.filter(s => s.targets.length > 4);
-          if (deepPaths.length > 0) flowRecs.push(`"${deepPaths[0].name}" branches into ${deepPaths[0].targets.length} different destinations — high branching may indicate user confusion. Consider guided navigation or progressive disclosure.`);
-        }
-        return (
-          <Flex flexDirection="column" gap={8}>
-            {flowRecs.map((rec, i) => (
-              <div key={i} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${BLUE}` }}>
-                <Text style={{ fontSize: 13 }}>💡 {rec}</Text>
-              </div>
-            ))}
-            {highConv.length > 0 && (
-              <div className="uj-table-tile" style={{ padding: 12 }}>
-                <Strong style={{ fontSize: 12, color: GREEN }}>High-Converting Pages:</Strong>
-                <Flex gap={8} flexWrap="wrap" style={{ marginTop: 6 }}>
-                  {highConv.map((p: any) => <span key={p.page} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: `${GREEN}15`, color: GREEN, fontWeight: 600 }}>{p.page} ({fmtPct(p.convRate)})</span>)}
-                </Flex>
-              </div>
-            )}
-            {/* Conversion Rate Overlay Per Path */}
-            <SectionHeader title="Conversion Rate by Page" />
-            <div className="uj-table-tile"><DataTable sortable data={pageConv.slice(0, 20).map((p: any) => ({
-              Page: p.page, Sessions: p.sessions, "Conv Rate": p.convRate, "vs Avg": p.convRate - avgConv,
-            }))} columns={[
-              { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{String(value).substring(0, 50)}</Text> },
-              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
-              { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 5 ? GREEN : value > 2 ? YELLOW : RED }}>{fmtPct(value)}</Strong> },
-              { id: "vs Avg", header: "vs Avg", accessor: "vs Avg", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? GREEN : RED, fontWeight: 600 }}>{value > 0 ? "+" : ""}{value.toFixed(1)}pp</Text> },
-            ]} /></div>
-          </Flex>
-        );
-      })()}
-
     </Flex>
   );
 }
