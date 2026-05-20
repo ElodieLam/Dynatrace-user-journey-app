@@ -3066,7 +3066,7 @@ export function UserJourney() {
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} />; break;
             case "Conversion Attribution": content = <ConversionAttributionTab utmData={utmAttributionData} data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} />; break;
             case "Executive Summary": content = <ExecutiveSummaryTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} cwv={cwv} stepMap={stepMap} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || cwvResult.isLoading} frontend={frontend} steps={steps} aov={aov} />; break;
-            case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading} aov={aov} overallConv={overallConv} />; break;
+            case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} osVersions={(osVersionData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading || osVersionData.isLoading} aov={aov} overallConv={overallConv} />; break;
             case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} />; break;
             case "What-If Analysis": content = <WhatIfTab hostMetricsData={hostMetricsData} funnelCounts={funnelCounts} stepMap={stepMap} overallApdex={overallApdex} isLoading={isLoading} steps={steps} aov={aov} />; break;
             case "Root Cause Correlation": content = <RootCauseCorrelationTab backendServicesData={backendServicesData} hourlyData={rootCauseCorrelationData} stepDropData={rootCauseStepDropData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} isLoading={rootCauseCorrelationData.isLoading || rootCauseStepDropData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
@@ -3744,7 +3744,7 @@ function analyzeConversionAttribution(data: any, overallConv: number, aov: numbe
   return { summary, insights, recommendations: recs };
 }
 
-function analyzeSegmentation(devices: any[], browsers: any[], geos: any[]): AIInsightsData {
+function analyzeSegmentation(devices: any[], browsers: any[], geos: any[], osVersions: any[] = []): AIInsightsData {
   const insights: InsightItem[] = [];
   const recs: RecommendationItem[] = [];
 
@@ -3762,7 +3762,33 @@ function analyzeSegmentation(devices: any[], browsers: any[], geos: any[]): AIIn
   // Browser diversity
   if (browsers.length > 8) insights.push({ severity: "info", icon: "🌐", text: `Users span ${browsers.length} browser types. Ensure cross-browser testing covers the top 5.` });
 
-  const summary = `Segmentation breaks down your user base by device type, browser, and geography, showing Apdex and session distribution for each segment. This tab is designed for Product Managers understanding their audience composition, QA Leads prioritizing cross-browser testing, and Marketing Teams identifying high-value segments. It answers: What is our device mix? Which browsers do our users prefer? How is traffic distributed geographically? Does performance differ by segment? Currently spanning ${devices.length} device types, ${browsers.length} browsers, and ${geos.length} geolocations. ${mobile ? `Mobile traffic accounts for ${fmtPct(Number(mobile.sessions ?? 0) / Math.max(1, devices.reduce((a: number, d: any) => a + Number(d.sessions ?? 0), 0)) * 100)} of sessions — ${Number(mobile.sessions ?? 0) / Math.max(1, devices.reduce((a: number, d: any) => a + Number(d.sessions ?? 0), 0)) > 0.5 ? "indicating a mobile-first user base where mobile optimization is critical" : "desktop remains the primary platform"}.` : ""} Each segment shows session count, Apdex score, and when AOV is set, estimated revenue. Use this to prioritize testing and optimization efforts for your most impactful segments.`;
+  // OS Version analysis — surface worst-performing OS
+  if (osVersions.length > 0) {
+    const osWithApdex = osVersions.filter((d: any) => Number(d.sessions ?? 0) >= 10).map((d: any) => {
+      const sat = Number(d.satisfied ?? 0); const tol = Number(d.tolerating ?? 0); const total = Number(d.actions ?? 0);
+      return { label: `${d.os_name ?? "Unknown"} ${d.os_ver ?? ""}`.trim(), apdex: calcApdex(sat, tol, total), sessions: Number(d.sessions ?? 0) };
+    }).sort((a, b) => a.apdex - b.apdex);
+    if (osWithApdex.length > 0 && osWithApdex[0].apdex < 0.7) {
+      insights.push({ severity: "warning", icon: "💻", text: `Worst OS: "${osWithApdex[0].label}" has Apdex ${osWithApdex[0].apdex.toFixed(2)} across ${fmtCount(osWithApdex[0].sessions)} sessions. Consider OS-specific testing and optimization.` });
+      recs.push({ impact: "medium", text: `Investigate performance on ${osWithApdex[0].label} — this OS version underperforms significantly. Check for compatibility issues, polyfill overhead, or rendering differences.` });
+    }
+    insights.push({ severity: "info", icon: "🖥️", text: `${osVersions.length} OS versions detected. Top: ${osWithApdex.length > 0 ? osWithApdex[osWithApdex.length - 1].label : "N/A"} (best Apdex), ${osWithApdex.length > 0 ? osWithApdex[0].label : "N/A"} (worst Apdex).` });
+  }
+
+  // AI Segment Discovery — find the single worst cohort across ALL dimensions
+  const allCohorts: { label: string; dimension: string; apdex: number; sessions: number }[] = [];
+  devices.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: String(d.deviceType ?? "Unknown"), dimension: "Device", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
+  browsers.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: String(d.browserName ?? "Unknown"), dimension: "Browser", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
+  geos.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: String(d.country ?? "Unknown"), dimension: "Geography", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
+  osVersions.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: `${d.os_name ?? "Unknown"} ${d.os_ver ?? ""}`.trim(), dimension: "OS Version", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
+  allCohorts.sort((a, b) => a.apdex - b.apdex);
+  if (allCohorts.length > 0 && allCohorts[0].apdex < 0.85) {
+    const w = allCohorts[0];
+    insights.unshift({ severity: w.apdex < 0.5 ? "critical" : "warning", icon: "🔍", text: `Segment Discovery: "${w.label}" (${w.dimension}) is the worst-performing cohort with Apdex ${w.apdex.toFixed(2)} across ${fmtCount(w.sessions)} sessions. This is something you may not have thought to look for.` });
+    recs.unshift({ impact: "high", text: `Focus optimization on the "${w.label}" segment (${w.dimension}) — it has the lowest Apdex (${w.apdex.toFixed(2)}) and affects ${fmtCount(w.sessions)} sessions. Investigate what makes this cohort unique and whether targeted fixes can improve their experience.` });
+  }
+
+  const summary = `Segmentation breaks down your user base by device type, browser, OS version, and geography, showing Apdex and session distribution for each segment. The AI Segment Discovery automatically surfaces the worst-performing cohort across ALL dimensions without manual filtering — telling you what you haven't thought to look for. This tab is designed for Product Managers understanding their audience composition, QA Leads prioritizing cross-browser/OS testing, and Marketing Teams identifying high-value segments. It answers: What is our device mix? Which browsers and OS versions do our users prefer? How is traffic distributed geographically? Does performance differ by segment? Currently spanning ${devices.length} device types, ${browsers.length} browsers, ${osVersions.length} OS versions, and ${geos.length} geolocations. ${mobile ? `Mobile traffic accounts for ${fmtPct(Number(mobile.sessions ?? 0) / Math.max(1, devices.reduce((a: number, d: any) => a + Number(d.sessions ?? 0), 0)) * 100)} of sessions — ${Number(mobile.sessions ?? 0) / Math.max(1, devices.reduce((a: number, d: any) => a + Number(d.sessions ?? 0), 0)) > 0.5 ? "indicating a mobile-first user base where mobile optimization is critical" : "desktop remains the primary platform"}.` : ""} Each segment shows session count, Apdex score, and when AOV is set, estimated revenue. Use this to prioritize testing and optimization efforts for your most impactful segments.`;
   return { summary, insights, recommendations: recs };
 }
 
@@ -8143,8 +8169,8 @@ ${bottleneckHtml}
 // ===========================================================================
 // TAB: Segmentation
 // ===========================================================================
-function SegmentationTab({ devices, browsers, geos, isLoading, aov = 0, overallConv = 0, osVersionData }: { devices: any[]; browsers: any[]; geos: any[]; isLoading: boolean; aov?: number; overallConv?: number; osVersionData?: any }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeSegmentation(devices, browsers, geos), [devices, browsers, geos]));
+function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov = 0, overallConv = 0 }: { devices: any[]; browsers: any[]; geos: any[]; osVersions: any[]; isLoading: boolean; aov?: number; overallConv?: number }) {
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeSegmentation(devices, browsers, geos, osVersions), [devices, browsers, geos, osVersions]));
   if (isLoading) return <Loading />;
 
   const showRevenue = aov > 0 && overallConv > 0;
@@ -8161,16 +8187,66 @@ function SegmentationTab({ devices, browsers, geos, isLoading, aov = 0, overallC
   const mapSeg = (data: any[], nameKey: string) => data.map((d: any) => {
     const sat = Number(d.satisfied ?? 0); const tol = Number(d.tolerating ?? 0); const total = Number(d.actions ?? 0);
     const sessions = Number(d.sessions ?? 0);
-    return { [nameKey]: d[nameKey] ?? "Unknown", Sessions: sessions, Actions: total, "Avg (ms)": Number(d.avg_duration_ms ?? 0), Apdex: calcApdex(sat, tol, total), Errors: Number(d.errors ?? 0), "Est Revenue": showRevenue ? sessions * (overallConv / 100) * aov : 0 };
+    return { [nameKey]: d[nameKey] ?? "Unknown", Sessions: sessions, Actions: total, "Avg (ms)": Number(d.avg_duration_ms ?? d.avg_dur ?? 0), Apdex: calcApdex(sat, tol, total), Errors: Number(d.errors ?? 0), "Est Revenue": showRevenue ? sessions * (overallConv / 100) * aov : 0 };
   });
+
+  // Map OS version data: combine os_name + os_ver into a single label
+  const osData = osVersions.map((d: any) => {
+    const sat = Number(d.satisfied ?? 0); const tol = Number(d.tolerating ?? 0); const total = Number(d.actions ?? 0);
+    const sessions = Number(d.sessions ?? 0);
+    const osLabel = `${d.os_name ?? "Unknown"} ${d.os_ver ?? ""}`.trim();
+    return { osVersion: osLabel, Sessions: sessions, Actions: total, "Avg (ms)": Number(d.avg_dur ?? 0), Apdex: calcApdex(sat, tol, total), Errors: Number(d.errors ?? 0), "Est Revenue": showRevenue ? sessions * (overallConv / 100) * aov : 0 };
+  });
+
+  // --- AI Segment Discovery: find worst-performing cohort ---
+  const allCohorts: { label: string; dimension: string; apdex: number; sessions: number }[] = [];
+  const addCohorts = (data: any[], nameKey: string, dimension: string) => data.forEach((row: any) => {
+    const sat = Number(row.satisfied ?? 0); const tol = Number(row.tolerating ?? 0); const total = Number(row.actions ?? 0);
+    const sessions = Number(row.sessions ?? 0);
+    if (sessions >= 10) { // only consider cohorts with meaningful traffic
+      allCohorts.push({ label: String(row[nameKey] ?? "Unknown"), dimension, apdex: calcApdex(sat, tol, total), sessions });
+    }
+  });
+  addCohorts(devices, "deviceType", "Device");
+  addCohorts(browsers, "browserName", "Browser");
+  addCohorts(geos, "country", "Geography");
+  osVersions.forEach((d: any) => {
+    const sat = Number(d.satisfied ?? 0); const tol = Number(d.tolerating ?? 0); const total = Number(d.actions ?? 0);
+    const sessions = Number(d.sessions ?? 0);
+    if (sessions >= 10) {
+      allCohorts.push({ label: `${d.os_name ?? "Unknown"} ${d.os_ver ?? ""}`.trim(), dimension: "OS Version", apdex: calcApdex(sat, tol, total), sessions });
+    }
+  });
+  allCohorts.sort((a, b) => a.apdex - b.apdex);
+  const worstCohort = allCohorts[0];
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
+      {worstCohort && worstCohort.apdex < 0.85 && (
+        <div className="uj-table-tile" style={{ border: `1px solid ${worstCohort.apdex < 0.5 ? RED : YELLOW}`, borderRadius: 8, padding: 16 }}>
+          <Flex alignItems="center" gap={8} style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 20 }}>🔍</span>
+            <Strong style={{ fontSize: 16 }}>AI Segment Discovery</Strong>
+          </Flex>
+          <Text>
+            Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions.
+            {worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}
+          </Text>
+          {allCohorts.length > 1 && allCohorts[1].apdex < 0.85 && (
+            <Text style={{ marginTop: 6, opacity: 0.7 }}>
+              Also underperforming: <Strong>{allCohorts[1].label}</Strong> ({allCohorts[1].dimension}) — Apdex {allCohorts[1].apdex.toFixed(2)}
+              {allCohorts.length > 2 && allCohorts[2].apdex < 0.85 ? `, ${allCohorts[2].label} (${allCohorts[2].dimension}) — Apdex ${allCohorts[2].apdex.toFixed(2)}` : ""}
+            </Text>
+          )}
+        </div>
+      )}
       <SectionHeader title="By Device Type" />
       <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={mapSeg(devices, "deviceType")} columns={segCols("Device", "deviceType")} /></div>
       <SectionHeader title="By Browser" />
       <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={mapSeg(browsers, "browserName")} columns={[...segCols("Browser", "browserName"), { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? RED : undefined }}>{value}</Text> }]} /></div>
+      <SectionHeader title="By OS Version" />
+      <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={osData} columns={[...segCols("OS Version", "osVersion"), { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? RED : undefined }}>{value}</Text> }]} /></div>
       <SectionHeader title="By Geography" />
       <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={mapSeg(geos, "country")} columns={[...segCols("Country", "country"), { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? RED : undefined }}>{value}</Text> }]} /></div>
     </Flex>
