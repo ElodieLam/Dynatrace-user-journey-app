@@ -2515,7 +2515,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Executive Summary</Strong>: Report-card style overview for stakeholders. Weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alert, CWV snapshot, and full performance table. When AOV is set, revenue appears in key metrics, performance snapshot, and exports. Use <Strong>Export PDF</Strong> to open a print-ready report in a new tab (use browser Print → Save as PDF), or <Strong>Copy Text</Strong> to get a plain-text summary for Slack/Teams/email. Designed for quick status checks and executive presentations.</Paragraph>
         <Paragraph><Strong>Segmentation</Strong>: Device, browser, geography, and <Strong>OS version</Strong> breakdowns with Apdex per segment. Geography shows full country names (translated from ISO codes). <Strong>AI Segment Discovery</Strong> card is always visible and automatically identifies the cohort with the worst Apdex or lowest conversion rate — surfacing which user segment needs attention without manual filtering.</Paragraph>
         <Paragraph><Strong>Errors &amp; Drop-offs</Strong>: Drop-off analysis between funnel steps with optimization recommendations. When AOV is set, each drop-off card shows the estimated revenue at risk from abandoned sessions. Includes Predictive Drop-off Scoring — linear regression on hourly error rates per step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues. Severity-colored cards (critical &gt;5%, warning &gt;2%) show current rate, projected rate, and trend per hour.</Paragraph>
-        <Paragraph><Strong>What-If Analysis</Strong>: Traffic impact modeling with projected Apdex, latency, and conversion degradation. When AOV is set in Settings, also shows revenue impact: projected revenue at higher traffic, net revenue change, conversion degradation loss, and a "Perf Tax" breakdown showing revenue lost to performance under load.</Paragraph>
+        <Paragraph><Strong>What-If Analysis</Strong>: Traffic impact modeling with projected Apdex, latency, and conversion degradation. Latency Improvement slider simulates the impact of performance optimizations (e.g. 20% faster P90) — reduces projected latency and partially offsets conversion degradation under load. Infrastructure Headroom section uses Dynatrace host CPU/memory metrics to determine whether current hosts can sustain the simulated traffic increase, showing max sustainable traffic before hitting 85% saturation. When AOV is set in Settings, also shows revenue impact: projected revenue at higher traffic, net revenue change, conversion degradation loss, and a "Perf Tax" breakdown showing revenue lost to performance under load.</Paragraph>
         <Paragraph><Strong>Root Cause Correlation</Strong>: Automatically correlates conversion drops with technical signals — latency spikes, error surges, and frustrated sessions — on an hourly timeline. Identifies which funnel steps degrade at the exact hours conversion dips. Surfaces ranked root cause signals with severity and confidence scores. <Strong>Full-Stack Correlation</Strong> section shows the backend service topology filtered to only services called by the selected application — uses entity <code>calls[dt.entity.service]</code> relationships to traverse up to 7 depth tiers (Application → Services → Downstream). Each service node is clickable and opens Dynatrace Gen3 Services with the matching timeframe. Davis AI-detected problems are overlaid on affected nodes (red border + problem count). When frontend degradation coincides with backend problems, an impact banner highlights the backend root cause. Problem table links open directly in Davis Problems app. When AOV is set, shows the estimated revenue at risk from sessions occurring during impact hours.</Paragraph>
         <Paragraph><Strong>Predictive Forecasting</Strong>: Uses trend data from the selected timeframe to project Apdex, conversion rate, error rate, and average duration forward 7 days via linear regression. Flags when a metric is on trajectory to breach a performance budget threshold before it actually happens. Includes trend direction, rate of change, and days-to-breach estimates for proactive incident prevention.</Paragraph>
         <Paragraph><Strong>Resource Waterfall</Strong>: Aggregated resource timing per funnel step — third-party scripts, XHR/Fetch calls, images, CSS, and fonts. Top 10 Slowest Resources section shows individual requests ranked by duration with clickable session links. Session Drill-Down panel lets you select a specific session to see all resources loaded in that session (with full replay link). Includes per-step resource type breakdown, visual waterfall bar chart with P50/P90 ranges, and optimization recommendations.</Paragraph>
@@ -8944,10 +8944,11 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
   const mult = 1 + pctChange / 100;
   const lastIdx = steps.length - 1;
   const log2m = mult > 1 ? Math.log2(mult) : 0;
-  const latFactor = 1 + log2m * 0.5;
+  const latImproveFactor = 1 - latencyImprovement / 100; // e.g. 20% improvement → 0.8x
+  const latFactor = (1 + log2m * 0.5) * latImproveFactor;
   const errFactor = 1 + log2m * 0.15;
-  const convDegradation = log2m * 0.08;
-  const projApdex = Math.max(0, overallApdex - log2m * 0.08);
+  const convDegradation = Math.max(0, log2m * 0.08 - latencyImprovement * 0.002); // latency improvement reduces conv degradation
+  const projApdex = Math.max(0, Math.min(1, overallApdex - log2m * 0.08 + latencyImprovement * 0.003));
   const currConvRate = funnelCounts[0] > 0 ? (funnelCounts[lastIdx] / funnelCounts[0]) * 100 : 0;
   const projConv = Math.max(0, currConvRate * (1 - convDegradation));
   const projFunnel = funnelCounts.map((c, i) => i === 0 ? Math.round(c * mult) : Math.round(c * mult * Math.pow(1 - convDegradation, i)));
@@ -8981,6 +8982,16 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
       <MultiplierSlider value={pctChange} onChange={setPctChange} />
+
+      {/* Latency Improvement Slider */}
+      <div className="uj-table-tile" style={{ padding: "14px 20px" }}>
+        <Flex alignItems="center" gap={16}>
+          <Text style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Latency Improvement</Text>
+          <input type="range" min={0} max={50} step={5} value={latencyImprovement} onChange={(e) => setLatencyImprovement(Number(e.target.value))} style={{ flex: 1, accentColor: CYAN }} />
+          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", minWidth: 60, textAlign: "right" }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
+        </Flex>
+        <Text style={{ fontSize: 11, opacity: 0.4, marginTop: 4 }}>Simulate the impact of latency optimization (e.g. CDN, caching, code optimization). Reduces projected latency and partially offsets conversion degradation.</Text>
+      </div>
 
       <Flex gap={16} flexWrap="wrap">
         <div className="uj-whatif-card"><Text className="uj-metric-label">Projected Sessions</Text><Strong className="uj-metric-value" style={{ color: PURPLE }}>{fmtCount(projFunnel[0])}</Strong></div>
@@ -9037,6 +9048,103 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
         </>
       )}
 
+      {/* Infrastructure Headroom Modeling */}
+      {(() => {
+        const hostRows = (hostMetricsData?.data?.records ?? []) as any[];
+        if (hostRows.length === 0) return null;
+        const hosts = hostRows.map((r: any) => ({
+          id: String(r["dt.entity.host"] ?? ""),
+          cpu: Number(r.cpu_pct ?? 0),
+          mem: Number(r.mem_pct ?? 0),
+        })).filter(h => h.cpu > 0 || h.mem > 0);
+        if (hosts.length === 0) return null;
+        const avgCpu = hosts.reduce((a, h) => a + h.cpu, 0) / hosts.length;
+        const avgMem = hosts.reduce((a, h) => a + h.mem, 0) / hosts.length;
+        const maxCpu = Math.max(...hosts.map(h => h.cpu));
+        const maxMem = Math.max(...hosts.map(h => h.mem));
+        // Project resource usage under load — linear scaling assumption
+        const projCpuAvg = Math.min(100, avgCpu * mult);
+        const projMemAvg = Math.min(100, avgMem + (avgMem * (mult - 1) * 0.3)); // memory grows slower than linear
+        const projCpuMax = Math.min(100, maxCpu * mult);
+        const projMemMax = Math.min(100, maxMem + (maxMem * (mult - 1) * 0.3));
+        // Headroom: how much traffic increase before hitting 85% threshold
+        const cpuHeadroom = avgCpu > 0 ? Math.max(0, ((85 / avgCpu) - 1) * 100) : Infinity;
+        const memHeadroom = avgMem > 0 ? Math.max(0, ((85 / avgMem) - 1) * 100) : Infinity;
+        const limitingFactor = cpuHeadroom < memHeadroom ? "CPU" : "Memory";
+        const maxHeadroom = Math.min(cpuHeadroom, memHeadroom);
+        const canSustain = pctChange <= maxHeadroom;
+        const severityColor = canSustain ? GREEN : projCpuAvg > 90 || projMemAvg > 90 ? RED : ORANGE;
+        const severityLabel = canSustain ? "SUFFICIENT" : projCpuAvg > 90 || projMemAvg > 90 ? "CRITICAL" : "AT RISK";
+        return (
+          <>
+            <SectionHeader title="Infrastructure Headroom" />
+            <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Can your current hosts sustain the simulated traffic increase? Based on {hosts.length} host(s) reporting CPU/memory metrics.</Text>
+            <Flex gap={12} flexWrap="wrap" style={{ marginBottom: 12 }}>
+              <div className="uj-table-tile" style={{ padding: 14, borderLeft: `3px solid ${severityColor}`, flex: "1 1 200px" }}>
+                <Flex alignItems="center" justifyContent="space-between">
+                  <Strong style={{ fontSize: 13 }}>Verdict</Strong>
+                  <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 4, background: `${severityColor}18`, color: severityColor, fontWeight: 700 }}>{severityLabel}</span>
+                </Flex>
+                <Paragraph style={{ fontSize: 12, marginTop: 6 }}>
+                  {canSustain
+                    ? `Infrastructure can handle +${pctChange}% traffic. Headroom limited by ${limitingFactor} at +${Math.round(maxHeadroom)}% max.`
+                    : `Infrastructure cannot sustain +${pctChange}% traffic without scaling. ${limitingFactor} will exceed 85% threshold. Max sustainable: +${Math.round(maxHeadroom)}%.`}
+                </Paragraph>
+              </div>
+              <div className="uj-table-tile" style={{ padding: 14, flex: "1 1 140px" }}>
+                <Text style={{ fontSize: 11, opacity: 0.5 }}>Max Sustainable</Text>
+                <Strong style={{ display: "block", fontSize: 22, color: maxHeadroom > pctChange ? GREEN : RED }}>+{maxHeadroom === Infinity ? "∞" : Math.round(maxHeadroom)}%</Strong>
+                <Text style={{ fontSize: 11, opacity: 0.4 }}>before {limitingFactor} hits 85%</Text>
+              </div>
+              <div className="uj-table-tile" style={{ padding: 14, flex: "1 1 140px" }}>
+                <Text style={{ fontSize: 11, opacity: 0.5 }}>Hosts Monitored</Text>
+                <Strong style={{ display: "block", fontSize: 22, color: BLUE }}>{hosts.length}</Strong>
+              </div>
+            </Flex>
+            <div className="uj-table-tile" style={{ padding: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
+                <div>
+                  <Text style={{ fontSize: 11, opacity: 0.5 }}>Avg CPU (current)</Text>
+                  <Strong style={{ display: "block", fontSize: 16, color: avgCpu > 70 ? RED : avgCpu > 50 ? YELLOW : GREEN }}>{avgCpu.toFixed(1)}%</Strong>
+                </div>
+                <div>
+                  <Text style={{ fontSize: 11, opacity: 0.5 }}>Avg CPU (projected)</Text>
+                  <Strong style={{ display: "block", fontSize: 16, color: projCpuAvg > 85 ? RED : projCpuAvg > 70 ? ORANGE : GREEN }}>{projCpuAvg.toFixed(1)}%</Strong>
+                </div>
+                <div>
+                  <Text style={{ fontSize: 11, opacity: 0.5 }}>Avg Memory (current)</Text>
+                  <Strong style={{ display: "block", fontSize: 16, color: avgMem > 80 ? RED : avgMem > 60 ? YELLOW : GREEN }}>{avgMem.toFixed(1)}%</Strong>
+                </div>
+                <div>
+                  <Text style={{ fontSize: 11, opacity: 0.5 }}>Avg Memory (projected)</Text>
+                  <Strong style={{ display: "block", fontSize: 16, color: projMemAvg > 85 ? RED : projMemAvg > 70 ? ORANGE : GREEN }}>{projMemAvg.toFixed(1)}%</Strong>
+                </div>
+              </div>
+              {/* Gauge bars */}
+              <Flex gap={16} style={{ marginTop: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, opacity: 0.4 }}>CPU Utilization</Text>
+                  <div style={{ height: 8, borderRadius: 4, background: "rgba(128,128,128,0.1)", overflow: "hidden", marginTop: 4, position: "relative" }}>
+                    <div style={{ height: "100%", width: `${Math.min(avgCpu, 100)}%`, background: GREEN, borderRadius: 4, position: "absolute" }} />
+                    <div style={{ height: "100%", width: `${Math.min(projCpuAvg, 100)}%`, background: projCpuAvg > 85 ? RED : ORANGE, borderRadius: 4, position: "absolute", opacity: 0.5 }} />
+                    <div style={{ position: "absolute", left: "85%", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.5)" }} />
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, opacity: 0.4 }}>Memory Utilization</Text>
+                  <div style={{ height: 8, borderRadius: 4, background: "rgba(128,128,128,0.1)", overflow: "hidden", marginTop: 4, position: "relative" }}>
+                    <div style={{ height: "100%", width: `${Math.min(avgMem, 100)}%`, background: GREEN, borderRadius: 4, position: "absolute" }} />
+                    <div style={{ height: "100%", width: `${Math.min(projMemAvg, 100)}%`, background: projMemAvg > 85 ? RED : ORANGE, borderRadius: 4, position: "absolute", opacity: 0.5 }} />
+                    <div style={{ position: "absolute", left: "85%", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.5)" }} />
+                  </div>
+                </div>
+              </Flex>
+              <Text style={{ fontSize: 10, opacity: 0.3, marginTop: 6 }}>Green = current | Orange/Red overlay = projected at +{pctChange}% | White line = 85% threshold</Text>
+            </div>
+          </>
+        );
+      })()}
+
       <MultiplierSlider value={pctChange} onChange={setPctChange} />
       <Flex justifyContent="space-between" alignItems="center">
         <SectionHeader title="Projected Funnel" />
@@ -9082,7 +9190,7 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
 
       <div className="uj-table-tile" style={{ padding: 24 }}>
         <Text style={{ fontSize: 13, opacity: 0.5 }}>
-          Projections: logarithmic contention model. At 2x: ~35% latency increase, ~8% conversion degradation per doubling. Apdex degrades ~0.08 per doubling.{aov > 0 ? ` Revenue projections use AOV of ${fmtCurrency(aov)}. "Perf Tax" is the revenue lost due to conversion degradation under load.` : " Set Average Order Value in Settings to enable revenue projections."}
+          Projections: logarithmic contention model. At 2x: ~35% latency increase, ~8% conversion degradation per doubling. Apdex degrades ~0.08 per doubling.{latencyImprovement > 0 ? ` Latency improvement (−${latencyImprovement}%) reduces projected latency and partially offsets conversion degradation.` : ""}{aov > 0 ? ` Revenue projections use AOV of ${fmtCurrency(aov)}. "Perf Tax" is the revenue lost due to conversion degradation under load.` : " Set Average Order Value in Settings to enable revenue projections."} Infrastructure headroom uses linear CPU scaling and sub-linear memory scaling (0.3x growth rate) with an 85% saturation threshold.
         </Text>
       </div>
     </Flex>

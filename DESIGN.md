@@ -569,17 +569,19 @@ fetch user.events | filter frontend.name == "{frontend}" | filter {anyStepFilter
 
 ### 18. What-If Analysis
 
-**Purpose**: Simulated scenario modeling projecting impact of traffic increases, including revenue impact when AOV is configured.
+**Purpose**: Simulated scenario modeling projecting impact of traffic increases, including revenue impact when AOV is configured. Latency improvement simulation and infrastructure headroom assessment.
 
 **Key Features**:
 - Traffic percent-change slider (0% to +5000%) with sparse tick labels at key values
+- **Latency Improvement slider** (0% to −50%): Simulates the impact of performance optimizations (CDN, caching, code optimization). Reduces projected latency factor and partially offsets conversion degradation under load
 - Projected Apdex degradation
 - Projected latency increase
 - Projected conversion impact
 - Visual before/after comparison
 - Revenue Impact section (when AOV > 0): current vs. projected revenue, net revenue change, conversion degradation loss, ideal vs. actual revenue comparison, and "Perf Tax" rate showing revenue lost to performance under load
+- **Infrastructure Headroom**: Uses Dynatrace `dt.host.cpu.usage` and `dt.host.memory.usage` metrics to assess whether current infrastructure can sustain the simulated traffic increase. Shows current vs projected CPU/memory, max sustainable traffic increase before 85% saturation threshold, limiting factor (CPU or Memory), gauge bars with threshold markers, and SUFFICIENT/AT RISK/CRITICAL verdict
 
-**Queries**: Reuses `sessionFlowQuery` + `stepMetricsQuery` — applies traffic multiplier (`1 + pctChange/100`) client-side with logarithmic degradation model. Revenue calculations are client-side using AOV from global settings.
+**Queries**: Reuses `sessionFlowQuery` + `stepMetricsQuery` — applies traffic multiplier (`1 + pctChange/100`) client-side with logarithmic degradation model. Revenue calculations are client-side using AOV from global settings. Infrastructure uses `hostMetricsQuery` (timeseries `dt.host.cpu.usage` and `dt.host.memory.usage`).
 
 ---
 
@@ -1151,6 +1153,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-20 | 4.49.68 | **What-If Analysis — Infrastructure Headroom & Latency Improvement**: Added Latency Improvement slider (0-50%) simulating performance optimizations that reduce projected latency and partially offset conversion degradation. Added Infrastructure Headroom section using `dt.host.cpu.usage` and `dt.host.memory.usage` to assess whether hosts can sustain simulated traffic — shows projected CPU/memory, max sustainable increase before 85% threshold, gauge bars, and SUFFICIENT/AT RISK/CRITICAL verdict. |
 | 2026-05-20 | 4.49.67 | **Conversion Attribution — Multi-Touch Attribution Modeling**: Removed Marketing Channel Attribution (UTM). Added multi-touch attribution modeling with 6 models (First Touch, Last Touch, Linear, Position-Based, Time-Decay, Influence-Based). Step influence cards ranked by conditional conversion probability uplift. Attribution model comparison table with credit allocation per step. SVG influence visualization bar chart. Revenue credit per step when AOV configured. Drop-off cost estimation per step. Help, AI Insights, and DESIGN.md updated. |
 | 2026-05-20 | 4.49.62 | **Errors & Drop-offs — Predictive Drop-off Scoring**: Linear regression on hourly error rates per funnel step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues. Severity-colored cards (critical >5%, warning >2%) display current error rate, projected rate, and trend per hour. Uses `rootCauseStepDropQuery` data passed via `stepDropData` prop. Help, AI Insights, and DESIGN.md updated. |
 | 2026-05-20 | 4.49.60 | **Root Cause Correlation — Full-Stack Correlation**: Service topology filtered to only services called by the selected application via entity `calls[dt.entity.service]` relationships. BFS traversal up to 7 depth tiers. Clickable service nodes open Gen3 Dynatrace Services with matching timeframe. Names resolved for all tiers via lookup. Davis AI problems overlaid with red links. Impact banner. |
