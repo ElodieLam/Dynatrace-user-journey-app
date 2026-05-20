@@ -7424,6 +7424,141 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
         <div className="uj-table-tile" style={{ padding: 24 }}><Text>No navigation path data available</Text></div>
       ) : (
         <>
+          {/* Sankey-like Navigation Flow Diagram */}
+          <SectionHeader title="Navigation Flow Diagram" />
+          {(() => {
+            // Build layered graph for Sankey visualization
+            // Assign layers: first funnel step pages → layer 0, then BFS outward
+            const allPages = new Set<string>();
+            paths.forEach((p: any) => { allPages.add(String(p.step1 ?? "")); allPages.add(String(p.step2 ?? "")); });
+            allPages.delete("");
+
+            // Assign layers based on funnel step order
+            const pageLayer = new Map<string, number>();
+            steps.forEach((s, idx) => {
+              s.identifiers.forEach(id => {
+                for (const page of allPages) {
+                  if (identifierMatchesLabel(id, page) && !pageLayer.has(page)) pageLayer.set(page, idx);
+                }
+              });
+            });
+            // Pages not in funnel: assign based on avg position in transitions
+            for (const page of allPages) {
+              if (!pageLayer.has(page)) {
+                // Find what layers its sources/targets are in
+                const srcLayers: number[] = []; const tgtLayers: number[] = [];
+                paths.forEach((p: any) => {
+                  if (String(p.step2) === page && pageLayer.has(String(p.step1))) srcLayers.push(pageLayer.get(String(p.step1))!);
+                  if (String(p.step1) === page && pageLayer.has(String(p.step2))) tgtLayers.push(pageLayer.get(String(p.step2))!);
+                });
+                if (srcLayers.length > 0) pageLayer.set(page, Math.round(srcLayers.reduce((a, b) => a + b, 0) / srcLayers.length) + 1);
+                else if (tgtLayers.length > 0) pageLayer.set(page, Math.round(tgtLayers.reduce((a, b) => a + b, 0) / tgtLayers.length) - 1);
+                else pageLayer.set(page, Math.floor(steps.length / 2));
+              }
+            }
+            // Clamp layers to 0..maxLayer
+            const maxLayer = Math.max(steps.length - 1, 3);
+            for (const [p, l] of pageLayer) pageLayer.set(p, Math.max(0, Math.min(maxLayer, l)));
+
+            // Group pages by layer, sort by traffic volume
+            const layerPages = new Map<number, { name: string; volume: number }[]>();
+            for (const [page, layer] of pageLayer) {
+              const vol = paths.reduce((a: number, p: any) => a + (String(p.step1) === page || String(p.step2) === page ? Number(p.occurrences ?? 0) : 0), 0);
+              const arr = layerPages.get(layer) ?? [];
+              arr.push({ name: page, volume: vol });
+              layerPages.set(layer, arr);
+            }
+            for (const [, arr] of layerPages) arr.sort((a, b) => b.volume - a.volume);
+
+            // Limit to top N per layer for readability
+            const MAX_PER_LAYER = 6;
+            for (const [layer, arr] of layerPages) layerPages.set(layer, arr.slice(0, MAX_PER_LAYER));
+            const visiblePages = new Set<string>();
+            for (const [, arr] of layerPages) arr.forEach(p => visiblePages.add(p.name));
+
+            // Layout constants
+            const W = 900, H = 420, nodeW = 140, nodeH = 28, padX = 40, padY = 12;
+            const layers = Array.from(layerPages.keys()).sort((a, b) => a - b);
+            const numLayers = layers.length || 1;
+            const colWidth = (W - nodeW) / Math.max(numLayers - 1, 1);
+
+            // Compute node positions
+            const nodePos = new Map<string, { x: number; y: number; h: number; vol: number }>();
+            layers.forEach((layer, li) => {
+              const arr = layerPages.get(layer) ?? [];
+              const totalH = arr.length * nodeH + (arr.length - 1) * padY;
+              const startY = (H - totalH) / 2;
+              arr.forEach((p, pi) => {
+                nodePos.set(p.name, { x: padX + li * colWidth, y: startY + pi * (nodeH + padY), h: nodeH, vol: p.volume });
+              });
+            });
+
+            // Build links (only between visible nodes)
+            const links: { src: string; tgt: string; value: number }[] = [];
+            paths.forEach((p: any) => {
+              const s = String(p.step1 ?? ""); const t = String(p.step2 ?? ""); const v = Number(p.occurrences ?? 0);
+              if (visiblePages.has(s) && visiblePages.has(t) && s !== t) {
+                const sl = pageLayer.get(s) ?? 0; const tl = pageLayer.get(t) ?? 0;
+                if (tl > sl) links.push({ src: s, tgt: t, value: v }); // only forward links
+              }
+            });
+            const maxLinkVal = Math.max(...links.map(l => l.value), 1);
+
+            // Compute vertical offsets for link attachment points
+            const srcOffsets = new Map<string, number>();
+            const tgtOffsets = new Map<string, number>();
+            for (const p of visiblePages) { srcOffsets.set(p, 0); tgtOffsets.set(p, 0); }
+
+            // Color palette for links
+            const linkColors = [BLUE, CYAN, PURPLE, GREEN, ORANGE, YELLOW];
+
+            return (
+              <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
+                <svg width={W + 20} height={H} style={{ display: "block", margin: "0 auto" }}>
+                  {/* Links */}
+                  {links.sort((a, b) => b.value - a.value).slice(0, 40).map((link, i) => {
+                    const sp = nodePos.get(link.src); const tp = nodePos.get(link.tgt);
+                    if (!sp || !tp) return null;
+                    const thickness = Math.max(2, (link.value / maxLinkVal) * 18);
+                    const srcY = sp.y + sp.h / 2 + (srcOffsets.get(link.src) ?? 0);
+                    const tgtY = tp.y + tp.h / 2 + (tgtOffsets.get(link.tgt) ?? 0);
+                    srcOffsets.set(link.src, (srcOffsets.get(link.src) ?? 0) + thickness * 0.4);
+                    tgtOffsets.set(link.tgt, (tgtOffsets.get(link.tgt) ?? 0) + thickness * 0.4);
+                    const x1 = sp.x + nodeW; const x2 = tp.x;
+                    const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                    const color = linkColors[i % linkColors.length];
+                    return (
+                      <path key={i} d={`M${x1},${srcY} C${cx1},${srcY} ${cx2},${tgtY} ${x2},${tgtY}`}
+                        fill="none" stroke={color} strokeWidth={thickness} strokeOpacity={0.35}
+                      />
+                    );
+                  })}
+                  {/* Nodes */}
+                  {Array.from(nodePos.entries()).map(([name, pos]) => {
+                    const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
+                    const conv = convMap.get(name);
+                    const borderColor = isFunnel ? GREEN : BLUE;
+                    const shortName = name.length > 20 ? name.substring(0, 18) + "…" : name;
+                    return (
+                      <g key={name}>
+                        <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={4}
+                          fill="rgba(128,128,128,0.08)" stroke={borderColor} strokeWidth={isFunnel ? 2 : 1} strokeOpacity={0.7} />
+                        <text x={pos.x + 6} y={pos.y + 12} fontSize={10} fill={borderColor} fontWeight={600} style={{ dominantBaseline: "middle" } as any}>
+                          {shortName}
+                        </text>
+                        {conv !== undefined && conv < 100 && (
+                          <text x={pos.x + 6} y={pos.y + 23} fontSize={8} fill={conv > avgConv ? GREEN : YELLOW} opacity={0.8}>
+                            {fmtPct(conv)} conv prob
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            );
+          })()}
+
           {/* Flow visualization with conversion overlay */}
           <SectionHeader title="Top Navigation Flows" />
           <Flex flexDirection="column" gap={12}>
