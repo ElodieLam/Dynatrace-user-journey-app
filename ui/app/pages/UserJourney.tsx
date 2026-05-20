@@ -14565,6 +14565,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
           <Flex gap={4} alignItems="center"><span style={{ width: 10, height: 10, borderRadius: 2, background: GREEN, opacity: 0.5, display: "inline-block" }} /><Text style={{ fontSize: 11, opacity: 0.5 }}>Converted</Text></Flex>
           <Flex gap={4} alignItems="center"><span style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(128,128,128,0.3)", display: "inline-block" }} /><Text style={{ fontSize: 11, opacity: 0.5 }}>Non-converted</Text></Flex>
         </Flex>
+        <Text style={{ fontSize: 11, opacity: 0.5, marginTop: 10, lineHeight: "1.5" }}>Each bar represents a bucket of sessions grouped by their engagement score (0–100). The score is computed per session from: page interactions (30% weight), funnel depth reached (40% weight), and error penalty (−30%). Green fill = sessions that converted; outline-only = sessions that did not. Taller bars in the 70–100 range indicate highly-engaged users. The key insight: compare the green fill ratio across buckets — if high-score buckets have more green, engagement strongly predicts conversion.</Text>
       </div>
 
       {/* Conv rate by engagement tier */}
@@ -14592,9 +14593,9 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
         <>
           <SectionHeader title="High-Intent Non-Converters — Engaged users who didn't convert" />
           <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={highIntentNonConv.slice(0, 50).map(s => ({
-            "Session ID": s.sessionId.substring(0, 20), Score: Number(s.score.toFixed(1)), Actions: s.actions, "Max Depth": s.depth, Errors: s.errors,
+            "Session ID": s.sessionId.substring(0, 20), _fullSessionId: s.sessionId, Score: Number(s.score.toFixed(1)), Actions: s.actions, "Max Depth": s.depth, Errors: s.errors,
           }))} columns={[
-            { id: "Session ID", header: "Session", accessor: "Session ID" },
+            { id: "Session ID", header: "Session", accessor: "Session ID", cell: ({ value, row }: any) => { const fullId = row?.original?._fullSessionId ?? value; return <a href={sessionReplayUrl(fullId)} target="_blank" rel="noopener noreferrer" style={{ color: CYAN, fontSize: 12, textDecoration: "none", fontFamily: "monospace" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Users & Sessions">{value}</a>; } },
             { id: "Score", header: "Score", accessor: "Score", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: GREEN }}>{value}</Strong> },
             { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> },
             { id: "Max Depth", header: "Max Depth", accessor: "Max Depth", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{value}</Strong> },
@@ -14611,38 +14612,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
         </div>
       )}
 
-      {/* High-Intent Non-Converter Alerting */}
-      <SectionHeader title="High-Intent Non-Converter Alerts" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Sessions crossing the engagement threshold without converting — candidates for real-time retargeting via Dynatrace Workflows → CDP/CRM integration.</Text>
-      {(() => {
-        const records = (data?.data?.records ?? []) as any[];
-        const highIntent = records.filter((r: any) => {
-          const score = Number(r.engagement_score ?? r.score ?? 0);
-          const converted = Number(r.converted ?? r.is_converter ?? 0);
-          return score >= 70 && converted === 0;
-        }).slice(0, 10);
-        if (highIntent.length === 0) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>No high-intent non-converters detected in this timeframe. All highly-engaged users converted, or engagement threshold not met.</Text></div>;
-        return (
-          <Flex flexDirection="column" gap={8}>
-            <div className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${ORANGE}`, background: "rgba(184,134,11,0.05)" }}>
-              <Text style={{ fontSize: 13 }}>⚡ <Strong>{highIntent.length} high-intent sessions</Strong> crossed engagement threshold (score ≥70) without converting. Configure a Dynatrace Workflow with trigger: <code style={{ fontSize: 11, background: "rgba(128,128,128,0.15)", padding: "1px 4px", borderRadius: 3 }}>bizevents.engagement_score &gt;= 70 AND converted == false</code> to push these to your CDP for retargeting.</Text>
-            </div>
-            <div className="uj-table-tile"><DataTable sortable data={highIntent.map((r: any, i: number) => ({
-              "#": i + 1,
-              Session: String(r["dt.rum.session.id"] ?? r.session_id ?? "").substring(0, 12) + "...",
-              Score: Number(r.engagement_score ?? r.score ?? 0),
-              Actions: Number(r.actions ?? r.page_views ?? 0),
-              Duration: fmt(Number(r.session_duration ?? r.avg_dur ?? 0)),
-            }))} columns={[
-              { id: "#", header: "#", accessor: "#" },
-              { id: "Session", header: "Session", accessor: "Session", cell: ({ value }: any) => <Text style={{ fontSize: 11, fontFamily: "monospace" }}>{value}</Text> },
-              { id: "Score", header: "Engagement", accessor: "Score", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value >= 80 ? RED : ORANGE }}>{value}</Strong> },
-              { id: "Actions", header: "Pages", accessor: "Actions", sortType: "number" as any },
-              { id: "Duration", header: "Duration", accessor: "Duration" },
-            ]} /></div>
-          </Flex>
-        );
-      })()}
+
 
     </Flex>
   );
