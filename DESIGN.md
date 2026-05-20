@@ -587,10 +587,10 @@ fetch user.events | filter frontend.name == "{frontend}" | filter {anyStepFilter
 - Ranked signals with confidence scores
 - Step degradation ranking
 - Automated diagnosis text
-- **Full-Stack Correlation**: Backend service topology diagram (APPLICATION → Backend Services → Downstream Services) using Smartscape `traverse` via `calls` edge type
-- **Davis AI Backend Problems**: Table of Davis-detected problems on SERVICE/HOST/PROCESS entities with clickable links to the Davis Problems app
+- **Full-Stack Correlation**: Backend service topology filtered to only services called by the selected application via entity `calls[dt.entity.service]` relationships. BFS traversal up to 7 depth tiers. Clickable service nodes open Gen3 Dynatrace Services with matching timeframe.
+- **Davis AI Backend Problems**: Table of Davis-detected problems on SERVICE/HOST/PROCESS entities with red clickable links to the Davis Problems app
 - **Impact Banner**: When frontend degradation hours overlap with backend service problems, a red banner explicitly links the two — Dynatrace's unique advantage of connecting frontend UX to backend root cause
-- **Service Flow Topology SVG**: Layered left-to-right graph with curved Bézier edges, problem indicators (⚠️) on affected services, health status on clean services
+- **Service Flow Topology SVG**: Multi-layered left-to-right graph (up to 7 tiers) with curved Bézier edges, problem indicators (⚠️) on affected services, health status on clean services. Service nodes are clickable and open in Dynatrace Gen3 Services.
 
 **Queries**:
 
@@ -617,23 +617,25 @@ fetch user.events, from: now() - {timeframe}
 ```
 
 ```dql
--- backendServicesQuery (Smartscape topology)
-smartscapeNodes "APPLICATION"
-| filter contains(name, "{frontend}")
-| traverse edgeTypes: {"calls"}, targetTypes: {"SERVICE"}, direction: forward
-| fields service_id = id, service_name = name, service_type = type
-| limit 50
+-- backendServicesQuery (application's direct services via entity relationship)
+fetch dt.entity.application
+| filter entity.name == "{frontend}"
+| expand service_id = calls[dt.entity.service]
+| filter isNotNull(service_id)
+| lookup [fetch dt.entity.service | fields id, entity.name, entity.detected_name], sourceField:service_id, lookupField:id, prefix:"svc."
+| fields id = service_id, entity.name = svc.entity.name, entity.detected_name = svc.entity.detected_name
+| limit 30
 ```
 
 ```dql
--- serviceToServiceQuery (downstream dependencies)
-smartscapeNodes "APPLICATION"
-| filter contains(name, "{frontend}")
-| traverse edgeTypes: {"calls"}, targetTypes: {"SERVICE"}, direction: forward
-| traverse edgeTypes: {"calls"}, targetTypes: {"SERVICE"}, direction: forward, fieldsKeep: {name}
-| fieldsAdd caller_name = name
-| fields caller_name, callee_id = id, callee_name = dt.traverse.history[-1][`id`]
-| limit 100
+-- serviceToServiceQuery (downstream dependencies with name resolution)
+fetch dt.entity.service
+| fields id, entity.name, downstream = calls[dt.entity.service]
+| expand downstream_id = downstream
+| filter isNotNull(downstream_id)
+| lookup [fetch dt.entity.service | fields id, entity.name], sourceField:downstream_id, lookupField:id, prefix:"tgt."
+| fields source_id = id, source_name = entity.name, target_id = downstream_id, target_name = tgt.entity.name
+| limit 300
 ```
 
 ```dql
@@ -1144,7 +1146,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
-| 2026-05-19 | 4.49.49 | **Root Cause Correlation — Full-Stack Correlation**: Backend service topology (APPLICATION → Backend Services → Downstream Services) via Smartscape `calls` traversal with SVG flow diagram. Davis AI problems overlaid on service nodes. Impact banner links frontend degradation to backend root causes. Clickable problem links to Davis Problems app. 3 new DQL queries: `backendServicesQuery` (Smartscape), `serviceToServiceQuery` (downstream), `backendProblemsQuery` (Davis). |
+| 2026-05-20 | 4.49.60 | **Root Cause Correlation — Full-Stack Correlation**: Service topology filtered to only services called by the selected application via entity `calls[dt.entity.service]` relationships. BFS traversal up to 7 depth tiers. Clickable service nodes open Gen3 Dynatrace Services with matching timeframe. Names resolved for all tiers via lookup. Davis AI problems overlaid with red links. Impact banner. |
 | 2026-05-19 | 4.49.47 | **Navigation Flow Diagram & Click Issues Session Links**: Navigation Paths gains Sankey-like SVG flow diagram (BFS layer assignment, 220×52 nodes, curved links, horizontal scroll), graph-based conversion probability with drop-off-aware iterative relaxation, AI Path Optimization card. Click Issues gains Frustration Clusters by Page grouping and "View Sessions ↗" links to gen3 User Sessions (filtered by app+page+frustrated). Segmentation gains OS version table, AI Segment Discovery (always visible), ISO→country name translation. Sankey per-column limit raised to 12 with scroll. Davis problems now displays `event.name` (fixes Unknown Problem titles). |
 | 2026-05-18 | 4.49.12 | **Map — Configurable Time-Lapse Buckets & Drilldown**: Time-Lapse bucket size now configurable via dropdown (1 min, 5 min, 10 min, 30 min, 1 hour — default 1h). Clicking a country during Time-Lapse drills into User Sessions scoped to that country AND the exact time bucket displayed. **Metric-Aware AI Insights**: `analyzeMapByMetric` function provides dedicated analysis for each colorize-by metric (traffic distribution, latency hotspots, Apdex satisfaction, error concentration, CWV geographic gaps, revenue distribution, conversion geography). AI panel re-runs analysis when metric selection changes. **Timelapse Tooltips**: Tooltip content now reflects the selected colorize-by metric instead of always showing Apdex/Sessions/Duration/Errors. |
 | 2026-05-18 | 4.49.4 | **Map — Conversion Rate Colorize-By & Time-Lapse Animation**: Added Conversion Rate as 9th colorize-by option using two-pass session-level DQL query (`geoConversionQuery`). Added Time-Lapse animation mode that plays through hourly map snapshots showing performance/traffic shifts across time zones (Play/Pause, scrubber slider, hour label). Conv % column added to ranked table. Conv Rate legend added. **Geo Heatmap — AI Insights Enhanced**: `analyzeGeoHeatmap` now analyzes conversion data (high/low/zero-converting regions with recommendations) and ISP network data (slow ISPs with peering recommendations). Help panel and AI Assist tab descriptions updated. |
