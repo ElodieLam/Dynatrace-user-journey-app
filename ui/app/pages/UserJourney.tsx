@@ -14132,6 +14132,7 @@ function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setD
           </Flex>
         );
       })()}
+      <Text style={{ fontSize: 11, opacity: 0.45, marginTop: 8 }}>pp = percentage points — the absolute difference between two rates (e.g. 5% vs 4.2% = 0.8pp). Unlike relative %, pp is independent of baseline.</Text>
 
     </Flex>
   );
@@ -14867,13 +14868,13 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
         return (
           <Flex flexDirection="column" gap={8}>
             {recs.sort((a, b) => b.avgDur - a.avgDur).slice(0, 8).map((r, i) => (
-              <div key={i} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW}` }}>
+              <div key={i} className="uj-table-tile" style={{ padding: "12px 16px 12px 12px", borderLeft: `3px solid ${r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW}`, overflow: "visible" }}>
                 <Flex justifyContent="space-between" alignItems="flex-start">
                   <div>
                     <Strong style={{ fontSize: 12 }}>{r.domain}</Strong> <Text style={{ fontSize: 11, opacity: 0.5 }}>({fmt(r.avgDur)} avg)</Text>
                     <Text style={{ display: "block", fontSize: 12, marginTop: 4 }}>💡 {r.rec}</Text>
                   </div>
-                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: r.impact === "critical" ? `${RED}15` : r.impact === "high" ? `${ORANGE}15` : `${YELLOW}15`, color: r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW, fontWeight: 700, whiteSpace: "nowrap" }}>{r.impact.toUpperCase()}</span>
+                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: r.impact === "critical" ? `${RED}15` : r.impact === "high" ? `${ORANGE}15` : `${YELLOW}15`, color: r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, marginLeft: 8 }}>{r.impact.toUpperCase()}</span>
                 </Flex>
               </div>
             ))}
