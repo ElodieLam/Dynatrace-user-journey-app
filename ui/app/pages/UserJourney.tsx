@@ -11804,7 +11804,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
         for (const sid of appDirectServiceIds) { depthMap.set(sid, 1); queue.push({ id: sid, depth: 1 }); }
         while (queue.length > 0) {
           const { id, depth } = queue.shift()!;
-          if (depth >= 5) continue; // max depth limit
+          if (depth >= 7) continue; // max depth limit
           const targets = adjOut.get(id);
           if (!targets) continue;
           for (const tgt of targets) {
@@ -11836,9 +11836,9 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
 
         // Determine max depth and limit per layer for readability
         const maxDepth = Math.max(...Array.from(nodeMap.values()).map(n => n.layer), 1);
-        const layerLimits = [1, 8, 8, 6, 5, 4]; // max nodes per layer 0-5
+        const layerLimits = [1, 8, 8, 6, 5, 4, 4, 4]; // max nodes per layer 0-7
         const layerNodes: TopoNode[][] = [];
-        for (let d = 0; d <= maxDepth && d <= 5; d++) {
+        for (let d = 0; d <= maxDepth && d <= 7; d++) {
           const nodesAtDepth = Array.from(nodeMap.values()).filter(n => n.layer === d);
           const limit = layerLimits[d] ?? 4;
           layerNodes.push(nodesAtDepth.slice(0, limit));
@@ -11944,7 +11944,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
                   const fillColor = node.layer === 0 ? "rgba(69,137,255,0.15)" : hasProblem ? "rgba(194,25,48,0.12)" : "rgba(128,128,128,0.08)";
                   const borderColor = node.layer === 0 ? BLUE : hasProblem ? RED : "rgba(128,128,128,0.3)";
                   const iconLabel = node.layer === 0 ? "🌐" : hasProblem ? "⚠️" : "⚙️";
-                  const serviceUrl = node.id !== "APP" ? `${ENV_URL}/ui/apps/dynatrace.services/explorer/services?perspective=performance&sort=entity%3Aascending&detailsId=${encodeURIComponent(node.id)}&sidebarOpen=false#filtering=dt.entity.service.name+%3D+${encodeURIComponent(node.name)}+` : "";
+                  const serviceUrl = node.id !== "APP" ? `${ENV_URL}/ui/apps/dynatrace.services/explorer/services?perspective=performance&sort=entity%3Aascending&detailsId=${encodeURIComponent(node.id)}&sidebarOpen=false&tf=${tfParam()}#filtering=dt.entity.service.name+%3D+${encodeURIComponent(node.name)}+` : "";
                   const nodeContent = (
                     <g key={node.id} style={{ cursor: node.id !== "APP" ? "pointer" : "default" }}>
                       <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6} fill={fillColor} stroke={borderColor} strokeWidth={1.5} />
