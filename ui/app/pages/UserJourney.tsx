@@ -8726,7 +8726,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
   }
 
   // Linear regression on error rate per step
-  type Prediction = { step: string; currentErrRate: number; projectedErrRate: number; errRateSlope: number; projectedDropOffIncrease: number; severity: "critical" | "warning" | "stable" };
+  type Prediction = { step: string; currentErrRate: number; projectedErrRate: number; errRateSlope: number; projectedDropOffIncrease: number; severity: "critical" | "warning" | "stable"; revenueAtRisk: number };
   const predictions: Prediction[] = [];
   for (const d of dropOffs) {
     const hourly = stepHourlyMap.get(d.to) ?? stepHourlyMap.get(d.from) ?? [];
@@ -8748,6 +8748,11 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
     const errRateIncrease = projectedErrRate - currentErrRate;
     // Estimate drop-off increase: each 1% error rate increase → ~0.8% additional drop-off (empirical)
     const projectedDropOffIncrease = errRateIncrease * 0.8;
+    // Financial impact: additional sessions lost × downstream conversion rate × AOV
+    const sessionsAtStep = funnelCounts[d.stepIdx] ?? 0;
+    const additionalLost = sessionsAtStep * (projectedDropOffIncrease / 100);
+    const downstreamConvRate = sessionsAtStep > 0 ? ((funnelCounts[lastIdx] ?? 0) / sessionsAtStep) : 0;
+    const revenueAtRisk = aov > 0 ? additionalLost * downstreamConvRate * aov : 0;
     if (slope > 0.1 && projectedDropOffIncrease > 0.5) {
       predictions.push({
         step: d.to,
@@ -8756,6 +8761,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
         errRateSlope: slope,
         projectedDropOffIncrease,
         severity: projectedDropOffIncrease > 5 ? "critical" : projectedDropOffIncrease > 2 ? "warning" : "stable",
+        revenueAtRisk,
       });
     }
   }
@@ -8802,10 +8808,11 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
                 <Paragraph style={{ fontSize: 12, marginTop: 8 }}>
                   If the current error rate continues, projected drop-off at <Strong>{p.step}</Strong> will increase by <Strong style={{ color: p.severity === "critical" ? RED : ORANGE }}>+{fmtPct(p.projectedDropOffIncrease)}</Strong> within 2 hours.
                 </Paragraph>
-                <Flex gap={16} style={{ marginTop: 8 }}>
+                <Flex gap={16} style={{ marginTop: 8 }} flexWrap="wrap">
                   <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Current Error Rate</Text><Text style={{ fontSize: 13, fontWeight: 600 }}>{fmtPct(p.currentErrRate)}</Text></div>
                   <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Projected (2h)</Text><Text style={{ fontSize: 13, fontWeight: 600, color: RED }}>{fmtPct(p.projectedErrRate)}</Text></div>
                   <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Trend</Text><Text style={{ fontSize: 13, fontWeight: 600, color: RED }}>+{p.errRateSlope.toFixed(2)}%/hr</Text></div>
+                  {p.revenueAtRisk > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Est. Revenue Impact</Text><Text style={{ fontSize: 13, fontWeight: 700, color: RED }}>−{fmtCurrency(p.revenueAtRisk)}</Text></div>}
                 </Flex>
               </div>
             ))}
