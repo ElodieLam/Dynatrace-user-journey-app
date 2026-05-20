@@ -8984,11 +8984,11 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
       <MultiplierSlider value={pctChange} onChange={setPctChange} />
 
       {/* Latency Improvement Slider */}
-      <div className="uj-table-tile" style={{ padding: "14px 20px", overflow: "visible" }}>
+      <div className="uj-table-tile" style={{ padding: "14px 28px 14px 20px", overflow: "visible" }}>
         <Flex alignItems="center" gap={16} style={{ overflow: "visible" }}>
           <Text style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Latency Improvement</Text>
           <input type="range" min={0} max={50} step={5} value={latencyImprovement} onChange={(e) => setLatencyImprovement(Number(e.target.value))} style={{ flex: 1, accentColor: CYAN, minWidth: 100 }} />
-          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", whiteSpace: "nowrap", flexShrink: 0, minWidth: 80 }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
+          <Strong style={{ color: latencyImprovement > 0 ? CYAN : "inherit", whiteSpace: "nowrap", flexShrink: 0, paddingRight: 4 }}>{latencyImprovement > 0 ? `−${latencyImprovement}% P90` : "None"}</Strong>
         </Flex>
         <Text style={{ fontSize: 11, opacity: 0.4, marginTop: 4 }}>Simulate the impact of latency optimization (e.g. CDN, caching, code optimization). Reduces projected latency and partially offsets conversion degradation.</Text>
       </div>
