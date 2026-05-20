@@ -11965,8 +11965,9 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
                   const fillColor = node.layer === 0 ? "rgba(69,137,255,0.15)" : hasProblem ? "rgba(194,25,48,0.12)" : "rgba(128,128,128,0.08)";
                   const borderColor = node.layer === 0 ? BLUE : hasProblem ? RED : "rgba(128,128,128,0.3)";
                   const iconLabel = node.layer === 0 ? "🌐" : hasProblem ? "⚠️" : "⚙️";
-                  return (
-                    <g key={node.id}>
+                  const serviceUrl = node.id !== "APP" ? `${ENV_URL}/ui/apps/dynatrace.classic.services/#serviceOverview;id=${encodeURIComponent(node.id)}` : "";
+                  const nodeContent = (
+                    <g key={node.id} style={{ cursor: node.id !== "APP" ? "pointer" : "default" }}>
                       <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6} fill={fillColor} stroke={borderColor} strokeWidth={1.5} />
                       <text x={pos.x + 10} y={pos.y + 20} fontSize={11} fill="currentColor" style={{ dominantBaseline: "middle" }}>{iconLabel} {node.name.length > 18 ? node.name.slice(0, 17) + "…" : node.name}</text>
                       {hasProblem && (
@@ -11977,6 +11978,9 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
                       )}
                     </g>
                   );
+                  return node.id !== "APP" ? (
+                    <a key={node.id} href={serviceUrl} target="_blank" rel="noopener noreferrer">{nodeContent}</a>
+                  ) : nodeContent;
                 })}
                 {/* Layer labels */}
                 {layers.map((layer, li) => layer.length > 0 && (
