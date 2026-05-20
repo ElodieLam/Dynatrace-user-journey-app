@@ -1379,8 +1379,9 @@ function serviceToServiceQuery(days: number, frontend: string): string {
 | fields id, entity.name, downstream = calls[dt.entity.service]
 | expand downstream_id = downstream
 | filter isNotNull(downstream_id)
-| fields source_id = id, target_id = downstream_id
-| limit 200`;
+| lookup [fetch dt.entity.service | fields id, entity.name], sourceField:downstream_id, lookupField:id, prefix:"tgt."
+| fields source_id = id, source_name = entity.name, target_id = downstream_id, target_name = tgt.entity.name
+| limit 300`;
 }
 
 // NEW: Davis problems on backend services
@@ -11768,45 +11769,42 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
         const nodeMap = new Map<string, TopoNode>();
         const edges: TopoEdge[] = [];
 
-        // Build service ID → name map
+        // Build service ID → name map from both queries
         const svcNameMap = new Map<string, string>();
         for (const svc of services) {
           const sid = String(svc.id ?? "");
-          const sname = String(svc["entity.name"] ?? svc.entity_name ?? svc["entity.detected_name"] ?? sid);
-          if (sid) svcNameMap.set(sid, sname);
+          const sname = String(svc["entity.name"] ?? svc.entity_name ?? svc["entity.detected_name"] ?? "");
+          if (sid && sname) svcNameMap.set(sid, sname);
+        }
+        for (const r of s2sRecords) {
+          const src = String(r.source_id ?? "");
+          const srcName = String(r.source_name ?? "");
+          const tgt = String(r.target_id ?? "");
+          const tgtName = String(r.target_name ?? "");
+          if (src && srcName && !svcNameMap.has(src)) svcNameMap.set(src, srcName);
+          if (tgt && tgtName && !svcNameMap.has(tgt)) svcNameMap.set(tgt, tgtName);
         }
 
-        // Build adjacency from smartscapeEdges (directed: source calls target)
+        // Build adjacency (directed: source calls target)
         const adjOut = new Map<string, Set<string>>(); // source → targets
-        const adjIn = new Map<string, Set<string>>();  // target → sources
         for (const r of s2sRecords) {
           const src = String(r.source_id ?? "");
           const tgt = String(r.target_id ?? "");
           if (!src || !tgt || src === tgt) continue;
           if (!adjOut.has(src)) adjOut.set(src, new Set());
           adjOut.get(src)!.add(tgt);
-          if (!adjIn.has(tgt)) adjIn.set(tgt, new Set());
-          adjIn.get(tgt)!.add(src);
         }
 
-        // Identify root services: services that call others but are NOT called by anyone (entry points)
-        const allServiceIds = new Set([...adjOut.keys(), ...adjIn.keys()]);
-        const rootIds: string[] = [];
-        for (const sid of allServiceIds) {
-          if (!adjIn.has(sid) || adjIn.get(sid)!.size === 0) rootIds.push(sid);
-        }
-        // If no clear roots, pick top callers (most outgoing calls)
-        if (rootIds.length === 0) {
-          const sorted = [...adjOut.entries()].sort((a, b) => b[1].size - a[1].size);
-          for (const [sid] of sorted.slice(0, 3)) rootIds.push(sid);
-        }
+        // BFS roots = the app's DIRECT services (from backendServicesQuery)
+        const appDirectServiceIds = services.map((s: any) => String(s.id ?? "")).filter(Boolean);
 
-        // BFS from roots to assign depth layers (layer 1, 2, 3, ...)
+        // BFS from app's direct services to build depth (layer 1, 2, 3, ...)
         const depthMap = new Map<string, number>();
         const queue: { id: string; depth: number }[] = [];
-        for (const rid of rootIds) { depthMap.set(rid, 1); queue.push({ id: rid, depth: 1 }); }
+        for (const sid of appDirectServiceIds) { depthMap.set(sid, 1); queue.push({ id: sid, depth: 1 }); }
         while (queue.length > 0) {
           const { id, depth } = queue.shift()!;
+          if (depth >= 5) continue; // max depth limit
           const targets = adjOut.get(id);
           if (!targets) continue;
           for (const tgt of targets) {
@@ -11817,45 +11815,22 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
           }
         }
 
-        // Services with no edges or not reached by BFS → layer 1
-        for (const svc of services) {
-          const sid = String(svc.id ?? "");
-          if (sid && !depthMap.has(sid)) depthMap.set(sid, 1);
-        }
-
         // Layer 0: Application (frontend)
         const appNode: TopoNode = { id: "APP", name: frontend ?? "Application", layer: 0, problems: [] };
         nodeMap.set("APP", appNode);
 
-        // Add all services with their BFS-determined depth
-        for (const svc of services) {
-          const sid = String(svc.id ?? "");
-          const sname = svcNameMap.get(sid) ?? sid;
-          if (!sid) continue;
-          const layer = depthMap.get(sid) ?? 1;
-          nodeMap.set(sid, { id: sid, name: sname, layer, problems: [] });
-        }
-        // Also add any services from edges not in entity list
-        for (const sid of allServiceIds) {
-          if (!nodeMap.has(sid)) {
-            const nm = svcNameMap.get(sid) ?? sid.replace(/.*-/, "").slice(0, 12);
-            const layer = depthMap.get(sid) ?? 1;
-            nodeMap.set(sid, { id: sid, name: nm, layer, problems: [] });
-          }
+        // Only add services REACHABLE from the app's direct services
+        for (const [sid, depth] of depthMap) {
+          const sname = svcNameMap.get(sid) ?? sid.replace(/.*-/, "").slice(0, 16);
+          nodeMap.set(sid, { id: sid, name: sname, layer: depth, problems: [] });
         }
 
-        // Build edges: APP → root services, then service → service per adjacency
-        for (const rid of rootIds) { if (nodeMap.has(rid)) edges.push({ from: "APP", to: rid }); }
-        // Also connect APP to any layer-1 services that aren't roots but have no inbound edge
-        for (const [nid, node] of nodeMap) {
-          if (node.layer === 1 && nid !== "APP" && !rootIds.includes(nid)) {
-            edges.push({ from: "APP", to: nid });
-          }
-        }
-        // Service-to-service edges from adjacency
+        // Build edges: APP → direct services, then service → service (only reachable)
+        for (const sid of appDirectServiceIds) { if (nodeMap.has(sid)) edges.push({ from: "APP", to: sid }); }
         for (const [src, targets] of adjOut) {
+          if (!depthMap.has(src)) continue; // skip edges from services not reachable from app
           for (const tgt of targets) {
-            if (nodeMap.has(src) && nodeMap.has(tgt)) edges.push({ from: src, to: tgt });
+            if (depthMap.has(tgt)) edges.push({ from: src, to: tgt });
           }
         }
 
