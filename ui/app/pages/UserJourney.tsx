@@ -1100,13 +1100,13 @@ function forecastVitalsTrendQuery(days: number, frontend: string): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
-| filter characteristics.has_page_summary == true
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
     inp_ms = toDouble(web_vitals.interaction_to_next_paint) / 1000000.0,
     ttfb_ms = toDouble(web_vitals.time_to_first_byte) / 1000000.0,
     load_ms = toDouble(performance.load_event_end) / 1000000.0
+| filter isNotNull(lcp_ms) or isNotNull(cls_val) or isNotNull(inp_ms) or isNotNull(ttfb_ms) or isNotNull(load_ms)
 | fieldsAdd bucket_key = formatTimestamp(start_time, format: "yyyy-MM-dd")
 | summarize
     lcp_val = avg(lcp_ms),
