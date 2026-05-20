@@ -13790,9 +13790,9 @@ function SessionReplaySpotlightTab({ data, isLoading }: { data: any; isLoading: 
             const sessionStart = s.start_time ? encodeURIComponent(String(new Date(s.start_time))) : '';
             const replayUrl = `${ENV_URL}/ui/apps/dynatrace.users.sessions/session-viewer/${s.session_id}/${sessionStart}?tf=now-2h%3Bnow&df=1&perspective=general&sort=hasReplay%3Adescending`;
             return (
-              <div key={s.session_id} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${impactColor(score)}` }}>
-                <Flex justifyContent="space-between" alignItems="center">
-                  <Flex alignItems="center" gap={12}>
+              <div key={s.session_id} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${impactColor(score)}`, overflow: "visible" }}>
+                <Flex justifyContent="space-between" alignItems="center" style={{ paddingRight: 4 }}>
+                  <Flex alignItems="center" gap={12} style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ fontSize: 18, fontWeight: 700, color: impactColor(score), minWidth: 28, textAlign: "center" }}>#{i + 1}</span>
                     <div>
                       <Flex gap={8} alignItems="center">
@@ -13801,9 +13801,9 @@ function SessionReplaySpotlightTab({ data, isLoading }: { data: any; isLoading: 
                         {s.is_bounce && <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${ORANGE}20`, color: ORANGE, fontWeight: 700 }}>BOUNCE</span>}
                       </Flex>
                       <Text style={{ fontSize: 13, opacity: 0.6 }}>
-                        {Number(s.dur_s ?? 0).toFixed(1)}s \u00b7 {s.err} error{Number(s.err) !== 1 ? "s" : ""} \u00b7 {s.navs} nav{Number(s.navs) !== 1 ? "s" : ""} \u00b7 {s.interactions} interaction{Number(s.interactions) !== 1 ? "s" : ""}
+                        {`${Number(s.dur_s ?? 0).toFixed(1)}s \u00b7 ${s.err} error${Number(s.err) !== 1 ? "s" : ""} \u00b7 ${s.navs} nav${Number(s.navs) !== 1 ? "s" : ""} \u00b7 ${s.interactions} interaction${Number(s.interactions) !== 1 ? "s" : ""}`}
                       </Text>
-                      <Text style={{ fontSize: 12, opacity: 0.4 }}>{s.device} \u00b7 {s.browser_name} \u00b7 {s.country}{s.user_tag ? ` \u00b7 ${s.user_tag}` : ""}</Text>
+                      <Text style={{ fontSize: 12, opacity: 0.4 }}>{`${s.device} \u00b7 ${s.browser_name} \u00b7 ${s.country}${s.user_tag ? ` \u00b7 ${s.user_tag}` : ""}`}</Text>
                     </div>
                   </Flex>
                   <Link href={replayUrl} target="_blank" rel="noopener noreferrer">
@@ -13861,21 +13861,23 @@ function SessionReplaySpotlightTab({ data, isLoading }: { data: any; isLoading: 
           <div className="uj-table-tile">
             <DataTable sortable resizable fullWidth data={sessions.map((s: any) => ({
               Impact: Number(s.impact_score ?? 0), Duration: Number(s.dur_s ?? 0), Errors: Number(s.err ?? 0),
-              Navigations: Number(s.navs ?? 0), Interactions: Number(s.interactions ?? 0),
+              Navs: Number(s.navs ?? 0), Actions: Number(s.interactions ?? s.actions ?? 0),
               Device: s.device, Browser: s.browser_name, Country: s.country,
               Crash: s.has_crash ? "Yes" : "No", Bounce: s.is_bounce ? "Yes" : "No", User: s.user_tag || "\u2014",
+              _sessionId: s.session_id, _startTime: s.start_time,
             }))} columns={[
               { id: "Impact", header: "Impact", accessor: "Impact", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: impactColor(value) }}>{value}</Strong> },
               { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Text>{value.toFixed(1)}s</Text> },
               { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? RED : GREEN }}>{value}</Text> },
-              { id: "Navigations", header: "Navs", accessor: "Navigations", sortType: "number" as any },
-              { id: "Interactions", header: "Actions", accessor: "Interactions", sortType: "number" as any },
+              { id: "Navs", header: "Navs", accessor: "Navs", sortType: "number" as any },
+              { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any },
               { id: "Device", header: "Device", accessor: "Device" },
               { id: "Browser", header: "Browser", accessor: "Browser" },
               { id: "Country", header: "Country", accessor: "Country" },
               { id: "Crash", header: "Crash", accessor: "Crash", cell: ({ value }: any) => <Text style={{ color: value === "Yes" ? RED : GREEN }}>{value}</Text> },
               { id: "Bounce", header: "Bounce", accessor: "Bounce", cell: ({ value }: any) => <Text style={{ color: value === "Yes" ? ORANGE : GREEN }}>{value}</Text> },
               { id: "User", header: "User", accessor: "User" },
+              { id: "Replay", header: "Replay", accessor: "_sessionId", cell: ({ value, rowData }: any) => { const st = rowData?._startTime ? encodeURIComponent(String(new Date(rowData._startTime))) : ''; return <a href={`${ENV_URL}/ui/apps/dynatrace.users.sessions/session-viewer/${value}/${st}?tf=now-2h%3Bnow&df=1&perspective=general`} target="_blank" rel="noopener noreferrer" style={{ color: CYAN, fontSize: 12, textDecoration: "none" }}>{"\u25B6"} Replay</a>; } },
             ]} />
           </div>
         </>
@@ -14868,13 +14870,13 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
         return (
           <Flex flexDirection="column" gap={8}>
             {recs.sort((a, b) => b.avgDur - a.avgDur).slice(0, 8).map((r, i) => (
-              <div key={i} className="uj-table-tile" style={{ padding: "12px 16px 12px 12px", borderLeft: `3px solid ${r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW}`, overflow: "visible" }}>
-                <Flex justifyContent="space-between" alignItems="flex-start" style={{ paddingRight: 4 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
+              <div key={i} className="uj-table-tile" style={{ padding: "12px 24px 12px 12px", borderLeft: `3px solid ${r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW}` }}>
+                <Flex justifyContent="space-between" alignItems="flex-start">
+                  <div style={{ minWidth: 0, flex: 1, marginRight: 16 }}>
                     <Strong style={{ fontSize: 12 }}>{r.domain}</Strong> <Text style={{ fontSize: 11, opacity: 0.5 }}>({fmt(r.avgDur)} avg)</Text>
                     <Text style={{ display: "block", fontSize: 12, marginTop: 4 }}>💡 {r.rec}</Text>
                   </div>
-                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: r.impact === "critical" ? `${RED}15` : r.impact === "high" ? `${ORANGE}15` : `${YELLOW}15`, color: r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, marginLeft: 12 }}>{r.impact.toUpperCase()}</span>
+                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: r.impact === "critical" ? `${RED}15` : r.impact === "high" ? `${ORANGE}15` : `${YELLOW}15`, color: r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>{r.impact.toUpperCase()}</span>
                 </Flex>
               </div>
             ))}
