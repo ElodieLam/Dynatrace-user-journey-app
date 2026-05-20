@@ -1364,9 +1364,13 @@ function davisProblemsQuery(days: number, frontend: string): string {
 
 // NEW: Backend Services for Root Cause Tab — service topology from the APPLICATION entity
 function backendServicesQuery(days: number, frontend: string): string {
-  return `fetch dt.entity.service
-| fields id, entity.name, entity.detected_name, downstream = calls[dt.entity.service]
-| limit 50`;
+  return `fetch dt.entity.application
+| filter entity.name == "${frontend}"
+| expand service_id = calls[dt.entity.service]
+| filter isNotNull(service_id)
+| lookup [fetch dt.entity.service | fields id, entity.name, entity.detected_name], sourceField:service_id, lookupField:id, prefix:"svc."
+| fields id = service_id, entity.name = svc.entity.name, entity.detected_name = svc.entity.detected_name
+| limit 30`;
 }
 
 // NEW: Service-to-Service calls (downstream topology via entity relationships)
@@ -11969,7 +11973,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
                   const nodeContent = (
                     <g key={node.id} style={{ cursor: node.id !== "APP" ? "pointer" : "default" }}>
                       <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6} fill={fillColor} stroke={borderColor} strokeWidth={1.5} />
-                      <text x={pos.x + 10} y={pos.y + 20} fontSize={11} fill="currentColor" style={{ dominantBaseline: "middle" }}>{iconLabel} {node.name.length > 18 ? node.name.slice(0, 17) + "…" : node.name}</text>
+                      <text x={pos.x + 10} y={pos.y + 20} fontSize={11} fill="rgba(255,255,255,0.9)" style={{ dominantBaseline: "middle" }}>{iconLabel} {node.name.length > 18 ? node.name.slice(0, 17) + "…" : node.name}</text>
                       {hasProblem && (
                         <text x={pos.x + 10} y={pos.y + 36} fontSize={10} fill={RED}>{node.problems.length} problem{node.problems.length > 1 ? "s" : ""}</text>
                       )}
@@ -12013,7 +12017,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
                       "Display ID": String(p.display_id ?? ""),
                     }))}
                     columns={[
-                      { id: "Problem", header: "Problem", accessor: "Problem", cell: ({ value }: any) => { const href = problemLinks.get(value) ?? "#"; return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value}</a>; } },
+                      { id: "Problem", header: "Problem", accessor: "Problem", cell: ({ value }: any) => { const href = problemLinks.get(value) ?? "#"; return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: RED, textDecoration: "none", fontWeight: 600 }}>{value}</a>; } },
                       { id: "Status", header: "Status", accessor: "Status", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: value === "OPEN" ? "rgba(194,25,48,0.12)" : "rgba(36,178,96,0.12)", color: value === "OPEN" ? RED : GREEN, fontWeight: 700 }}>{value}</span> },
                       { id: "Category", header: "Category", accessor: "Category" },
                       { id: "Start", header: "Started", accessor: "Start" },
