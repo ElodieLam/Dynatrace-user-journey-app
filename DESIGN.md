@@ -208,6 +208,10 @@ fetch user.events, from: now() - {timeframe}, samplingRatio: 1
 - Dead click detection (clicks with no response)
 - Occurrences, affected sessions, target elements, pages
 - UX frustration indicators
+- **Frustration Clusters by Page**: Groups all rage/dead click elements per page with aggregated counts, severity, and session impact
+- **Session Replay Links**: "View Sessions ↗" button per cluster opens User Sessions (gen3) filtered by app (`frontend`), page name, and frustrated user experience. Uses `buildSessionsLink()` helper.
+- **Replay column**: When replay data is available, shows per-session clickable links via `buildSessionIdLink()` for instant replay navigation
+- **Cluster Map**: Built from `replayData` (second DQL query) — maps page+element combinations to session IDs for linking
 
 **Queries**:
 
@@ -307,6 +311,9 @@ fetch user.events, from: now() - {timeframe}
 - Funnel-aligned path tagging
 - Transition counts and average session depth
 - Direct links to Vitals app per page
+- **Navigation Flow Diagram**: Sankey-like SVG visualization — pages arranged in columns by funnel step (BFS-based layer assignment, no MAX_PER_LAYER limit), curved links whose thickness represents traffic volume. Nodes are 220×52px with page name, transition count, and conversion probability. Horizontally scrollable when paths exceed viewport width.
+- **Conversion Probability**: Graph-based iterative relaxation with drop-off rates — computes probability per page factoring in incoming vs outgoing traffic ratios. Avoids closed-graph 100% convergence by modeling session exits. Shown as "Conv Prob %" column in All Transitions table and a dedicated "Conversion Probability by Page" ranked table.
+- **AI Path Optimization**: Card at the top automatically identifies which page sequences correlate with higher conversion probability and surfaces actionable recommendations.
 
 **Queries**:
 
@@ -344,6 +351,8 @@ fetch user.events, from: now() - {timeframe}
 **Key Features**:
 - 7 rendering styles: Classic Sankey, Gradient Sankey, Directed Flow Graph, Alluvial/Columnar, State Machine, Chord Diagram, Transition Heatmap
 - 8 analytical sub-tabs including funnel leakage analysis
+- **Per-column node limit**: 12 nodes per column (increased from previous limit), with vertical scroll when content exceeds viewport
+- **Dynamic height**: SVG height adjusts to content; overflow-y scroll for tall diagrams
 - **Chord Diagram**: Circular arc layout with clickable arcs for path highlighting, focus mode support, center label with inbound/outbound detail
 - **Transition Heatmap**: NxN grid with clickable row/column highlighting, selection summary with totals, 52px cells
 - **Funnel highlighting**: Funnel pages rendered in gold with ★ markers and dashed borders across all chart styles
@@ -512,13 +521,15 @@ fetch user.events, from: now() - {timeframe}
 
 ### 16. Segmentation
 
-**Purpose**: User segment analysis by device, browser, and geography.
+**Purpose**: User segment analysis by device, browser, geography, and OS version.
 
 **Key Features**:
 - Device type breakdown (Desktop, Mobile, Tablet)
 - Browser breakdown with Apdex per browser
-- Geographic segment performance
-- **Estimated Revenue** column in all three tables: `sessions × convRate × AOV` showing revenue contribution per segment (visible when AOV > 0)
+- Geographic segment performance with full country names (ISO code → name translation via `isoToCountryName()`)
+- **OS Version breakdown**: Table showing operating system versions with session count, Apdex, and duration
+- **AI Segment Discovery**: Always-visible insight card that automatically identifies the cohort with the worst Apdex or lowest conversion rate — surfaces which user segment needs attention without manual filtering
+- **Estimated Revenue** column in all tables: `sessions × convRate × AOV` showing revenue contribution per segment (visible when AOV > 0)
 
 **Queries**:
 
@@ -1099,6 +1110,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-19 | 4.49.47 | **Navigation Flow Diagram & Click Issues Session Links**: Navigation Paths gains Sankey-like SVG flow diagram (BFS layer assignment, 220×52 nodes, curved links, horizontal scroll), graph-based conversion probability with drop-off-aware iterative relaxation, AI Path Optimization card. Click Issues gains Frustration Clusters by Page grouping and "View Sessions ↗" links to gen3 User Sessions (filtered by app+page+frustrated). Segmentation gains OS version table, AI Segment Discovery (always visible), ISO→country name translation. Sankey per-column limit raised to 12 with scroll. Davis problems now displays `event.name` (fixes Unknown Problem titles). |
 | 2026-05-18 | 4.49.12 | **Map — Configurable Time-Lapse Buckets & Drilldown**: Time-Lapse bucket size now configurable via dropdown (1 min, 5 min, 10 min, 30 min, 1 hour — default 1h). Clicking a country during Time-Lapse drills into User Sessions scoped to that country AND the exact time bucket displayed. **Metric-Aware AI Insights**: `analyzeMapByMetric` function provides dedicated analysis for each colorize-by metric (traffic distribution, latency hotspots, Apdex satisfaction, error concentration, CWV geographic gaps, revenue distribution, conversion geography). AI panel re-runs analysis when metric selection changes. **Timelapse Tooltips**: Tooltip content now reflects the selected colorize-by metric instead of always showing Apdex/Sessions/Duration/Errors. |
 | 2026-05-18 | 4.49.4 | **Map — Conversion Rate Colorize-By & Time-Lapse Animation**: Added Conversion Rate as 9th colorize-by option using two-pass session-level DQL query (`geoConversionQuery`). Added Time-Lapse animation mode that plays through hourly map snapshots showing performance/traffic shifts across time zones (Play/Pause, scrubber slider, hour label). Conv % column added to ranked table. Conv Rate legend added. **Geo Heatmap — AI Insights Enhanced**: `analyzeGeoHeatmap` now analyzes conversion data (high/low/zero-converting regions with recommendations) and ISP network data (slow ISPs with peering recommendations). Help panel and AI Assist tab descriptions updated. |
 | 2026-05-17 | 4.47.90 | **Hyperlyzer Tab — Multidimensional Radial Performance Explorer**: New tab (31st) ported from standalone Hyperlyzer app. Radial SVG chart with 4 quadrants (OS, Geo, User Action, Browser), 8 selectable metrics (Duration/Apdex/LCP/INP/CLS/TTFB/Load Event End/FCP), cross-dimensional click-to-filter stacking, finding cards with outlier detection, paginated side table with color-coded ratings and drilldown links. Component split: `RadialHyperChart.tsx` (reusable SVG chart) + `HyperlyzerTab.tsx` (tab wrapper with DQL queries). AI Insights integration. Help, Settings, and DESIGN.md updated. Tab count 30→31. |
