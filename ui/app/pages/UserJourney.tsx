@@ -1314,7 +1314,7 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
   const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
-| fieldsAdd pageName = coalesce(view.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
 | fieldsAdd is_conv = ${lastStep}
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
@@ -7397,6 +7397,13 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   <Text style={{ fontSize: 12, opacity: 0.4, marginLeft: "auto" }}>{fmtCount(src.total)} transitions</Text>
                 </Flex>
                 <Flex flexDirection="column" gap={4} style={{ paddingLeft: 20 }}>
+                  {/* Column headers */}
+                  <Flex alignItems="center" gap={8} style={{ opacity: 0.5, paddingBottom: 2 }}>
+                    <span style={{ fontSize: 14, visibility: "hidden" }}>→</span>
+                    <div style={{ flex: 1 }}><Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Destination</Text></div>
+                    <Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, minWidth: 40, textAlign: "right" }}>Count</Text>
+                    <Text style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, minWidth: 35, textAlign: "right" }}>Share</Text>
+                  </Flex>
                   {src.targets.slice(0, 5).map((t, ti) => {
                     const pct = src.total > 0 ? (t.count / src.total) * 100 : 0;
                     const isFunnel = steps.some((s) => s.identifiers.some(id => identifierMatchesLabel(id, t.name)));
