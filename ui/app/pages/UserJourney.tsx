@@ -7477,10 +7477,13 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             for (const [, arr] of layerPages) arr.forEach(p => visiblePages.add(p.name));
 
             // Layout constants
-            const W = 900, H = 420, nodeW = 140, nodeH = 28, padX = 40, padY = 12;
+            const nodeW = 200, nodeH = 52, padX = 60, padY = 20;
             const layers = Array.from(layerPages.keys()).sort((a, b) => a - b);
             const numLayers = layers.length || 1;
-            const colWidth = (W - nodeW) / Math.max(numLayers - 1, 1);
+            const colWidth = nodeW + 120; // generous horizontal spacing between columns
+            const W = padX * 2 + numLayers * colWidth;
+            const maxNodesInLayer = Math.max(...Array.from(layerPages.values()).map(a => a.length), 1);
+            const H = Math.max(420, maxNodesInLayer * (nodeH + padY) + 80);
 
             // Compute node positions
             const nodePos = new Map<string, { x: number; y: number; h: number; vol: number }>();
@@ -7513,8 +7516,8 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             const linkColors = [BLUE, CYAN, PURPLE, GREEN, ORANGE, YELLOW];
 
             return (
-              <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
-                <svg width={W + 20} height={H} style={{ display: "block", margin: "0 auto" }}>
+              <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%" }}>
+                <svg width={W} height={H} style={{ display: "block", minWidth: W }}>
                   {/* Links */}
                   {links.sort((a, b) => b.value - a.value).slice(0, 40).map((link, i) => {
                     const sp = nodePos.get(link.src); const tp = nodePos.get(link.tgt);
@@ -7538,16 +7541,16 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
                     const conv = convMap.get(name);
                     const borderColor = isFunnel ? GREEN : BLUE;
-                    const shortName = name.length > 20 ? name.substring(0, 18) + "…" : name;
+                    const shortName = name.length > 28 ? name.substring(0, 26) + "…" : name;
                     return (
                       <g key={name}>
-                        <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={4}
-                          fill="rgba(128,128,128,0.08)" stroke={borderColor} strokeWidth={isFunnel ? 2 : 1} strokeOpacity={0.7} />
-                        <text x={pos.x + 6} y={pos.y + 12} fontSize={10} fill={borderColor} fontWeight={600} style={{ dominantBaseline: "middle" } as any}>
+                        <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6}
+                          fill="rgba(128,128,128,0.1)" stroke={borderColor} strokeWidth={isFunnel ? 2.5 : 1.5} strokeOpacity={0.8} />
+                        <text x={pos.x + 10} y={pos.y + 20} fontSize={12} fill={borderColor} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
                           {shortName}
                         </text>
                         {conv !== undefined && conv < 100 && (
-                          <text x={pos.x + 6} y={pos.y + 23} fontSize={8} fill={conv > avgConv ? GREEN : YELLOW} opacity={0.8}>
+                          <text x={pos.x + 10} y={pos.y + 38} fontSize={10} fill={conv > avgConv ? GREEN : YELLOW} opacity={0.85}>
                             {fmtPct(conv)} conv prob
                           </text>
                         )}
