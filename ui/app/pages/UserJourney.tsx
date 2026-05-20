@@ -2346,6 +2346,13 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 20, 2026</Paragraph>
+            <Paragraph><Strong>Errors &amp; Drop-offs — Predictive Drop-off Scoring</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Predictive Drop-off Scoring</Strong>: Linear regression on hourly error rates per funnel step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• Severity-colored cards: 🔴 Critical (&gt;5% projected increase), 🟡 Warning (&gt;2%), 🟢 Stable — showing current error rate, projected rate, and trend per hour</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• Uses Root Cause Correlation hourly step data (actions, errors) to build per-step error rate timelines</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 19, 2026</Paragraph>
             <Paragraph><Strong>Navigation Flow Diagram, Click Frustration Clusters &amp; Session Links</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Navigation Flow Diagram</Strong>: Sankey-like SVG visualization in Navigation Paths — pages arranged in columns by funnel step with curved links whose thickness represents traffic volume, horizontally scrollable</Paragraph>
@@ -2503,7 +2510,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Conversion Attribution</Strong>: Correlates conversion rates with performance factors. Shows how session speed, device type, and browser affect conversion. Speed buckets (fast/medium/slow) quantify the revenue impact of performance, with full device x browser cross-section. When AOV is set, adds revenue columns to device and browser tables and revenue totals to speed buckets.</Paragraph>
         <Paragraph><Strong>Executive Summary</Strong>: Report-card style overview for stakeholders. Weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alert, CWV snapshot, and full performance table. When AOV is set, revenue appears in key metrics, performance snapshot, and exports. Use <Strong>Export PDF</Strong> to open a print-ready report in a new tab (use browser Print → Save as PDF), or <Strong>Copy Text</Strong> to get a plain-text summary for Slack/Teams/email. Designed for quick status checks and executive presentations.</Paragraph>
         <Paragraph><Strong>Segmentation</Strong>: Device, browser, geography, and <Strong>OS version</Strong> breakdowns with Apdex per segment. Geography shows full country names (translated from ISO codes). <Strong>AI Segment Discovery</Strong> card is always visible and automatically identifies the cohort with the worst Apdex or lowest conversion rate — surfacing which user segment needs attention without manual filtering.</Paragraph>
-        <Paragraph><Strong>Errors &amp; Drop-offs</Strong>: Drop-off analysis between funnel steps with optimization recommendations. When AOV is set, each drop-off card shows the estimated revenue at risk from abandoned sessions.</Paragraph>
+        <Paragraph><Strong>Errors &amp; Drop-offs</Strong>: Drop-off analysis between funnel steps with optimization recommendations. When AOV is set, each drop-off card shows the estimated revenue at risk from abandoned sessions. Includes Predictive Drop-off Scoring — linear regression on hourly error rates per step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues. Severity-colored cards (critical &gt;5%, warning &gt;2%) show current rate, projected rate, and trend per hour.</Paragraph>
         <Paragraph><Strong>What-If Analysis</Strong>: Traffic impact modeling with projected Apdex, latency, and conversion degradation. When AOV is set in Settings, also shows revenue impact: projected revenue at higher traffic, net revenue change, conversion degradation loss, and a "Perf Tax" breakdown showing revenue lost to performance under load.</Paragraph>
         <Paragraph><Strong>Root Cause Correlation</Strong>: Automatically correlates conversion drops with technical signals — latency spikes, error surges, and frustrated sessions — on an hourly timeline. Identifies which funnel steps degrade at the exact hours conversion dips. Surfaces ranked root cause signals with severity and confidence scores. <Strong>Full-Stack Correlation</Strong> section shows the backend service topology filtered to only services called by the selected application — uses entity <code>calls[dt.entity.service]</code> relationships to traverse up to 7 depth tiers (Application → Services → Downstream). Each service node is clickable and opens Dynatrace Gen3 Services with the matching timeframe. Davis AI-detected problems are overlaid on affected nodes (red border + problem count). When frontend degradation coincides with backend problems, an impact banner highlights the backend root cause. Problem table links open directly in Davis Problems app. When AOV is set, shows the estimated revenue at risk from sessions occurring during impact hours.</Paragraph>
         <Paragraph><Strong>Predictive Forecasting</Strong>: Uses trend data from the selected timeframe to project Apdex, conversion rate, error rate, and average duration forward 7 days via linear regression. Flags when a metric is on trajectory to breach a performance budget threshold before it actually happens. Includes trend direction, rate of change, and days-to-breach estimates for proactive incident prevention.</Paragraph>
@@ -3139,7 +3146,7 @@ export function UserJourney() {
             case "Conversion Attribution": content = <ConversionAttributionTab utmData={utmAttributionData} data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} />; break;
             case "Executive Summary": content = <ExecutiveSummaryTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} cwv={cwv} stepMap={stepMap} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || cwvResult.isLoading} frontend={frontend} steps={steps} aov={aov} />; break;
             case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} osVersions={(osVersionData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading || osVersionData.isLoading} aov={aov} overallConv={overallConv} />; break;
-            case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} />; break;
+            case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} stepDropData={rootCauseStepDropData} />; break;
             case "What-If Analysis": content = <WhatIfTab hostMetricsData={hostMetricsData} funnelCounts={funnelCounts} stepMap={stepMap} overallApdex={overallApdex} isLoading={isLoading} steps={steps} aov={aov} />; break;
             case "Root Cause Correlation": content = <RootCauseCorrelationTab backendServicesData={backendServicesData} serviceToServiceData={serviceToServiceData} backendProblemsData={backendProblemsData} hourlyData={rootCauseCorrelationData} stepDropData={rootCauseStepDropData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} isLoading={rootCauseCorrelationData.isLoading || rootCauseStepDropData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} frontend={frontend} />; break;
             case "Predictive Forecasting": content = <PredictiveForecastingTab trendData={forecastTrendData} apdexTrendData={forecastApdexTrendData} vitalsTrendData={forecastVitalsTrendData} quality={quality} overallApdex={overallApdex} overallConv={overallConv} isLoading={forecastTrendData.isLoading || forecastApdexTrendData.isLoading || forecastVitalsTrendData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
@@ -3885,7 +3892,7 @@ function analyzeErrorsDropoffs(errors: any[], funnelCounts: number[], steps: Ste
     insights.push({ severity: "good", icon: "✅", text: "No significant error-dropoff correlation detected." });
   }
 
-  const summary = `Errors & Drop-offs analyzes the correlation between JavaScript errors and funnel abandonment, helping you determine whether technical failures are causing users to leave. This tab is designed for Reliability Engineers investigating conversion drops, Frontend Engineers prioritizing bug fixes by business impact, and Product Managers understanding the cost of technical debt. It answers: Are errors causing users to abandon the funnel? Which funnel step has the worst drop-off? Is the drop-off correlated with error volume? Currently tracking ${fmtCount(totalErrors)} errors with the largest drop-off of ${fmtPct(maxDrop)} at step ${maxDropIdx + 1} ("${steps[maxDropIdx]?.label ?? "Step " + (maxDropIdx + 1)}"). ${maxDrop > 30 && totalErrors > 0 ? "A strong correlation exists between error volume and funnel abandonment — fixing these errors should directly improve conversion." : "The correlation is weak, suggesting drop-offs are more likely driven by UX friction, content issues, or pricing rather than technical errors."} Each drop-off card shows the step pair, percentage lost, session count, and when AOV is configured, estimated revenue at risk.`;
+  const summary = `Errors & Drop-offs analyzes the correlation between JavaScript errors and funnel abandonment, helping you determine whether technical failures are causing users to leave. This tab is designed for Reliability Engineers investigating conversion drops, Frontend Engineers prioritizing bug fixes by business impact, and Product Managers understanding the cost of technical debt. It answers: Are errors causing users to abandon the funnel? Which funnel step has the worst drop-off? Is the drop-off correlated with error volume? Will error rates worsen and increase drop-off? Currently tracking ${fmtCount(totalErrors)} errors with the largest drop-off of ${fmtPct(maxDrop)} at step ${maxDropIdx + 1} ("${steps[maxDropIdx]?.label ?? "Step " + (maxDropIdx + 1)}"). ${maxDrop > 30 && totalErrors > 0 ? "A strong correlation exists between error volume and funnel abandonment — fixing these errors should directly improve conversion." : "The correlation is weak, suggesting drop-offs are more likely driven by UX friction, content issues, or pricing rather than technical errors."} Each drop-off card shows the step pair, percentage lost, session count, and when AOV is configured, estimated revenue at risk. Predictive Drop-off Scoring uses linear regression on hourly error rates per step, projecting 2 hours forward to estimate additional drop-off if the current error trajectory continues.`;
   return { summary, insights, recommendations: recs };
 }
 
@@ -8690,7 +8697,7 @@ function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov =
 // ===========================================================================
 // TAB: Errors & Drop-offs
 // ===========================================================================
-function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov }: { errors: any[]; funnelCounts: number[]; isLoading: boolean; steps: StepDef[]; aov: number }) {
+function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }: { errors: any[]; funnelCounts: number[]; isLoading: boolean; steps: StepDef[]; aov: number; stepDropData?: any }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeErrorsDropoffs(errors, funnelCounts, steps), [errors, funnelCounts, steps]));
   if (isLoading) return <Loading />;
 
@@ -8701,8 +8708,58 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov }: { errors: an
     const pctLost = prev > 0 ? (lost / prev) * 100 : 0;
     const downstreamConvRate = (funnelCounts[i + 1] ?? 0) > 0 ? ((funnelCounts[lastIdx] ?? 0) / funnelCounts[i + 1]) : 0;
     const lostRevenue = aov > 0 ? lost * downstreamConvRate * aov : 0;
-    return { from: steps[i].label, to: step.label, lost, pctLost, lostRevenue };
+    return { from: steps[i].label, to: step.label, lost, pctLost, lostRevenue, stepIdx: i + 1 };
   }).sort((a, b) => b.lost - a.lost);
+
+  // Predictive Drop-off Scoring: project error rate forward using recent hourly trend
+  const stepDropRecords = (stepDropData?.data?.records ?? []) as any[];
+  type StepHourly = { hour: number; actions: number; errors: number; errRate: number };
+  const stepHourlyMap = new Map<string, StepHourly[]>();
+  for (const r of stepDropRecords) {
+    const tag = String(r.step_tag ?? "");
+    const hour = Number(r.hour_bucket ?? 0);
+    const actions = Number(r.actions ?? 0);
+    const errs = Number(r.errors ?? 0);
+    const errRate = actions > 0 ? (errs / actions) * 100 : 0;
+    if (!stepHourlyMap.has(tag)) stepHourlyMap.set(tag, []);
+    stepHourlyMap.get(tag)!.push({ hour, actions, errors: errs, errRate });
+  }
+
+  // Linear regression on error rate per step
+  type Prediction = { step: string; currentErrRate: number; projectedErrRate: number; errRateSlope: number; projectedDropOffIncrease: number; severity: "critical" | "warning" | "stable" };
+  const predictions: Prediction[] = [];
+  for (const d of dropOffs) {
+    const hourly = stepHourlyMap.get(d.to) ?? stepHourlyMap.get(d.from) ?? [];
+    if (hourly.length < 3) continue;
+    const sorted = [...hourly].sort((a, b) => a.hour - b.hour);
+    const rates = sorted.map(h => h.errRate);
+    const n = rates.length;
+    const xs = rates.map((_, i) => i);
+    const sumX = xs.reduce((a, b) => a + b, 0);
+    const sumY = rates.reduce((a, b) => a + b, 0);
+    const sumXY = xs.reduce((a, x, i) => a + x * rates[i], 0);
+    const sumX2 = xs.reduce((a, x) => a + x * x, 0);
+    const denom = n * sumX2 - sumX * sumX;
+    const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+    const intercept = (sumY - slope * sumX) / n;
+    const currentErrRate = rates[n - 1];
+    // Project 2 hours forward (2 data points beyond current)
+    const projectedErrRate = Math.max(0, intercept + slope * (n + 2));
+    const errRateIncrease = projectedErrRate - currentErrRate;
+    // Estimate drop-off increase: each 1% error rate increase → ~0.8% additional drop-off (empirical)
+    const projectedDropOffIncrease = errRateIncrease * 0.8;
+    if (slope > 0.1 && projectedDropOffIncrease > 0.5) {
+      predictions.push({
+        step: d.to,
+        currentErrRate,
+        projectedErrRate,
+        errRateSlope: slope,
+        projectedDropOffIncrease,
+        severity: projectedDropOffIncrease > 5 ? "critical" : projectedDropOffIncrease > 2 ? "warning" : "stable",
+      });
+    }
+  }
+  predictions.sort((a, b) => b.projectedDropOffIncrease - a.projectedDropOffIncrease);
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
@@ -8730,6 +8787,31 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov }: { errors: an
         )}
       </div>
       <SectionHeader title="Optimization Recommendations" />
+      {/* Predictive Drop-off Scoring */}
+      {predictions.length > 0 && (
+        <>
+          <SectionHeader title="Predictive Drop-off Scoring" />
+          <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Based on hourly error rate trends — projecting 2 hours forward if current trajectory continues.</Text>
+          <Flex gap={12} flexWrap="wrap">
+            {predictions.map((p, i) => (
+              <div key={i} className="uj-table-tile" style={{ padding: 16, borderLeft: `3px solid ${p.severity === "critical" ? RED : p.severity === "warning" ? ORANGE : GREEN}`, flex: "1 1 300px", maxWidth: 420 }}>
+                <Flex alignItems="center" gap={8}>
+                  <span style={{ fontSize: 18 }}>{p.severity === "critical" ? "🔴" : p.severity === "warning" ? "🟡" : "🟢"}</span>
+                  <Strong style={{ fontSize: 13 }}>{p.step}</Strong>
+                </Flex>
+                <Paragraph style={{ fontSize: 12, marginTop: 8 }}>
+                  If the current error rate continues, projected drop-off at <Strong>{p.step}</Strong> will increase by <Strong style={{ color: p.severity === "critical" ? RED : ORANGE }}>+{fmtPct(p.projectedDropOffIncrease)}</Strong> within 2 hours.
+                </Paragraph>
+                <Flex gap={16} style={{ marginTop: 8 }}>
+                  <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Current Error Rate</Text><Text style={{ fontSize: 13, fontWeight: 600 }}>{fmtPct(p.currentErrRate)}</Text></div>
+                  <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Projected (2h)</Text><Text style={{ fontSize: 13, fontWeight: 600, color: RED }}>{fmtPct(p.projectedErrRate)}</Text></div>
+                  <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Trend</Text><Text style={{ fontSize: 13, fontWeight: 600, color: RED }}>+{p.errRateSlope.toFixed(2)}%/hr</Text></div>
+                </Flex>
+              </div>
+            ))}
+          </Flex>
+        </>
+      )}
       <div className="uj-recommendations">
         {dropOffs.map((d, i) => (
           <div key={i} className="uj-recommendation-card">

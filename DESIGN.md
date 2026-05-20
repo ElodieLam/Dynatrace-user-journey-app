@@ -551,12 +551,13 @@ fetch user.events | filter frontend.name == "{frontend}" | filter {anyStepFilter
 
 ### 17. Errors & Drop-offs
 
-**Purpose**: Correlate errors with funnel abandonment to identify drop-off causes.
+**Purpose**: Correlate errors with funnel abandonment to identify drop-off causes. Predict future drop-off increases via error rate trend analysis.
 
 **Key Features**:
 - Drop-off analysis between funnel steps
 - Error counts per step transition
 - Optimization recommendations
+- **Predictive Drop-off Scoring**: Linear regression on hourly error rates per step. Projects 2 hours forward to estimate additional drop-off if current error trajectory continues. Severity-colored cards (critical >5%, warning >2%, stable) show current error rate, projected rate, and trend per hour. Uses `rootCauseStepDropQuery` data (per-step per-hour actions/errors).
 
 **Queries**: Reuses `errorQuery` + `sessionFlowQuery` results with client-side correlation.
 
@@ -1146,6 +1147,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-20 | 4.49.62 | **Errors & Drop-offs — Predictive Drop-off Scoring**: Linear regression on hourly error rates per funnel step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues. Severity-colored cards (critical >5%, warning >2%) display current error rate, projected rate, and trend per hour. Uses `rootCauseStepDropQuery` data passed via `stepDropData` prop. Help, AI Insights, and DESIGN.md updated. |
 | 2026-05-20 | 4.49.60 | **Root Cause Correlation — Full-Stack Correlation**: Service topology filtered to only services called by the selected application via entity `calls[dt.entity.service]` relationships. BFS traversal up to 7 depth tiers. Clickable service nodes open Gen3 Dynatrace Services with matching timeframe. Names resolved for all tiers via lookup. Davis AI problems overlaid with red links. Impact banner. |
 | 2026-05-19 | 4.49.47 | **Navigation Flow Diagram & Click Issues Session Links**: Navigation Paths gains Sankey-like SVG flow diagram (BFS layer assignment, 220×52 nodes, curved links, horizontal scroll), graph-based conversion probability with drop-off-aware iterative relaxation, AI Path Optimization card. Click Issues gains Frustration Clusters by Page grouping and "View Sessions ↗" links to gen3 User Sessions (filtered by app+page+frustrated). Segmentation gains OS version table, AI Segment Discovery (always visible), ISO→country name translation. Sankey per-column limit raised to 12 with scroll. Davis problems now displays `event.name` (fixes Unknown Problem titles). |
 | 2026-05-18 | 4.49.12 | **Map — Configurable Time-Lapse Buckets & Drilldown**: Time-Lapse bucket size now configurable via dropdown (1 min, 5 min, 10 min, 30 min, 1 hour — default 1h). Clicking a country during Time-Lapse drills into User Sessions scoped to that country AND the exact time bucket displayed. **Metric-Aware AI Insights**: `analyzeMapByMetric` function provides dedicated analysis for each colorize-by metric (traffic distribution, latency hotspots, Apdex satisfaction, error concentration, CWV geographic gaps, revenue distribution, conversion geography). AI panel re-runs analysis when metric selection changes. **Timelapse Tooltips**: Tooltip content now reflects the selected colorize-by metric instead of always showing Apdex/Sessions/Duration/Errors. |
