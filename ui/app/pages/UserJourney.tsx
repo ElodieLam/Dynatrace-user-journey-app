@@ -10251,16 +10251,17 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
 
   // ---- Alluvial / Columnar ----
   const renderAlluvial = () => {
+    const maxNodesCol = Math.max(...Array.from(new Map<number, number>(nodes.map(n => [n.depth, 0] as [number, number])).keys()).map(d => nodes.filter(n => n.depth === d).length), 1);
     const aW = 960;
-    const aH = 540;
+    const nodeW = 140;
+    const nodeH = 36;
+    const nodeGap = 8;
+    const aH = Math.max(540, Math.min(maxNodesCol, 12) * (nodeH + nodeGap) + 100);
     const aPAD = { top: 50, right: 40, bottom: 20, left: 40 };
     const aInnerW = aW - aPAD.left - aPAD.right;
     const aInnerH = aH - aPAD.top - aPAD.bottom;
     const numCols = maxDepth + 1;
     const aColW = numCols > 0 ? aInnerW / numCols : aInnerW;
-    const nodeW = 140;
-    const nodeH = 36;
-    const nodeGap = 8;
 
     // Group nodes by depth
     const depthCols = new Map<number, SankeyNode[]>();
@@ -10273,7 +10274,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
     // Compute positions: discrete boxes arranged vertically within each Step column
     const alluvialNodes = new Map<string, { x: number; y: number; w: number; h: number; label: string; value: number; depth: number; cx: number; cy: number }>();
     for (const [d, col] of depthCols) {
-      const sorted = [...col].sort((a, b) => b.value - a.value).slice(0, 6); // limit per column
+      const sorted = [...col].sort((a, b) => b.value - a.value).slice(0, 12); // show more pages per column
       const cx = aPAD.left + d * aColW + aColW / 2;
       const totalH = sorted.length * nodeH + (sorted.length - 1) * nodeGap;
       let yStart = aPAD.top + (aInnerH - totalH) / 2;
@@ -10286,8 +10287,8 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
     }
 
     return (
-      <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
-        <svg className="uj-sankey-wipe" width={aW} height={aH} style={{ display: "block", margin: "0 auto" }}>
+      <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", overflowY: "auto", maxHeight: 600 }}>
+        <svg className="uj-sankey-wipe" width={aW} height={aH} style={{ display: "block", minWidth: aW }}>
           {/* Column background panels */}
           {Array.from({ length: numCols }, (_, d) => {
             const cx = aPAD.left + d * aColW + aColW / 2;
