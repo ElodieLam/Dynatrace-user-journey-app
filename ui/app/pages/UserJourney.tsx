@@ -1311,7 +1311,8 @@ function osVersionQuery(days: number, frontend: string, steps: StepDef[]): strin
 // NEW: Navigation Path Conversion Query
 function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const lastStepFilter = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
+  const lastIds = steps[steps.length - 1]?.identifiers ?? [];
+  const lastStepMatch = lastIds.map(id => `pageName == "${id}"`).join(" or ") || "false";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
@@ -1320,7 +1321,9 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
 | lookup [
     fetch user.events, ${period}
     | filter frontend.name == "${frontend}"
-    | filter ${lastStepFilter}
+    | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
+    | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+    | filter ${lastStepMatch}
     | summarize conv_flag = count(), by: {dt.rum.session.id}
   ], sourceField:dt.rum.session.id, lookupField:dt.rum.session.id, prefix:"c."
 | fieldsAdd converted = isNotNull(c.conv_flag)
