@@ -3160,7 +3160,7 @@ export function UserJourney() {
             case "Session Replay Spotlight": content = <SessionReplaySpotlightTab data={sessionReplayData} isLoading={sessionReplayData.isLoading} />; break;
             case "A/B Comparison": content = <ABComparisonTab segAData={abSegAData} segBData={abSegBData} segACwv={abSegACwv} segBCwv={abSegBCwv} dimension={abDimension} setDimension={setAbDimension} segA={abSegA} segB={abSegB} setSegA={setAbSegA} setSegB={setAbSegB} isLoading={abSegAData.isLoading || abSegBData.isLoading || abSegACwv.isLoading || abSegBCwv.isLoading} aov={aov} overallConv={overallConv} />; break;
             case "Revenue Intelligence": content = <RevenueIntelligenceTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} quality={quality} qualityPrev={qualityPrev} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} />; break;
-            case "Cohort Retention": content = <CohortRetentionTab retentionData={cohortRetentionData} sessionData={cohortSessionData} isLoading={cohortRetentionData.isLoading || cohortSessionData.isLoading} steps={steps} aov={aov} />; break;
+            case "Cohort Retention": content = <CohortRetentionTab retentionData={cohortRetentionData} sessionData={cohortSessionData} engagementData={sessionEngagementData} isLoading={cohortRetentionData.isLoading || cohortSessionData.isLoading} steps={steps} aov={aov} />; break;
             case "Session Engagement": content = <SessionEngagementTab data={sessionEngagementData} isLoading={sessionEngagementData.isLoading} steps={steps} aov={aov} overallConv={overallConv} />; break;
             case "Third-Party Impact": content = <ThirdPartyImpactTab data={thirdPartyData} cwvData={thirdPartyCwvData} isLoading={thirdPartyData.isLoading || thirdPartyCwvData.isLoading} frontend={frontend} />; break;
             case "Error Clustering": content = <ErrorClusteringTab deployData={deploymentEventsData} data={errorClusterData} trendData={errorTrendData} isLoading={errorClusterData.isLoading || errorTrendData.isLoading} frontend={frontend} />; break;
@@ -14140,7 +14140,7 @@ function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setD
 // ===========================================================================
 // TAB: Cohort Retention
 // ===========================================================================
-function CohortRetentionTab({ retentionData, sessionData, isLoading, steps, aov }: { retentionData: any; sessionData: any; isLoading: boolean; steps: StepDef[]; aov: number }) {
+function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoading, steps, aov }: { retentionData: any; sessionData: any; engagementData: any; isLoading: boolean; steps: StepDef[]; aov: number }) {
   // Hook must be above early returns
   const analysisData = useMemo(() => {
     const retRecords = (retentionData?.data?.records ?? []) as any[];
@@ -14207,10 +14207,14 @@ function CohortRetentionTab({ retentionData, sessionData, isLoading, steps, aov 
   const avgSessionsPerUser = totalUsers > 0 ? totalSessions / totalUsers : 0;
 
   // Chart: daily sessions + conversion rate overlay
-  const W = 720, H = 260, PAD = { top: 30, right: 60, bottom: 40, left: 60 };
+  const W = 720, H = 280, PAD = { top: 40, right: 70, bottom: 44, left: 70 };
   const iW = W - PAD.left - PAD.right, iH = H - PAD.top - PAD.bottom;
   const maxSess = Math.max(1, ...dailyData.map(d => d.sessions));
   const maxConvR = Math.max(1, ...dailyData.map(d => d.convRate));
+
+  // Y-axis tick helpers
+  const sessYTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(maxSess * f));
+  const convYTicks = [0, 0.25, 0.5, 0.75, 1].map(f => +(maxConvR * f).toFixed(1));
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
@@ -14229,28 +14233,52 @@ function CohortRetentionTab({ retentionData, sessionData, isLoading, steps, aov 
       <SectionHeader title="Daily Sessions & Conversion Rate" />
       <div className="uj-table-tile" style={{ padding: 16 }}>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`}>
-          <text x={PAD.left} y={PAD.top - 10} fill="rgba(255,255,255,0.4)" fontSize={10}>Sessions</text>
-          <text x={W - PAD.right} y={PAD.top - 10} textAnchor="end" fill={GREEN} fontSize={10}>Conv %</text>
+          {/* Legend */}
+          <rect x={PAD.left} y={8} width={10} height={10} rx={2} fill={BLUE} fillOpacity={0.6} />
+          <text x={PAD.left + 14} y={16} fill="rgba(255,255,255,0.6)" fontSize={10}>Sessions</text>
+          <line x1={PAD.left + 80} y1={13} x2={PAD.left + 100} y2={13} stroke={GREEN} strokeWidth={2} />
+          <circle cx={PAD.left + 90} cy={13} r={3} fill={GREEN} />
+          <text x={PAD.left + 104} y={16} fill={GREEN} fontSize={10}>Conv %</text>
+          {/* Y-axis left (Sessions) */}
+          {sessYTicks.map((v, i) => {
+            const y = PAD.top + iH - (i / (sessYTicks.length - 1)) * iH;
+            return <g key={`sy${i}`}><line x1={PAD.left - 4} y1={y} x2={PAD.left} y2={y} stroke="rgba(255,255,255,0.2)" /><text x={PAD.left - 8} y={y + 3} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtCount(v)}</text>{i > 0 && <line x1={PAD.left} y1={y} x2={PAD.left + iW} y2={y} stroke="rgba(255,255,255,0.05)" />}</g>;
+          })}
+          {/* Y-axis right (Conv %) */}
+          {convYTicks.map((v, i) => {
+            const y = PAD.top + iH - (i / (convYTicks.length - 1)) * iH;
+            return <g key={`cy${i}`}><line x1={PAD.left + iW} y1={y} x2={PAD.left + iW + 4} y2={y} stroke="rgba(255,255,255,0.2)" /><text x={PAD.left + iW + 8} y={y + 3} textAnchor="start" fill={GREEN} fontSize={9}>{v.toFixed(1)}%</text></g>;
+          })}
+          {/* Bars */}
           {dailyData.map((d, i) => {
-            const bW = Math.max(4, iW / dailyData.length - 2);
-            const x = PAD.left + i * (iW / dailyData.length);
+            const bW = Math.max(4, iW / dailyData.length - 4);
+            const x = PAD.left + i * (iW / dailyData.length) + 2;
             const bH = Math.max(1, (d.sessions / maxSess) * iH);
             const y = PAD.top + iH - bH;
             return (
               <g key={i}>
-                <rect x={x} y={y} width={bW} height={bH} rx={2} fill={BLUE} fillOpacity={0.4}><title>{d.day}: {fmtCount(d.sessions)} sessions, {fmtPct(d.convRate)} conv</title></rect>
-                {i % Math.max(1, Math.floor(dailyData.length / 8)) === 0 && <text x={x + bW / 2} y={H - PAD.bottom + 14} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={8}>{d.day.substring(5)}</text>}
+                <rect x={x} y={y} width={bW} height={bH} rx={2} fill={BLUE} fillOpacity={0.5}><title>{d.day}: {fmtCount(d.sessions)} sessions, {fmtPct(d.convRate)} conv</title></rect>
+                {i % Math.max(1, Math.floor(dailyData.length / 8)) === 0 && <text x={x + bW / 2} y={H - PAD.bottom + 16} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={9}>{d.day.substring(5)}</text>}
               </g>
             );
           })}
-          {/* Conversion rate line */}
+          {/* Conversion rate line + dots */}
           {dailyData.length > 1 && (
-            <polyline fill="none" stroke={GREEN} strokeWidth={2} opacity={0.8} points={dailyData.map((d, i) => {
+            <polyline fill="none" stroke={GREEN} strokeWidth={2} points={dailyData.map((d, i) => {
               const x = PAD.left + i * (iW / dailyData.length) + (iW / dailyData.length) / 2;
               const y = PAD.top + iH - (d.convRate / maxConvR) * iH;
               return `${x},${y}`;
             }).join(" ")} />
           )}
+          {dailyData.map((d, i) => {
+            const x = PAD.left + i * (iW / dailyData.length) + (iW / dailyData.length) / 2;
+            const y = PAD.top + iH - (d.convRate / maxConvR) * iH;
+            return <circle key={`dot${i}`} cx={x} cy={y} r={3.5} fill={GREEN} stroke="rgba(0,0,0,0.3)" strokeWidth={1}><title>{d.day}: {fmtPct(d.convRate)}</title></circle>;
+          })}
+          {/* Axes lines */}
+          <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + iH} stroke="rgba(255,255,255,0.15)" />
+          <line x1={PAD.left} y1={PAD.top + iH} x2={PAD.left + iW} y2={PAD.top + iH} stroke="rgba(255,255,255,0.15)" />
+          <line x1={PAD.left + iW} y1={PAD.top} x2={PAD.left + iW} y2={PAD.top + iH} stroke="rgba(255,255,255,0.15)" />
         </svg>
       </div>
 
@@ -14279,36 +14307,147 @@ function CohortRetentionTab({ retentionData, sessionData, isLoading, steps, aov 
 
       {/* Behavioral Cohort Discovery */}
       <SectionHeader title="Behavioral Cohort Discovery" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>ML-driven analysis of which in-session behaviors predict conversion. Identifies cohorts you haven't thought to look for.</Text>
+      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Identifies which in-session behaviors predict conversion. Discovers high-value cohorts based on engagement depth, funnel progress, and error exposure.</Text>
       {(() => {
-        const records = (sessionData?.data?.records ?? []) as any[];
-        if (records.length < 5) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>Insufficient data for behavioral cohort analysis.</Text></div>;
-        // Analyze patterns: sessions with high page depth, specific pages, or interactions that convert
-        const converters = records.filter((r: any) => Number(r.converted ?? r.is_converter ?? 0) > 0);
-        const nonConverters = records.filter((r: any) => Number(r.converted ?? r.is_converter ?? 0) === 0);
-        const convAvgActions = converters.length > 0 ? converters.reduce((a: number, r: any) => a + Number(r.actions ?? r.page_views ?? 0), 0) / converters.length : 0;
-        const nonConvAvgActions = nonConverters.length > 0 ? nonConverters.reduce((a: number, r: any) => a + Number(r.actions ?? r.page_views ?? 0), 0) / nonConverters.length : 0;
-        const convRate = records.length > 0 ? (converters.length / records.length) * 100 : 0;
-        const insights: string[] = [];
-        if (convAvgActions > nonConvAvgActions * 1.5) insights.push(`Users who view ${Math.round(convAvgActions)} pages convert at ${fmtPct(convRate)} — ${(convAvgActions / Math.max(1, nonConvAvgActions)).toFixed(1)}x more page views than non-converters. Higher engagement strongly predicts conversion.`);
-        if (converters.length > 0 && nonConverters.length > 0) {
-          const convAvgDur = converters.reduce((a: number, r: any) => a + Number(r.avg_dur ?? r.session_duration ?? 0), 0) / converters.length;
-          const nonConvDur = nonConverters.reduce((a: number, r: any) => a + Number(r.avg_dur ?? r.session_duration ?? 0), 0) / nonConverters.length;
-          if (convAvgDur > nonConvDur * 1.3) insights.push(`Converting sessions average ${fmt(convAvgDur)} duration vs ${fmt(nonConvDur)} for non-converters. Longer, deeper sessions indicate higher intent.`);
+        const records = (engagementData?.data?.records ?? []) as any[];
+        if (records.length < 10) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>Insufficient session data for behavioral cohort analysis (need ≥10 sessions).</Text></div>;
+        // Per-session data from engagementData: actions, funnel_depth, errors, converted, avg_dur, steps[], deviceType, browserName
+        const converters = records.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0);
+        const nonConverters = records.filter((r: any) => !(r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0));
+        const totalConv = converters.length;
+        const totalNonConv = nonConverters.length;
+        const baseConvRate = records.length > 0 ? (totalConv / records.length) * 100 : 0;
+
+        // Behavioral metrics
+        const avg = (arr: any[], field: string) => arr.length > 0 ? arr.reduce((a: number, r: any) => a + Number(r[field] ?? 0), 0) / arr.length : 0;
+        const convAvgActions = avg(converters, "actions");
+        const nonConvAvgActions = avg(nonConverters, "actions");
+        const convAvgDepth = avg(converters, "funnel_depth");
+        const nonConvAvgDepth = avg(nonConverters, "funnel_depth");
+        const convAvgDur = avg(converters, "avg_dur");
+        const nonConvAvgDur = avg(nonConverters, "avg_dur");
+        const convErrorRate = totalConv > 0 ? (converters.filter((r: any) => Number(r.errors ?? 0) > 0).length / totalConv) * 100 : 0;
+        const nonConvErrorRate = totalNonConv > 0 ? (nonConverters.filter((r: any) => Number(r.errors ?? 0) > 0).length / totalNonConv) * 100 : 0;
+
+        // Discover behavioral cohorts
+        type Cohort = { name: string; description: string; sessions: number; convRate: number; lift: number; color: string };
+        const cohorts: Cohort[] = [];
+
+        // Cohort: High engagement (actions above median)
+        const medianActions = [...records].sort((a: any, b: any) => Number(a.actions ?? 0) - Number(b.actions ?? 0))[Math.floor(records.length / 2)];
+        const medActions = Number(medianActions?.actions ?? 5);
+        const highEngagers = records.filter((r: any) => Number(r.actions ?? 0) > medActions * 1.5);
+        if (highEngagers.length >= 3) {
+          const cr = (highEngagers.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0).length / highEngagers.length) * 100;
+          cohorts.push({ name: `High Engagement (>${Math.round(medActions * 1.5)} actions)`, description: `Users with ${Math.round(medActions * 1.5)}+ page interactions per session`, sessions: highEngagers.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: GREEN });
         }
-        if (insights.length === 0) insights.push("Behavioral patterns between converters and non-converters are similar — consider analyzing specific page sequences or interaction types for differentiation.");
+
+        // Cohort: Deep funnel (reached 3+ steps)
+        const deepFunnel = records.filter((r: any) => Number(r.funnel_depth ?? 0) >= 3);
+        if (deepFunnel.length >= 3) {
+          const cr = (deepFunnel.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0).length / deepFunnel.length) * 100;
+          cohorts.push({ name: "Deep Funnel (3+ steps)", description: "Users who reached 3 or more funnel steps in a single session", sessions: deepFunnel.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: CYAN });
+        }
+
+        // Cohort: Quick converters (converted with low actions)
+        const quickConv = converters.filter((r: any) => Number(r.actions ?? 0) <= medActions);
+        if (quickConv.length >= 2) {
+          cohorts.push({ name: "Quick Converters (low actions)", description: `Converted with ≤${medActions} actions — high-intent returning users`, sessions: quickConv.length, convRate: 100, lift: baseConvRate > 0 ? 100 / baseConvRate : 0, color: PURPLE });
+        }
+
+        // Cohort: Error-exposed sessions
+        const errorSessions = records.filter((r: any) => Number(r.errors ?? 0) > 0);
+        if (errorSessions.length >= 3) {
+          const cr = (errorSessions.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0).length / errorSessions.length) * 100;
+          cohorts.push({ name: "Error-Exposed", description: "Sessions that encountered at least one error", sessions: errorSessions.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: RED });
+        }
+
+        // Cohort: Long sessions (duration above 75th percentile)
+        const durations = records.map((r: any) => Number(r.avg_dur ?? 0)).sort((a, b) => a - b);
+        const p75Dur = durations[Math.floor(durations.length * 0.75)] ?? 0;
+        if (p75Dur > 0) {
+          const longSess = records.filter((r: any) => Number(r.avg_dur ?? 0) >= p75Dur);
+          if (longSess.length >= 3) {
+            const cr = (longSess.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0).length / longSess.length) * 100;
+            cohorts.push({ name: `Long Sessions (>${fmt(p75Dur)})`, description: "Sessions in the top 25% by duration — indicates research/comparison behavior", sessions: longSess.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: YELLOW });
+          }
+        }
+
+        // Cohort: Single-page bouncers
+        const bouncers = records.filter((r: any) => Number(r.actions ?? 0) <= 1);
+        if (bouncers.length >= 3) {
+          const cr = (bouncers.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0).length / bouncers.length) * 100;
+          cohorts.push({ name: "Single-Page Bouncers", description: "Users with only 1 action — landing page only", sessions: bouncers.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: "rgba(128,128,128,0.7)" });
+        }
+
+        // Sort cohorts by lift descending
+        cohorts.sort((a, b) => b.lift - a.lift);
+
+        // Generate insights
+        const insights: { icon: string; text: string; severity: string }[] = [];
+        const topCohort = cohorts[0];
+        if (topCohort && topCohort.lift > 1.5) insights.push({ icon: "🎯", text: `"${topCohort.name}" converts at ${fmtPct(topCohort.convRate)} — ${topCohort.lift.toFixed(1)}x the baseline. ${topCohort.description}.`, severity: "high" });
+        if (convAvgActions > nonConvAvgActions * 1.3) insights.push({ icon: "📊", text: `Converters average ${Math.round(convAvgActions)} actions vs ${Math.round(nonConvAvgActions)} for non-converters (${(convAvgActions / Math.max(1, nonConvAvgActions)).toFixed(1)}x lift). More page interactions strongly predict conversion.`, severity: "medium" });
+        if (convAvgDepth > nonConvAvgDepth * 1.2) insights.push({ icon: "🔀", text: `Converters reach ${convAvgDepth.toFixed(1)} funnel steps vs ${nonConvAvgDepth.toFixed(1)} for non-converters. Deeper funnel penetration = higher conversion likelihood.`, severity: "medium" });
+        if (nonConvErrorRate > convErrorRate * 1.5 && nonConvErrorRate > 10) insights.push({ icon: "⚠️", text: `Non-converters hit errors at ${fmtPct(nonConvErrorRate)} vs ${fmtPct(convErrorRate)} for converters. Errors are blocking conversion — fix top error pages.`, severity: "high" });
+        if (convAvgDur > nonConvAvgDur * 1.3 && convAvgDur > 0) insights.push({ icon: "⏱️", text: `Converting sessions last ${fmt(convAvgDur)} vs ${fmt(nonConvAvgDur)} for non-converters. Longer sessions = higher intent. Optimize for engagement, not just speed.`, severity: "low" });
+        if (insights.length === 0) insights.push({ icon: "💡", text: "Behavioral patterns between converters and non-converters are similar. Consider A/B testing page sequences or adding engagement hooks.", severity: "low" });
+
         return (
-          <Flex flexDirection="column" gap={8}>
-            {insights.map((insight, i) => (
-              <div key={i} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${PURPLE}` }}>
-                <Text style={{ fontSize: 13 }}>🧠 {insight}</Text>
+          <Flex flexDirection="column" gap={12}>
+            {/* Insight cards */}
+            {insights.map((ins, i) => (
+              <div key={i} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${ins.severity === "high" ? GREEN : ins.severity === "medium" ? CYAN : PURPLE}` }}>
+                <Text style={{ fontSize: 13 }}>{ins.icon} {ins.text}</Text>
               </div>
             ))}
+
+            {/* KPI row */}
             <Flex gap={16} flexWrap="wrap">
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Converters Avg Pages</Text><Heading level={3} className="uj-kpi-value" style={{ color: GREEN }}>{convAvgActions.toFixed(1)}</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Non-Converters Avg</Text><Heading level={3} className="uj-kpi-value" style={{ color: ORANGE }}>{nonConvAvgActions.toFixed(1)}</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Engagement Lift</Text><Heading level={3} className="uj-kpi-value" style={{ color: PURPLE }}>{nonConvAvgActions > 0 ? (convAvgActions / nonConvAvgActions).toFixed(1) : "—"}x</Heading></div>
+              <div className="uj-kpi-card"><Text className="uj-kpi-label">Converters Avg Actions</Text><Heading level={3} className="uj-kpi-value" style={{ color: GREEN }}>{Math.round(convAvgActions)}</Heading></div>
+              <div className="uj-kpi-card"><Text className="uj-kpi-label">Non-Converters Avg Actions</Text><Heading level={3} className="uj-kpi-value" style={{ color: ORANGE }}>{Math.round(nonConvAvgActions)}</Heading></div>
+              <div className="uj-kpi-card"><Text className="uj-kpi-label">Action Lift</Text><Heading level={3} className="uj-kpi-value" style={{ color: PURPLE }}>{nonConvAvgActions > 0 ? (convAvgActions / nonConvAvgActions).toFixed(1) : "—"}x</Heading></div>
+              <div className="uj-kpi-card"><Text className="uj-kpi-label">Base Conv Rate</Text><Heading level={3} className="uj-kpi-value" style={{ color: baseConvRate >= 5 ? GREEN : baseConvRate >= 2 ? YELLOW : RED }}>{fmtPct(baseConvRate)}</Heading></div>
             </Flex>
+
+            {/* Cohort table */}
+            {cohorts.length > 0 && (<>
+              <Text style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>Discovered Behavioral Cohorts</Text>
+              <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={cohorts.map(c => ({
+                Cohort: c.name, Sessions: c.sessions, "Conv Rate": c.convRate, Lift: c.lift, Description: c.description,
+              }))} columns={[
+                { id: "Cohort", header: "Cohort", accessor: "Cohort", cell: ({ value }: any) => <Strong>{value}</Strong> },
+                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{fmtCount(value)}</Strong> },
+                { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 5 ? "rgba(13,156,41,0.15)" : value >= 2 ? "rgba(184,134,11,0.15)" : "rgba(194,25,48,0.15)", color: value >= 5 ? GREEN : value >= 2 ? YELLOW : RED, fontWeight: 700, textAlign: "center" }}>{fmtPct(value)}</span> },
+                { id: "Lift", header: "Lift vs Baseline", accessor: "Lift", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value >= 2 ? GREEN : value >= 1.2 ? CYAN : value < 0.8 ? RED : "inherit" }}>{value.toFixed(1)}x</Strong> },
+                { id: "Description", header: "Behavior Pattern", accessor: "Description" },
+              ]} /></div>
+            </>)}
+
+            {/* Behavioral comparison chart (SVG bar) */}
+            <Text style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>Converter vs Non-Converter Behavior</Text>
+            <div className="uj-table-tile" style={{ padding: 16 }}>
+              <svg width="100%" viewBox="0 0 600 160">
+                {[
+                  { label: "Avg Actions", conv: convAvgActions, nonConv: nonConvAvgActions },
+                  { label: "Avg Funnel Depth", conv: convAvgDepth, nonConv: nonConvAvgDepth },
+                  { label: "Error Rate %", conv: convErrorRate, nonConv: nonConvErrorRate },
+                ].map((m, i) => {
+                  const maxV = Math.max(m.conv, m.nonConv, 1);
+                  const y = i * 52;
+                  const barW = 340;
+                  return (
+                    <g key={i}>
+                      <text x={0} y={y + 14} fill="rgba(255,255,255,0.6)" fontSize={10}>{m.label}</text>
+                      <rect x={120} y={y + 2} width={(m.conv / maxV) * barW} height={14} rx={3} fill={GREEN} fillOpacity={0.7} />
+                      <text x={120 + (m.conv / maxV) * barW + 6} y={y + 13} fill={GREEN} fontSize={9}>{m.conv.toFixed(1)} (conv)</text>
+                      <rect x={120} y={y + 20} width={(m.nonConv / maxV) * barW} height={14} rx={3} fill={ORANGE} fillOpacity={0.7} />
+                      <text x={120 + (m.nonConv / maxV) * barW + 6} y={y + 31} fill={ORANGE} fontSize={9}>{m.nonConv.toFixed(1)} (non-conv)</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
           </Flex>
         );
       })()}
