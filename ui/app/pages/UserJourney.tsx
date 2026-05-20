@@ -64,6 +64,26 @@ const ORANGE = "#FF832B";
 let ENV_URL = "";
 try { ENV_URL = getEnvironmentUrl(); } catch { /* dev fallback */ }
 
+const ISO_COUNTRY_NAMES: Record<string, string> = {
+  US: "United States", CA: "Canada", MX: "Mexico", BR: "Brazil", AR: "Argentina",
+  CO: "Colombia", CL: "Chile", PE: "Peru", VE: "Venezuela",
+  GB: "United Kingdom", DE: "Germany", FR: "France", ES: "Spain", IT: "Italy",
+  NL: "Netherlands", BE: "Belgium", CH: "Switzerland", AT: "Austria", PL: "Poland",
+  SE: "Sweden", NO: "Norway", FI: "Finland", DK: "Denmark", IE: "Ireland",
+  PT: "Portugal", CZ: "Czechia", RO: "Romania", HU: "Hungary", GR: "Greece",
+  RU: "Russia", UA: "Ukraine", TR: "Turkey",
+  CN: "China", JP: "Japan", KR: "South Korea", IN: "India", ID: "Indonesia",
+  TH: "Thailand", VN: "Vietnam", PH: "Philippines", MY: "Malaysia", SG: "Singapore",
+  AU: "Australia", NZ: "New Zealand", ZA: "South Africa", NG: "Nigeria", EG: "Egypt",
+  KE: "Kenya", SA: "Saudi Arabia", AE: "United Arab Emirates", IL: "Israel", PK: "Pakistan",
+  BD: "Bangladesh", TW: "Taiwan", HK: "Hong Kong",
+};
+function isoToCountryName(code: string): string {
+  if (!code) return "Unknown";
+  const upper = code.toUpperCase();
+  return ISO_COUNTRY_NAMES[upper] ?? code;
+}
+
 
 
 const TIMEFRAME_OPTIONS = [
@@ -3779,7 +3799,7 @@ function analyzeSegmentation(devices: any[], browsers: any[], geos: any[], osVer
   const allCohorts: { label: string; dimension: string; apdex: number; sessions: number }[] = [];
   devices.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: String(d.deviceType ?? "Unknown"), dimension: "Device", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
   browsers.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: String(d.browserName ?? "Unknown"), dimension: "Browser", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
-  geos.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: String(d.country ?? "Unknown"), dimension: "Geography", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
+  geos.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: isoToCountryName(String(d.country ?? "Unknown")), dimension: "Geography", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
   osVersions.forEach((d: any) => { const s = Number(d.sessions ?? 0); if (s >= 10) allCohorts.push({ label: `${d.os_name ?? "Unknown"} ${d.os_ver ?? ""}`.trim(), dimension: "OS Version", apdex: calcApdex(Number(d.satisfied ?? 0), Number(d.tolerating ?? 0), Number(d.actions ?? 0)), sessions: s }); });
   allCohorts.sort((a, b) => a.apdex - b.apdex);
   if (allCohorts.length > 0 && allCohorts[0].apdex < 0.85) {
@@ -8187,7 +8207,9 @@ function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov =
   const mapSeg = (data: any[], nameKey: string) => data.map((d: any) => {
     const sat = Number(d.satisfied ?? 0); const tol = Number(d.tolerating ?? 0); const total = Number(d.actions ?? 0);
     const sessions = Number(d.sessions ?? 0);
-    return { [nameKey]: d[nameKey] ?? "Unknown", Sessions: sessions, Actions: total, "Avg (ms)": Number(d.avg_duration_ms ?? d.avg_dur ?? 0), Apdex: calcApdex(sat, tol, total), Errors: Number(d.errors ?? 0), "Est Revenue": showRevenue ? sessions * (overallConv / 100) * aov : 0 };
+    const rawName = d[nameKey] ?? "Unknown";
+    const displayName = nameKey === "country" ? isoToCountryName(rawName) : rawName;
+    return { [nameKey]: displayName, Sessions: sessions, Actions: total, "Avg (ms)": Number(d.avg_duration_ms ?? d.avg_dur ?? 0), Apdex: calcApdex(sat, tol, total), Errors: Number(d.errors ?? 0), "Est Revenue": showRevenue ? sessions * (overallConv / 100) * aov : 0 };
   });
 
   // Map OS version data: combine os_name + os_ver into a single label
@@ -8204,7 +8226,9 @@ function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov =
     const sat = Number(row.satisfied ?? 0); const tol = Number(row.tolerating ?? 0); const total = Number(row.actions ?? 0);
     const sessions = Number(row.sessions ?? 0);
     if (sessions >= 10) { // only consider cohorts with meaningful traffic
-      allCohorts.push({ label: String(row[nameKey] ?? "Unknown"), dimension, apdex: calcApdex(sat, tol, total), sessions });
+      const rawLabel = String(row[nameKey] ?? "Unknown");
+      const label = dimension === "Geography" ? isoToCountryName(rawLabel) : rawLabel;
+      allCohorts.push({ label, dimension, apdex: calcApdex(sat, tol, total), sessions });
     }
   });
   addCohorts(devices, "deviceType", "Device");
