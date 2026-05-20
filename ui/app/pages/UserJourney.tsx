@@ -3089,7 +3089,7 @@ export function UserJourney() {
             case "Step Details": content = <StepDetailsTab stepMap={stepMap} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
             case "Worst Sessions": content = <WorstSessionsTab data={worstSessionsData} isLoading={worstSessionsData.isLoading} />; break;
             case "Exceptions": content = <JSErrorsTab data={jsErrorsData} prevData={jsErrorsPrevData} isLoading={jsErrorsData.isLoading} frontend={frontend} />; break;
-            case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} />; break;
+            case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} frontend={frontend} />; break;
             case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} />; break;
             case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} />; break;
             case "Maps": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} />; break;
@@ -5603,16 +5603,44 @@ function JSErrorsTab({ data, prevData, isLoading, frontend }: { data: any; prevD
 // ===========================================================================
 // TAB: Click Issues (Rage / Dead Clicks) — NEW
 // ===========================================================================
-function ClickIssuesTab({ data, isLoading, replayData }: { data: any; isLoading: boolean; replayData?: any }) {
+function ClickIssuesTab({ data, isLoading, replayData, frontend }: { data: any; isLoading: boolean; replayData?: any; frontend: string }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeClickIssues(data), [data]));
   if (isLoading) return <Loading />;
 
   const rows = (data.data?.records ?? []) as any[];
+  const replayRows = (replayData?.data?.records ?? []) as any[];
   const rageClicks = rows.filter((r: any) => r.eventType === "rageClick");
   const deadClicks = rows.filter((r: any) => r.eventType === "deadClick");
   const totalRage = rageClicks.reduce((a: number, r: any) => a + Number(r.occurrences ?? 0), 0);
   const totalDead = deadClicks.reduce((a: number, r: any) => a + Number(r.occurrences ?? 0), 0);
   const totalAffected = rows.reduce((a: number, r: any) => a + Number(r.affected_sessions ?? 0), 0);
+
+  // Build cluster map: group replay sessions by element + page for "View Sessions" links
+  const clusterMap = new Map<string, { sessions: string[]; timestamps: string[]; clickType: string; page: string }>();
+  replayRows.forEach((r: any) => {
+    const key = `${String(r.element ?? "unknown")}||${String(r.page ?? "unknown")}`;
+    const cluster = clusterMap.get(key) ?? { sessions: [], timestamps: [], clickType: String(r.click_type ?? "rage"), page: String(r.page ?? "") };
+    const sid = String(r.sid ?? "");
+    if (sid && !cluster.sessions.includes(sid)) { cluster.sessions.push(sid); cluster.timestamps.push(String(r.timestamp ?? "")); }
+    clusterMap.set(key, cluster);
+  });
+
+  // Gen3 User Sessions link with filter
+  const buildSessionsLink = (page: string, clickType: string) => {
+    const baseUrl = ENV_URL || "https://guu84124.apps.dynatrace.com";
+    // Filter: application name + has rage/dead click + specific page
+    const filters: string[] = [];
+    if (frontend) filters.push(`useraction.application="${frontend}"`);
+    if (clickType === "rage" || clickType === "rageClick") filters.push(`userExperienceScore("FRUSTRATED")`);
+    if (page && page !== "Unknown page") filters.push(`useraction.name contains "${page}"`);
+    const filterStr = filters.length > 0 ? encodeURIComponent(filters.join(" AND ")) : "";
+    return `${baseUrl}/ui/apps/dynatrace.classic.session.segmentation/#usersessionfiltermode=performance;usersessionfilter=${filterStr}`;
+  };
+
+  const buildSessionIdLink = (sessionId: string) => {
+    const baseUrl = ENV_URL || "https://guu84124.apps.dynatrace.com";
+    return `${baseUrl}/ui/apps/dynatrace.classic.session.segmentation/#useraction;sid=${sessionId}`;
+  };
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
@@ -5644,7 +5672,7 @@ function ClickIssuesTab({ data, isLoading, replayData }: { data: any; isLoading:
         <div className="uj-table-tile" style={{ padding: 24 }}><Text style={{ color: GREEN }}>No rage or dead clicks detected — great UX!</Text></div>
       ) : (
         <>
-          {/* Top offenders cards */}
+          {/* Top offenders cards with Session Replay links */}
           <SectionHeader title="Top Offending Elements" />
           <Flex flexDirection="column" gap={12}>
             {rows.slice(0, 8).map((r: any, i: number) => {
@@ -5656,6 +5684,9 @@ function ClickIssuesTab({ data, isLoading, replayData }: { data: any; isLoading:
               const page = String(r.pageName ?? "Unknown page");
               const target = String(r.target ?? "Unknown element");
               const pctOfTotal = (totalRage + totalDead) > 0 ? (occ / (totalRage + totalDead)) * 100 : 0;
+              const clusterKey = `${target}||${page}`;
+              const cluster = clusterMap.get(clusterKey);
+              const sessionsLink = buildSessionsLink(page, type);
 
               return (
                 <div key={i} className="uj-error-card">
@@ -5675,12 +5706,74 @@ function ClickIssuesTab({ data, isLoading, replayData }: { data: any; isLoading:
                       <div style={{ marginTop: 8, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${pctOfTotal}%`, background: color, borderRadius: 2 }} />
                       </div>
+                      {/* Session links */}
+                      <Flex gap={8} style={{ marginTop: 10 }} flexWrap="wrap" alignItems="center">
+                        <a href={sessionsLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "3px 10px", borderRadius: 4, background: `${CYAN}18`, color: CYAN, textDecoration: "none", fontWeight: 600 }}>
+                          🔍 View Affected Sessions →
+                        </a>
+                        {cluster && cluster.sessions.slice(0, 3).map((sid, si) => (
+                          <a key={si} href={buildSessionIdLink(sid)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(128,128,128,0.1)", color: CYAN, textDecoration: "none" }}>
+                            Session {sid.substring(0, 8)}… ↗
+                          </a>
+                        ))}
+                      </Flex>
                     </div>
                   </Flex>
                 </div>
               );
             })}
           </Flex>
+
+          {/* Frustration Clusters — grouped by page */}
+          {(() => {
+            const pageClusters = new Map<string, { rage: number; dead: number; elements: string[]; sessions: number }>();
+            rows.forEach((r: any) => {
+              const page = String(r.pageName ?? "Unknown");
+              const c = pageClusters.get(page) ?? { rage: 0, dead: 0, elements: [], sessions: 0 };
+              const occ = Number(r.occurrences ?? 0);
+              if (String(r.eventType) === "rageClick") c.rage += occ; else c.dead += occ;
+              const el = String(r.target ?? "").substring(0, 40);
+              if (el && !c.elements.includes(el)) c.elements.push(el);
+              c.sessions += Number(r.affected_sessions ?? 0);
+              pageClusters.set(page, c);
+            });
+            const sorted = [...pageClusters.entries()].sort((a, b) => (b[1].rage + b[1].dead) - (a[1].rage + a[1].dead));
+            if (sorted.length === 0) return null;
+            return (
+              <>
+                <SectionHeader title="Frustration Clusters by Page" />
+                <Text style={{ fontSize: 11, opacity: 0.5 }}>Pages grouped by total frustrating click volume. Click "View Sessions" to open User Sessions filtered to frustrated sessions on that page — use Session Replay from there.</Text>
+                <Flex flexDirection="column" gap={8}>
+                  {sorted.slice(0, 6).map(([page, c], i) => {
+                    const total = c.rage + c.dead;
+                    const link = buildSessionsLink(page, "rage");
+                    return (
+                      <div key={i} className="uj-table-tile" style={{ padding: 12, borderLeft: `3px solid ${c.rage > c.dead ? RED : ORANGE}` }}>
+                        <Flex justifyContent="space-between" alignItems="center">
+                          <div>
+                            <Strong style={{ fontSize: 13, color: BLUE }}>{page}</Strong>
+                            <Flex gap={12} style={{ marginTop: 4 }}>
+                              {c.rage > 0 && <Text style={{ fontSize: 11, color: RED }}>🔴 {fmtCount(c.rage)} rage</Text>}
+                              {c.dead > 0 && <Text style={{ fontSize: 11, color: ORANGE }}>🟠 {fmtCount(c.dead)} dead</Text>}
+                              <Text style={{ fontSize: 11, opacity: 0.5 }}>{c.elements.length} elements • {fmtCount(c.sessions)} sessions</Text>
+                            </Flex>
+                          </div>
+                          <Flex gap={8} alignItems="center">
+                            <div style={{ width: 80, height: 6, borderRadius: 3, background: "rgba(128,128,128,0.15)", overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${Math.min(100, (total / Math.max(totalRage + totalDead, 1)) * 100)}%`, background: c.rage > c.dead ? RED : ORANGE, borderRadius: 3 }} />
+                            </div>
+                            <a href={link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: `${CYAN}18`, color: CYAN, textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }}>
+                              View Sessions ↗
+                            </a>
+                          </Flex>
+                        </Flex>
+                      </div>
+                    );
+                  })}
+                </Flex>
+              </>
+            );
+          })()}
 
           {/* Full table */}
           <SectionHeader title="All Click Issues" />
@@ -5693,6 +5786,8 @@ function ClickIssuesTab({ data, isLoading, replayData }: { data: any; isLoading:
                 Page: String(r.pageName ?? "Unknown"),
                 Occurrences: Number(r.occurrences ?? 0),
                 "Affected Sessions": Number(r.affected_sessions ?? 0),
+                _page: String(r.pageName ?? "Unknown"),
+                _type: String(r.eventType ?? "unknown"),
               }))}
               columns={[
                 { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <Strong style={{ color: value === "Rage" ? RED : ORANGE }}>{value}</Strong> },
@@ -5700,6 +5795,7 @@ function ClickIssuesTab({ data, isLoading, replayData }: { data: any; isLoading:
                 { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Text style={{ fontSize: 13, color: BLUE }}>{value}</Text> },
                 { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
                 { id: "Affected Sessions", header: "Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+                { id: "Replay", header: "Replay", accessor: "_page", cell: ({ value, row }: any) => <a href={buildSessionsLink(value, row?.original?._type)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: CYAN, textDecoration: "none" }}>View ↗</a> },
               ]}
             />
           </div>
