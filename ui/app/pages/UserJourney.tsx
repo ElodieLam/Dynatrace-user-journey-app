@@ -8223,20 +8223,22 @@ function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov =
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
-      {worstCohort && worstCohort.apdex < 0.85 && (
-        <div className="uj-table-tile" style={{ border: `1px solid ${worstCohort.apdex < 0.5 ? RED : YELLOW}`, borderRadius: 8, padding: 16 }}>
+      {worstCohort && (
+        <div className="uj-table-tile" style={{ border: `1px solid ${worstCohort.apdex < 0.5 ? RED : worstCohort.apdex < 0.85 ? YELLOW : GREEN}`, borderRadius: 8, padding: 16 }}>
           <Flex alignItems="center" gap={8} style={{ marginBottom: 8 }}>
             <span style={{ fontSize: 20 }}>🔍</span>
             <Strong style={{ fontSize: 16 }}>AI Segment Discovery</Strong>
           </Flex>
           <Text>
-            Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions.
-            {worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}
+            {worstCohort.apdex < 0.85
+              ? <>Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions.{worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}</>
+              : <>Your relative weakest cohort is <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions. All segments are healthy, but this one has the most room for improvement.</>
+            }
           </Text>
-          {allCohorts.length > 1 && allCohorts[1].apdex < 0.85 && (
+          {allCohorts.length > 1 && (
             <Text style={{ marginTop: 6, opacity: 0.7 }}>
-              Also underperforming: <Strong>{allCohorts[1].label}</Strong> ({allCohorts[1].dimension}) — Apdex {allCohorts[1].apdex.toFixed(2)}
-              {allCohorts.length > 2 && allCohorts[2].apdex < 0.85 ? `, ${allCohorts[2].label} (${allCohorts[2].dimension}) — Apdex ${allCohorts[2].apdex.toFixed(2)}` : ""}
+              Runner-up: <Strong>{allCohorts[1].label}</Strong> ({allCohorts[1].dimension}) — Apdex {allCohorts[1].apdex.toFixed(2)}
+              {allCohorts.length > 2 ? `, ${allCohorts[2].label} (${allCohorts[2].dimension}) — Apdex ${allCohorts[2].apdex.toFixed(2)}` : ""}
             </Text>
           )}
         </div>
