@@ -294,7 +294,8 @@ function tfParam(): string {
 }
 
 function sessionReplayUrl(sessionId: string, startTs?: string): string {
-  return `${ENV_URL}/ui/apps/dynatrace.users.sessions/session-viewer/${sessionId}/${startTs ?? ''}?tf=now-2h%3Bnow&df=1&perspective=general&sort=navigationCount%3Adescending`;
+  const ts = startTs ?? '';
+  return `${ENV_URL}/ui/apps/dynatrace.users.sessions/session-viewer/${sessionId}/${ts}?tf=${tfParam()}&perspective=general#filtering=${encodeURIComponent(`ID = *"${sessionId.substring(0, 6)}"*`)}`;
 }
 
 function appEntityQuery(frontend: string): string {
