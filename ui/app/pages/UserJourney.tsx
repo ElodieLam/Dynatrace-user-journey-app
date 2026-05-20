@@ -1365,15 +1365,17 @@ function davisProblemsQuery(days: number, frontend: string): string {
 // NEW: Backend Services for Root Cause Tab — service topology from the APPLICATION entity
 function backendServicesQuery(days: number, frontend: string): string {
   return `fetch dt.entity.service
-| fields id, entity.name, entity.detected_name
+| fields id, entity.name, entity.detected_name, downstream = calls[dt.entity.service]
 | limit 50`;
 }
 
-// NEW: Service-to-Service calls (downstream topology via smartscape edges)
+// NEW: Service-to-Service calls (downstream topology via entity relationships)
 function serviceToServiceQuery(days: number, frontend: string): string {
-  return `smartscapeEdges "calls"
-| filter source_type == "SERVICE" AND target_type == "SERVICE"
-| fields source_id, target_id
+  return `fetch dt.entity.service
+| fields id, entity.name, downstream = calls[dt.entity.service]
+| expand downstream_id = downstream
+| filter isNotNull(downstream_id)
+| fields source_id = id, target_id = downstream_id
 | limit 200`;
 }
 
