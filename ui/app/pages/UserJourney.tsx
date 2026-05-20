@@ -7294,28 +7294,39 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
   const avgDepth = paths.length > 0 ? paths.reduce((a: number, p: any) => a + Number(p.avg_depth ?? 0), 0) / paths.length : 0;
 
   // Compute conversion rate per page from the path graph
-  // "Conversion probability": % of outgoing traffic that eventually reaches the last funnel step
+  // "Conversion probability": accounts for drop-offs (sessions that visited but didn't continue)
   const lastStepPages = new Set(steps[steps.length - 1]?.identifiers ?? []);
   const graphOut = new Map<string, { targets: Map<string, number>; total: number }>();
+  const graphIn = new Map<string, number>(); // total incoming transitions per page
   paths.forEach((p: any) => {
     const src = String(p.step1 ?? "unknown"); const tgt = String(p.step2 ?? "unknown"); const count = Number(p.occurrences ?? 0);
     const d = graphOut.get(src) ?? { targets: new Map(), total: 0 };
     d.targets.set(tgt, (d.targets.get(tgt) ?? 0) + count); d.total += count;
     graphOut.set(src, d);
+    graphIn.set(tgt, (graphIn.get(tgt) ?? 0) + count);
   });
-  // BFS to compute conversion probability per page (iterative relaxation)
+  // Compute continuation rate per page: outgoing / incoming (capped at 1.0)
+  // Pages where users drop off have continuation < 1.0
+  const continuation = new Map<string, number>();
+  for (const [page, { total: outgoing }] of graphOut) {
+    const incoming = graphIn.get(page) ?? 0;
+    // For entry pages (incoming < outgoing), assume continuation = 1 (no drop-off from data perspective)
+    continuation.set(page, incoming > 0 ? Math.min(1.0, outgoing / incoming) : 1.0);
+  }
+  // Iterative relaxation with drop-off: conv_prob(page) = continuation * sum(share_to_target * conv_prob(target))
   const convProb = new Map<string, number>();
   // Last step pages have 100% conv probability
   for (const p of lastStepPages) convProb.set(p, 100);
   // Also check if any page name matches last step identifiers by containment
   for (const [page] of graphOut) { if (lastStepPages.has(page) || [...lastStepPages].some(id => page.includes(id) || id.includes(page))) convProb.set(page, 100); }
-  // Iterative: conv_prob(page) = sum over targets: (traffic_share_to_target * conv_prob(target))
-  for (let iter = 0; iter < 10; iter++) {
+  // Iterative: conv_prob(page) = continuation_rate * sum(traffic_share_to_target * conv_prob(target))
+  for (let iter = 0; iter < 20; iter++) {
     for (const [page, { targets, total }] of graphOut) {
       if (convProb.get(page) === 100) continue; // last step pages stay at 100
+      const cont = continuation.get(page) ?? 1.0;
       let prob = 0;
       for (const [tgt, count] of targets) { prob += (count / total) * (convProb.get(tgt) ?? 0); }
-      convProb.set(page, prob);
+      convProb.set(page, cont * prob);
     }
   }
   const convMap = convProb;
