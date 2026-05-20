@@ -1098,20 +1098,24 @@ function forecastApdexTrendQuery(days: number, frontend: string, steps: StepDef[
 
 function forecastVitalsTrendQuery(days: number, frontend: string): string {
   const period = periodClause(days);
-  return `timeseries {
-  lcp = avg(dt.frontend.web.page.largest_contentful_paint),
-  cls = avg(dt.frontend.web.page.cumulative_layout_shift),
-  inp = avg(dt.frontend.web.page.interaction_to_next_paint),
-  ttfb = avg(dt.frontend.web.navigation.time_to_first_byte),
-  load_end = avg(dt.frontend.web.navigation.load_event_end),
-  ts = start()
-}, ${period}, interval: ${days <= 1 ? "1h" : "1d"}, filter: {frontend.name == "${frontend}"}
-| fieldsAdd d = record(lcp_val = lcp[], cls_val = cls[], inp_val = inp[], ttfb_val = ttfb[], load_val = load_end[], ts = ts[])
-| expand d
-| fieldsAdd lcp_val = d[lcp_val], cls_val = d[cls_val], inp_val = d[inp_val], ttfb_val = d[ttfb_val], load_val = d[load_val], bucket_ts = d[ts]
-| filterOut isNull(lcp_val) and isNull(cls_val) and isNull(inp_val) and isNull(ttfb_val) and isNull(load_val)
-| sort bucket_ts asc
-| fields lcp_val, cls_val, inp_val, ttfb_val, load_val`;
+  return `fetch user.events, ${period}
+| filter frontend.name == "${frontend}"
+| filter characteristics.has_page_summary == true
+| fieldsAdd
+    lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
+    cls_val = toDouble(web_vitals.cumulative_layout_shift),
+    inp_ms = toDouble(web_vitals.interaction_to_next_paint) / 1000000.0,
+    ttfb_ms = toDouble(web_vitals.time_to_first_byte) / 1000000.0,
+    load_ms = toDouble(web_vitals.load_event_end) / 1000000.0
+| fieldsAdd bucket_key = formatTimestamp(start_time, format: "yyyy-MM-dd")
+| summarize
+    lcp_val = avg(lcp_ms),
+    cls_val = avg(cls_val),
+    inp_val = avg(inp_ms),
+    ttfb_val = avg(ttfb_ms),
+    load_val = avg(load_ms),
+    by: {bucket_key}
+| sort bucket_key asc`;
 }
 
 // ---------------------------------------------------------------------------
@@ -12143,9 +12147,9 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
   });
 
   // Linear regression helper
-  function linearRegression(values: number[]): { slope: number; intercept: number; predict: (x: number) => number } {
+  function linearRegression(values: number[]): { slope: number; intercept: number; predict: (x: number) => number; stdErr: number } {
     const n = values.length;
-    if (n < 2) return { slope: 0, intercept: values[0] ?? 0, predict: () => values[0] ?? 0 };
+    if (n < 2) return { slope: 0, intercept: values[0] ?? 0, predict: () => values[0] ?? 0, stdErr: 0 };
     const xs = values.map((_, i) => i);
     const sumX = xs.reduce((a, b) => a + b, 0);
     const sumY = values.reduce((a, b) => a + b, 0);
@@ -12154,7 +12158,11 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
     const denom = n * sumX2 - sumX * sumX;
     const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
     const intercept = (sumY - slope * sumX) / n;
-    return { slope, intercept, predict: (x: number) => intercept + slope * x };
+    // Standard error of residuals for confidence bands
+    const residuals = values.map((y, i) => y - (intercept + slope * i));
+    const sse = residuals.reduce((a, r) => a + r * r, 0);
+    const stdErr = n > 2 ? Math.sqrt(sse / (n - 2)) : 0;
+    return { slope, intercept, predict: (x: number) => intercept + slope * x, stdErr };
   }
 
   // Build forecasts for key metrics
@@ -12352,15 +12360,26 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
                 time: new Date(now.getTime() - (chartValues.length - 1 - i) * 86400000), value: v,
               })));
               const forecastPts: { time: Date; value: number }[] = [];
+              const upperPts: { time: Date; value: number }[] = [];
+              const lowerPts: { time: Date; value: number }[] = [];
+              const ci = 1.96 * b.reg.stdErr; // 95% confidence interval
               for (let d = 0; d <= FORECAST_DAYS; d++) {
                 const val = d === 0 ? chartValues[chartValues.length - 1] : b.reg.predict(b.values.length - 1 + d);
-                forecastPts.push({ time: new Date(now.getTime() + d * 86400000), value: val });
+                const spread = ci * (1 + d * 0.3); // widen band further from present
+                const t = new Date(now.getTime() + d * 86400000);
+                forecastPts.push({ time: t, value: val });
+                upperPts.push({ time: t, value: val + spread });
+                lowerPts.push({ time: t, value: Math.max(0, val - spread) });
               }
               const forecastTs = buildTimeseries("Forecast", forecastPts);
+              const upperTs = buildTimeseries("Upper Bound", upperPts);
+              const lowerTs = buildTimeseries("Lower Bound", lowerPts);
               const markerTime = new Date(now.getTime());
               return (
-                <TimeseriesChart gapPolicy="connect" curve="linear" height={100}>
+                <TimeseriesChart gapPolicy="connect" curve="linear" height={200}>
                   <TimeseriesChart.Area data={actualTs} color={BLUE} />
+                  <TimeseriesChart.Area data={upperTs} color={"rgba(136,71,255,0.12)"} />
+                  <TimeseriesChart.Area data={lowerTs} color={"rgba(136,71,255,0.12)"} />
                   <TimeseriesChart.Line data={forecastTs} color={PURPLE} />
                   <TimeseriesChart.Legend hidden />
                   <TimeseriesChart.Annotations>
