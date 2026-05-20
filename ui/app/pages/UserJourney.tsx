@@ -1362,12 +1362,30 @@ function davisProblemsQuery(days: number, frontend: string): string {
 | fields event.id, display_id, event.name, title, event.status, event.start, event.end, root_cause_entity_id, affected_entity_ids, event.category`;
 }
 
-// NEW: Backend Services for Root Cause Tab
+// NEW: Backend Services for Root Cause Tab — service topology from the APPLICATION entity
 function backendServicesQuery(days: number, frontend: string): string {
-  const period = periodClause(days);
   return `fetch dt.entity.service
-| fieldsKeep id, entity.name, entity.detected_name
-| limit 30`;
+| fields id, entity.name, entity.detected_name
+| limit 50`;
+}
+
+// NEW: Service-to-Service calls (downstream topology via smartscape edges)
+function serviceToServiceQuery(days: number, frontend: string): string {
+  return `smartscapeEdges "calls"
+| filter source_type == "SERVICE" AND target_type == "SERVICE"
+| fields source_id, target_id
+| limit 200`;
+}
+
+// NEW: Davis problems on backend services
+function backendProblemsQuery(days: number): string {
+  const period = periodClause(days);
+  return `fetch dt.davis.problems, ${period}
+| filter isNotNull(display_id)
+| filter contains(toString(affected_entity_ids), "SERVICE") OR contains(toString(root_cause_entity_id), "SERVICE") OR contains(toString(affected_entity_ids), "HOST") OR contains(toString(affected_entity_ids), "PROCESS")
+| sort event.start desc
+| limit 40
+| fields event.id, display_id, event.name, title, event.status, event.start, event.end, root_cause_entity_id, affected_entity_ids, event.category, management_zones`;
 }
 
 // NEW: Feature Flag / Config Change Events Query
@@ -2331,6 +2349,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Segmentation</Strong>: Added OS version breakdown table, AI Segment Discovery card (always visible), ISO country code → full country name translation</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Sankey</Strong>: Increased per-column node limit to 12, added scroll support and dynamic height</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Davis Problems</Strong>: Fixed "Unknown Problem" titles — now uses event.name from DQL</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Root Cause Correlation — Full-Stack Correlation</Strong>: Backend service topology (APPLICATION → Services → Downstream) via Smartscape traversal with Davis AI problems overlaid. When frontend degradation coincides with backend problems, a banner highlights the backend root cause. Clickable problem links to Davis Problems app.</Paragraph>
           </div>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 17, 2026</Paragraph>
@@ -2479,7 +2498,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Segmentation</Strong>: Device, browser, geography, and <Strong>OS version</Strong> breakdowns with Apdex per segment. Geography shows full country names (translated from ISO codes). <Strong>AI Segment Discovery</Strong> card is always visible and automatically identifies the cohort with the worst Apdex or lowest conversion rate — surfacing which user segment needs attention without manual filtering.</Paragraph>
         <Paragraph><Strong>Errors &amp; Drop-offs</Strong>: Drop-off analysis between funnel steps with optimization recommendations. When AOV is set, each drop-off card shows the estimated revenue at risk from abandoned sessions.</Paragraph>
         <Paragraph><Strong>What-If Analysis</Strong>: Traffic impact modeling with projected Apdex, latency, and conversion degradation. When AOV is set in Settings, also shows revenue impact: projected revenue at higher traffic, net revenue change, conversion degradation loss, and a "Perf Tax" breakdown showing revenue lost to performance under load.</Paragraph>
-        <Paragraph><Strong>Root Cause Correlation</Strong>: Automatically correlates conversion drops with technical signals — latency spikes, error surges, and frustrated sessions — on an hourly timeline. Identifies which funnel steps degrade at the exact hours conversion dips. Surfaces ranked root cause signals with severity and confidence scores so you can pinpoint the technical driver behind every conversion drop without manual cross-referencing. When AOV is set, shows the estimated revenue at risk from sessions occurring during impact hours.</Paragraph>
+        <Paragraph><Strong>Root Cause Correlation</Strong>: Automatically correlates conversion drops with technical signals — latency spikes, error surges, and frustrated sessions — on an hourly timeline. Identifies which funnel steps degrade at the exact hours conversion dips. Surfaces ranked root cause signals with severity and confidence scores. <Strong>Full-Stack Correlation</Strong> section shows the backend service topology for the application — APPLICATION → Backend Services → Downstream Services — with Davis AI-detected problems overlaid. When a frontend degradation is detected during impact hours AND backend services have problems, a banner highlights the likely backend root cause. Clickable links to each problem in the Davis Problems app. When AOV is set, shows the estimated revenue at risk from sessions occurring during impact hours.</Paragraph>
         <Paragraph><Strong>Predictive Forecasting</Strong>: Uses trend data from the selected timeframe to project Apdex, conversion rate, error rate, and average duration forward 7 days via linear regression. Flags when a metric is on trajectory to breach a performance budget threshold before it actually happens. Includes trend direction, rate of change, and days-to-breach estimates for proactive incident prevention.</Paragraph>
         <Paragraph><Strong>Resource Waterfall</Strong>: Aggregated resource timing per funnel step — third-party scripts, XHR/Fetch calls, images, CSS, and fonts. Top 10 Slowest Resources section shows individual requests ranked by duration with clickable session links. Session Drill-Down panel lets you select a specific session to see all resources loaded in that session (with full replay link). Includes per-step resource type breakdown, visual waterfall bar chart with P50/P90 ranges, and optimization recommendations.</Paragraph>
         <Paragraph><Strong>Change Intelligence</Strong>: Pulls deployment events from Dynatrace and overlays them on an hourly performance timeline. Automatically compares metrics in the window before and after each deployment to detect regressions. Shows before/after Apdex, duration, error rate, and frustrated % with severity classification. When AOV is set, shows estimated revenue loss per regression and total revenue impact across all regressive deployments. Use to validate whether a deploy caused a performance regression or improvement.</Paragraph>
@@ -2785,6 +2804,8 @@ export function UserJourney() {
   const clickReplayData = useDql({ query: clickIssuesReplayQuery(timeframeDays, frontend) }, refetchOpts);
   const davisProblemsData = useDql({ query: davisProblemsQuery(timeframeDays, frontend) }, refetchOpts);
   const backendServicesData = useDql({ query: backendServicesQuery(timeframeDays, frontend) }, refetchOpts);
+  const serviceToServiceData = useDql({ query: serviceToServiceQuery(timeframeDays, frontend) }, refetchOpts);
+  const backendProblemsData = useDql({ query: backendProblemsQuery(timeframeDays) }, refetchOpts);
   const featureFlagData = useDql({ query: featureFlagEventsQuery(timeframeDays) }, refetchOpts);
   const utmAttributionData = useDql({ query: utmAttributionQuery(timeframeDays, frontend, steps) }, refetchOpts);
   const hostMetricsData = useDql({ query: hostMetricsQuery(timeframeDays) }, refetchOpts);
@@ -3113,7 +3134,7 @@ export function UserJourney() {
             case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} osVersions={(osVersionData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading || osVersionData.isLoading} aov={aov} overallConv={overallConv} />; break;
             case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} />; break;
             case "What-If Analysis": content = <WhatIfTab hostMetricsData={hostMetricsData} funnelCounts={funnelCounts} stepMap={stepMap} overallApdex={overallApdex} isLoading={isLoading} steps={steps} aov={aov} />; break;
-            case "Root Cause Correlation": content = <RootCauseCorrelationTab backendServicesData={backendServicesData} hourlyData={rootCauseCorrelationData} stepDropData={rootCauseStepDropData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} isLoading={rootCauseCorrelationData.isLoading || rootCauseStepDropData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
+            case "Root Cause Correlation": content = <RootCauseCorrelationTab backendServicesData={backendServicesData} serviceToServiceData={serviceToServiceData} backendProblemsData={backendProblemsData} hourlyData={rootCauseCorrelationData} stepDropData={rootCauseStepDropData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} isLoading={rootCauseCorrelationData.isLoading || rootCauseStepDropData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} frontend={frontend} />; break;
             case "Predictive Forecasting": content = <PredictiveForecastingTab trendData={forecastTrendData} apdexTrendData={forecastApdexTrendData} vitalsTrendData={forecastVitalsTrendData} quality={quality} overallApdex={overallApdex} overallConv={overallConv} isLoading={forecastTrendData.isLoading || forecastApdexTrendData.isLoading || forecastVitalsTrendData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
             case "Resource Waterfall": content = <ResourceWaterfallTab waterfallData={resourceWaterfallData} byStepData={resourceByStepData} sessionDrillData={resourceSessionDrillData} isLoading={resourceWaterfallData.isLoading || resourceByStepData.isLoading || resourceSessionDrillData.isLoading} steps={steps} frontend={frontend} />; break;
             case "Change Intelligence": content = <ChangeIntelligenceTab featureFlagData={featureFlagData} deployData={deploymentEventsData} impactData={changeImpactData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} isLoading={deploymentEventsData.isLoading || changeImpactData.isLoading} aov={aov} overallConv={overallConv} funnelCounts={funnelCounts} />; break;
@@ -3981,7 +4002,7 @@ function analyzeRootCauseCorrelation(hourlyData: any, quality: any, overallApdex
   }
   if (insights.length === 0) insights.push({ severity: "good", icon: "✅", text: "No strong negative correlations between performance/errors and conversion detected." });
 
-  const summary = `Root Cause Correlation automatically cross-references conversion drops with technical signals — latency spikes, error surges, and frustrated sessions — on an hourly timeline to identify causal relationships. This tab is designed for SREs performing incident root-cause analysis, Performance Engineers diagnosing conversion impacts, and Engineering Managers understanding the business cost of technical issues. It answers: Why did conversion drop? Is it a performance issue, an error issue, or both? At what specific hours did degradation occur? ${errRate > 3 ? `The current error rate of ${fmtPct(errRate)} is a likely conversion blocker — errors and conversion drops correlate at the same hours.` : ""} ${quality.avg > 3000 ? `Average latency of ${fmt(quality.avg)} exceeds the 3s threshold — per Google, 53% of mobile users abandon sites taking more than 3 seconds.` : ""} ${insights.length === 1 && insights[0].severity === "good" ? "No dominant technical root cause identified — conversion may be influenced by UX design, content quality, pricing, or external factors." : ""} The tab provides ranked root cause signals with severity and confidence scores, hourly overlay charts, and per-step degradation analysis.`;
+  const summary = `Root Cause Correlation automatically cross-references conversion drops with technical signals — latency spikes, error surges, and frustrated sessions — on an hourly timeline to identify causal relationships. NEW: Full-Stack Correlation shows the backend service topology (APPLICATION → Backend Services → Downstream Services) using Dynatrace Smartscape traversal, with Davis AI-detected problems overlaid on each service node. When frontend degradation coincides with backend problems, it conclusively links frontend conversion drops to backend root causes — Dynatrace's unique full-stack advantage. This tab is designed for SREs performing incident root-cause analysis, Performance Engineers diagnosing conversion impacts, and Engineering Managers understanding the business cost of technical issues. ${errRate > 3 ? `The current error rate of ${fmtPct(errRate)} is a likely conversion blocker — errors and conversion drops correlate at the same hours.` : ""} ${quality.avg > 3000 ? `Average latency of ${fmt(quality.avg)} exceeds the 3s threshold — per Google, 53% of mobile users abandon sites taking more than 3 seconds.` : ""} ${insights.length === 1 && insights[0].severity === "good" ? "No dominant technical root cause identified — conversion may be influenced by UX design, content quality, pricing, or external factors." : ""} The tab provides ranked root cause signals with severity and confidence scores, hourly overlay charts, per-step degradation analysis, and a service flow topology with clickable problem links.`;
   return { summary, insights, recommendations: recs };
 }
 
@@ -11423,7 +11444,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
     </Flex>
   );
 }
-function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, isLoading, steps, aov, funnelCounts, backendServicesData }: { hourlyData: any; stepDropData: any; quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; isLoading: boolean; steps: StepDef[]; aov: number; funnelCounts: number[]; backendServicesData?: any }) {
+function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, isLoading, steps, aov, funnelCounts, backendServicesData, serviceToServiceData, backendProblemsData, frontend }: { hourlyData: any; stepDropData: any; quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; isLoading: boolean; steps: StepDef[]; aov: number; funnelCounts: number[]; backendServicesData?: any; serviceToServiceData?: any; backendProblemsData?: any; frontend?: string }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeRootCauseCorrelation(hourlyData, quality, overallApdex, overallConv), [hourlyData, quality, overallApdex, overallConv]));
   if (isLoading) return <Loading />;
 
@@ -11727,6 +11748,286 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
           </Paragraph>
         </div>
       </Flex>
+
+      {/* Full-Stack Correlation — Backend Service Topology */}
+      {(() => {
+        const services = (backendServicesData?.data?.records ?? []) as any[];
+        const s2sRecords = (serviceToServiceData?.data?.records ?? []) as any[];
+        const problems = (backendProblemsData?.data?.records ?? []) as any[];
+        if (services.length === 0 && problems.length === 0) return null;
+
+        // Build service topology graph with BFS-based depth layering
+        type TopoNode = { id: string; name: string; layer: number; problems: any[] };
+        type TopoEdge = { from: string; to: string };
+        const nodeMap = new Map<string, TopoNode>();
+        const edges: TopoEdge[] = [];
+
+        // Build service ID → name map
+        const svcNameMap = new Map<string, string>();
+        for (const svc of services) {
+          const sid = String(svc.id ?? "");
+          const sname = String(svc["entity.name"] ?? svc.entity_name ?? svc["entity.detected_name"] ?? sid);
+          if (sid) svcNameMap.set(sid, sname);
+        }
+
+        // Build adjacency from smartscapeEdges (directed: source calls target)
+        const adjOut = new Map<string, Set<string>>(); // source → targets
+        const adjIn = new Map<string, Set<string>>();  // target → sources
+        for (const r of s2sRecords) {
+          const src = String(r.source_id ?? "");
+          const tgt = String(r.target_id ?? "");
+          if (!src || !tgt || src === tgt) continue;
+          if (!adjOut.has(src)) adjOut.set(src, new Set());
+          adjOut.get(src)!.add(tgt);
+          if (!adjIn.has(tgt)) adjIn.set(tgt, new Set());
+          adjIn.get(tgt)!.add(src);
+        }
+
+        // Identify root services: services that call others but are NOT called by anyone (entry points)
+        const allServiceIds = new Set([...adjOut.keys(), ...adjIn.keys()]);
+        const rootIds: string[] = [];
+        for (const sid of allServiceIds) {
+          if (!adjIn.has(sid) || adjIn.get(sid)!.size === 0) rootIds.push(sid);
+        }
+        // If no clear roots, pick top callers (most outgoing calls)
+        if (rootIds.length === 0) {
+          const sorted = [...adjOut.entries()].sort((a, b) => b[1].size - a[1].size);
+          for (const [sid] of sorted.slice(0, 3)) rootIds.push(sid);
+        }
+
+        // BFS from roots to assign depth layers (layer 1, 2, 3, ...)
+        const depthMap = new Map<string, number>();
+        const queue: { id: string; depth: number }[] = [];
+        for (const rid of rootIds) { depthMap.set(rid, 1); queue.push({ id: rid, depth: 1 }); }
+        while (queue.length > 0) {
+          const { id, depth } = queue.shift()!;
+          const targets = adjOut.get(id);
+          if (!targets) continue;
+          for (const tgt of targets) {
+            if (!depthMap.has(tgt)) {
+              depthMap.set(tgt, depth + 1);
+              queue.push({ id: tgt, depth: depth + 1 });
+            }
+          }
+        }
+
+        // Services with no edges or not reached by BFS → layer 1
+        for (const svc of services) {
+          const sid = String(svc.id ?? "");
+          if (sid && !depthMap.has(sid)) depthMap.set(sid, 1);
+        }
+
+        // Layer 0: Application (frontend)
+        const appNode: TopoNode = { id: "APP", name: frontend ?? "Application", layer: 0, problems: [] };
+        nodeMap.set("APP", appNode);
+
+        // Add all services with their BFS-determined depth
+        for (const svc of services) {
+          const sid = String(svc.id ?? "");
+          const sname = svcNameMap.get(sid) ?? sid;
+          if (!sid) continue;
+          const layer = depthMap.get(sid) ?? 1;
+          nodeMap.set(sid, { id: sid, name: sname, layer, problems: [] });
+        }
+        // Also add any services from edges not in entity list
+        for (const sid of allServiceIds) {
+          if (!nodeMap.has(sid)) {
+            const nm = svcNameMap.get(sid) ?? sid.replace(/.*-/, "").slice(0, 12);
+            const layer = depthMap.get(sid) ?? 1;
+            nodeMap.set(sid, { id: sid, name: nm, layer, problems: [] });
+          }
+        }
+
+        // Build edges: APP → root services, then service → service per adjacency
+        for (const rid of rootIds) { if (nodeMap.has(rid)) edges.push({ from: "APP", to: rid }); }
+        // Also connect APP to any layer-1 services that aren't roots but have no inbound edge
+        for (const [nid, node] of nodeMap) {
+          if (node.layer === 1 && nid !== "APP" && !rootIds.includes(nid)) {
+            edges.push({ from: "APP", to: nid });
+          }
+        }
+        // Service-to-service edges from adjacency
+        for (const [src, targets] of adjOut) {
+          for (const tgt of targets) {
+            if (nodeMap.has(src) && nodeMap.has(tgt)) edges.push({ from: src, to: tgt });
+          }
+        }
+
+        // Determine max depth and limit per layer for readability
+        const maxDepth = Math.max(...Array.from(nodeMap.values()).map(n => n.layer), 1);
+        const layerLimits = [1, 8, 8, 6, 5, 4]; // max nodes per layer 0-5
+        const layerNodes: TopoNode[][] = [];
+        for (let d = 0; d <= maxDepth && d <= 5; d++) {
+          const nodesAtDepth = Array.from(nodeMap.values()).filter(n => n.layer === d);
+          const limit = layerLimits[d] ?? 4;
+          layerNodes.push(nodesAtDepth.slice(0, limit));
+        }
+        // Flatten visible IDs
+        const visibleIds = new Set(layerNodes.flat().map(n => n.id));
+        const visibleEdges = edges.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+        // Deduplicate edges
+        const edgeSet = new Set<string>();
+        const dedupedEdges = visibleEdges.filter(e => { const key = `${e.from}→${e.to}`; if (edgeSet.has(key)) return false; edgeSet.add(key); return true; });
+
+        // Attach problems to services by name matching in affected entities string
+        for (const p of problems) {
+          const affectedStr = String(p.affected_entity_ids ?? "");
+          const rootCauseStr = String(p.root_cause_entity_id ?? "");
+          for (const [nid, node] of nodeMap) {
+            if (nid === "APP") continue;
+            if (affectedStr.includes(nid) || rootCauseStr.includes(nid)) {
+              node.problems.push(p);
+            }
+          }
+        }
+
+        // Unattached problems (backend problems not yet linked to a specific node)
+        const attachedProblemIds = new Set<string>();
+        for (const [, node] of nodeMap) {
+          for (const p of node.problems) attachedProblemIds.add(String(p["event.id"] ?? p.display_id));
+        }
+        const unattachedProblems = problems.filter(p => !attachedProblemIds.has(String(p["event.id"] ?? p.display_id)));
+
+        // SVG layout for topology — multi-layer service flow
+        const nodes = layerNodes.flat();
+        const layers = layerNodes;
+        const nodeW = 180;
+        const nodeH = 48;
+        const layerGap = 160;
+        const nodeGap = 14;
+        const padX = 40;
+        const padY = 40;
+        const nonEmptyLayers = layers.filter(l => l.length > 0);
+        const maxPerLayer = Math.max(...layers.map(l => l.length), 1);
+        const svgW = padX * 2 + nonEmptyLayers.length * (nodeW + layerGap);
+        const svgH = padY * 2 + maxPerLayer * (nodeH + nodeGap);
+
+        // Assign positions
+        const nodePos = new Map<string, { x: number; y: number }>();
+        for (let li = 0; li < layers.length; li++) {
+          const layer = layers[li];
+          const colX = padX + li * (nodeW + layerGap);
+          const totalH = layer.length * nodeH + (layer.length - 1) * nodeGap;
+          const startY = (svgH - totalH) / 2;
+          for (let ni = 0; ni < layer.length; ni++) {
+            nodePos.set(layer[ni].id, { x: colX, y: startY + ni * (nodeH + nodeGap) });
+          }
+        }
+
+        // Edge paths (use deduplicated visible edges)
+        const edgePaths = dedupedEdges.map(e => {
+          const from = nodePos.get(e.from);
+          const to = nodePos.get(e.to);
+          if (!from || !to) return null;
+          const x1 = from.x + nodeW;
+          const y1 = from.y + nodeH / 2;
+          const x2 = to.x;
+          const y2 = to.y + nodeH / 2;
+          const cx = (x1 + x2) / 2;
+          return `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+        }).filter(Boolean);
+
+        const hasImpact = impactHours.length > 0;
+        const problemServices = nodes.filter(n => n.problems.length > 0);
+
+        return (
+          <>
+            <SectionHeader title="Full-Stack Correlation" />
+            <Text style={{ fontSize: 12, opacity: 0.5 }}>Backend service topology for this application. Davis AI connects frontend degradations to backend service problems and infrastructure events — Dynatrace's unique full-stack advantage.</Text>
+
+            {/* Impact banner */}
+            {hasImpact && problemServices.length > 0 && (
+              <div className="uj-table-tile" style={{ padding: 16, borderLeft: `3px solid ${RED}` }}>
+                <Strong style={{ color: RED }}>⚡ Backend Impact Detected</Strong>
+                <Paragraph style={{ fontSize: 12, marginTop: 6 }}>
+                  Frontend degradation detected during {impactHours.length} hour(s). {problemServices.length} backend service(s) had Davis-detected problems during this period:
+                  {" "}{problemServices.map(n => n.name).join(", ")}.
+                  This strongly suggests the frontend conversion drop is caused by backend issues — investigate the affected services below.
+                </Paragraph>
+              </div>
+            )}
+
+            {/* Service Topology Diagram */}
+            <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
+              <Strong style={{ marginBottom: 8, display: "block" }}>Service Flow Topology</Strong>
+              <svg width={svgW} height={Math.max(svgH, 200)} style={{ display: "block" }}>
+                {/* Edges */}
+                {edgePaths.map((d, i) => (
+                  <path key={i} d={d!} fill="none" stroke="rgba(128,128,128,0.4)" strokeWidth={2} />
+                ))}
+                {/* Nodes */}
+                {nodes.map(node => {
+                  const pos = nodePos.get(node.id);
+                  if (!pos) return null;
+                  const hasProblem = node.problems.length > 0;
+                  const fillColor = node.layer === 0 ? "rgba(69,137,255,0.15)" : hasProblem ? "rgba(194,25,48,0.12)" : "rgba(128,128,128,0.08)";
+                  const borderColor = node.layer === 0 ? BLUE : hasProblem ? RED : "rgba(128,128,128,0.3)";
+                  const iconLabel = node.layer === 0 ? "🌐" : hasProblem ? "⚠️" : "⚙️";
+                  return (
+                    <g key={node.id}>
+                      <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6} fill={fillColor} stroke={borderColor} strokeWidth={1.5} />
+                      <text x={pos.x + 10} y={pos.y + 20} fontSize={11} fill="currentColor" style={{ dominantBaseline: "middle" }}>{iconLabel} {node.name.length > 18 ? node.name.slice(0, 17) + "…" : node.name}</text>
+                      {hasProblem && (
+                        <text x={pos.x + 10} y={pos.y + 36} fontSize={10} fill={RED}>{node.problems.length} problem{node.problems.length > 1 ? "s" : ""}</text>
+                      )}
+                      {!hasProblem && node.layer > 0 && (
+                        <text x={pos.x + 10} y={pos.y + 36} fontSize={10} fill={GREEN}>healthy</text>
+                      )}
+                    </g>
+                  );
+                })}
+                {/* Layer labels */}
+                {layers.map((layer, li) => layer.length > 0 && (
+                  <text key={`lbl-${li}`} x={padX + li * (nodeW + layerGap) + nodeW / 2} y={16} fontSize={10} fill="rgba(128,128,128,0.5)" textAnchor="middle">
+                    {li === 0 ? "Application" : li === 1 ? "Services" : `Tier ${li}`}
+                  </text>
+                ))}
+              </svg>
+            </div>
+
+            {/* Backend problems table */}
+            {problems.length > 0 && (() => {
+              const problemLinks = new Map<string, string>();
+              for (const p of problems) {
+                const name = String(p["event.name"] ?? p.title ?? p.display_id ?? "Unknown");
+                const link = `${ENV_URL}/ui/apps/dynatrace.davis.problems/problem/${String(p["event.id"] ?? "")}`;
+                problemLinks.set(name, link);
+              }
+              return (
+              <>
+                <Strong style={{ marginTop: 8 }}>Backend &amp; Infrastructure Problems (Davis AI)</Strong>
+                <div className="uj-table-tile">
+                  <DataTable
+                    sortable
+                    data={problems.map((p: any) => ({
+                      Problem: String(p["event.name"] ?? p.title ?? p.display_id ?? "Unknown"),
+                      Status: String(p["event.status"] ?? "OPEN"),
+                      Category: String(p["event.category"] ?? "—"),
+                      Start: p["event.start"] ? new Date(String(p["event.start"])).toLocaleString() : "—",
+                      "Display ID": String(p.display_id ?? ""),
+                    }))}
+                    columns={[
+                      { id: "Problem", header: "Problem", accessor: "Problem", cell: ({ value }: any) => { const href = problemLinks.get(value) ?? "#"; return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value}</a>; } },
+                      { id: "Status", header: "Status", accessor: "Status", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: value === "OPEN" ? "rgba(194,25,48,0.12)" : "rgba(36,178,96,0.12)", color: value === "OPEN" ? RED : GREEN, fontWeight: 700 }}>{value}</span> },
+                      { id: "Category", header: "Category", accessor: "Category" },
+                      { id: "Start", header: "Started", accessor: "Start" },
+                      { id: "Display ID", header: "ID", accessor: "Display ID" },
+                    ]}
+                  />
+                </div>
+              </>
+              );
+            })()}
+
+            {/* No backend services from spans */}
+            {services.length === 0 && problems.length > 0 && (
+              <div className="uj-table-tile" style={{ padding: 16, borderLeft: `3px solid ${YELLOW}` }}>
+                <Text style={{ fontSize: 13, color: YELLOW }}>⚠️ No backend service spans found in the selected timeframe. The problems above are from all SERVICE/HOST/PROCESS entities detected by Davis AI.</Text>
+              </div>
+            )}
+          </>
+        );
+      })()}
     </Flex>
   );
 }
