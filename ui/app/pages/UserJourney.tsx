@@ -8566,6 +8566,32 @@ ${bottleneckHtml}
         </Flex>
       </Flex>
 
+      {/* AI-Generated Executive Narrative */}
+      <SectionHeader title="AI Executive Narrative" />
+      {(() => {
+        // Build narrative from available metrics
+        const convChange = overallConvPrev > 0 ? ((overallConv - overallConvPrev) / overallConvPrev) * 100 : 0;
+        const apdexChange = overallApdexPrev > 0 ? overallApdex - overallApdexPrev : 0;
+        const sessionsChange = qualityPrev.sessions > 0 ? ((quality.sessions - qualityPrev.sessions) / qualityPrev.sessions) * 100 : 0;
+        const errRateNow = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+        const errRatePrev = qualityPrev.total > 0 ? (qualityPrev.errors / qualityPrev.total) * 100 : 0;
+        let narrative = `This period: `;
+        if (Math.abs(convChange) > 5) narrative += `conversion ${convChange > 0 ? "improved" : "dropped"} ${Math.abs(convChange).toFixed(0)}% (${fmtPct(overallConvPrev)} → ${fmtPct(overallConv)})`;
+        else narrative += `conversion remained stable at ${fmtPct(overallConv)}`;
+        narrative += `. Apdex is ${overallApdex.toFixed(2)} (${apdexChange > 0 ? "+" : ""}${apdexChange.toFixed(3)} vs prior period). `;
+        narrative += `Traffic ${sessionsChange > 5 ? "grew" : sessionsChange < -5 ? "declined" : "held steady"} at ${fmtCount(quality.sessions)} sessions`;
+        if (Math.abs(sessionsChange) > 5) narrative += ` (${sessionsChange > 0 ? "+" : ""}${sessionsChange.toFixed(0)}%)`;
+        narrative += `. `;
+        if (errRateNow > errRatePrev * 1.5 && errRateNow > 1) narrative += `⚠️ Error rate increased significantly to ${fmtPct(errRateNow)} (was ${fmtPct(errRatePrev)}) — investigate recent deployments. `;
+        if (overallApdex < 0.7) narrative += `User satisfaction is below acceptable levels (Apdex < 0.7) — prioritize performance optimization. `;
+        if (overallConv > 5) narrative += `Conversion rate is above industry average (2-5%) — maintain current optimization efforts. `;
+        return (
+          <div className="uj-table-tile" style={{ padding: 16, borderLeft: `3px solid ${BLUE}`, background: "rgba(30,144,255,0.03)" }}>
+            <Text style={{ fontSize: 15, lineHeight: "1.7" }}>📋 {narrative}</Text>
+          </div>
+        );
+      })()}
+
       {/* Key metrics with trends */}
       <SectionHeader title="Key Metrics" />
       <Flex gap={16} flexWrap="wrap">
@@ -8662,34 +8688,6 @@ ${bottleneckHtml}
       <div style={{ textAlign: "center", padding: "8px 0" }}>
         <Text style={{ fontSize: 12, opacity: 0.3 }}>Report generated: {new Date().toLocaleString()} | Frontend: {frontend}</Text>
       </div>
-
-      {/* AI-Generated Executive Narrative */}
-      <SectionHeader title="AI Executive Narrative" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Auto-generated plain-English summary of the period's key trends and events.</Text>
-      {(() => {
-        // Build narrative from available metrics
-        const convChange = overallConvPrev > 0 ? ((overallConv - overallConvPrev) / overallConvPrev) * 100 : 0;
-        const apdexChange = overallApdexPrev > 0 ? overallApdex - overallApdexPrev : 0;
-        const sessionsChange = qualityPrev.sessions > 0 ? ((quality.sessions - qualityPrev.sessions) / qualityPrev.sessions) * 100 : 0;
-        const errRateNow = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
-        const errRatePrev = qualityPrev.total > 0 ? (qualityPrev.errors / qualityPrev.total) * 100 : 0;
-        let narrative = `This period: `;
-        if (Math.abs(convChange) > 5) narrative += `conversion ${convChange > 0 ? "improved" : "dropped"} ${Math.abs(convChange).toFixed(0)}% (${fmtPct(overallConvPrev)} → ${fmtPct(overallConv)})`;
-        else narrative += `conversion remained stable at ${fmtPct(overallConv)}`;
-        narrative += `. Apdex is ${overallApdex.toFixed(2)} (${apdexChange > 0 ? "+" : ""}${apdexChange.toFixed(3)} vs prior period). `;
-        narrative += `Traffic ${sessionsChange > 5 ? "grew" : sessionsChange < -5 ? "declined" : "held steady"} at ${fmtCount(quality.sessions)} sessions`;
-        if (Math.abs(sessionsChange) > 5) narrative += ` (${sessionsChange > 0 ? "+" : ""}${sessionsChange.toFixed(0)}%)`;
-        narrative += `. `;
-        if (errRateNow > errRatePrev * 1.5 && errRateNow > 1) narrative += `⚠️ Error rate increased significantly to ${fmtPct(errRateNow)} (was ${fmtPct(errRatePrev)}) — investigate recent deployments. `;
-        if (overallApdex < 0.7) narrative += `User satisfaction is below acceptable levels (Apdex < 0.7) — prioritize performance optimization. `;
-        if (overallConv > 5) narrative += `Conversion rate is above industry average (2-5%) — maintain current optimization efforts. `;
-        return (
-          <div className="uj-table-tile" style={{ padding: 16, borderLeft: `3px solid ${BLUE}`, background: "rgba(30,144,255,0.03)" }}>
-            <Text style={{ fontSize: 14, lineHeight: "1.6" }}>📋 {narrative}</Text>
-            <Text style={{ fontSize: 11, opacity: 0.4, marginTop: 8 }}>💡 For scheduled Slack/email delivery, create a Dynatrace Workflow with a "Run DQL" action pulling these metrics on a cron schedule, then route to a Slack/email notification action.</Text>
-          </div>
-        );
-      })()}
 
     </Flex>
   );
