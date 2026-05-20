@@ -14594,9 +14594,9 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
         <>
           <SectionHeader title="High-Intent Non-Converters — Engaged users who didn't convert" />
           <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={highIntentNonConv.slice(0, 50).map(s => ({
-            "Session ID": s.sessionId.substring(0, 20), _fullSessionId: s.sessionId, Score: Number(s.score.toFixed(1)), Actions: s.actions, "Max Depth": s.depth, Errors: s.errors,
+            "Session ID": s.sessionId.substring(0, 20), SessionFull: s.sessionId, Score: Number(s.score.toFixed(1)), Actions: s.actions, "Max Depth": s.depth, Errors: s.errors,
           }))} columns={[
-            { id: "Session ID", header: "Session", accessor: "Session ID", cell: ({ value, row }: any) => { const fullId = row?.original?._fullSessionId ?? value; return <a href={sessionReplayUrl(fullId)} target="_blank" rel="noopener noreferrer" style={{ color: CYAN, fontSize: 12, textDecoration: "none", fontFamily: "monospace" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Users & Sessions">{value}</a>; } },
+            { id: "Session ID", header: "Session", accessor: "Session ID", cell: ({ value, rowData }: any) => { const fullId = rowData?.SessionFull ?? value; return <a href={sessionReplayUrl(fullId)} target="_blank" rel="noopener noreferrer" style={{ color: CYAN, fontSize: 12, textDecoration: "none", fontFamily: "monospace" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Users & Sessions">{value}</a>; } },
             { id: "Score", header: "Score", accessor: "Score", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: GREEN }}>{value}</Strong> },
             { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> },
             { id: "Max Depth", header: "Max Depth", accessor: "Max Depth", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{value}</Strong> },
