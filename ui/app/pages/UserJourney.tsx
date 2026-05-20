@@ -1106,7 +1106,7 @@ function forecastVitalsTrendQuery(days: number, frontend: string): string {
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
     inp_ms = toDouble(web_vitals.interaction_to_next_paint) / 1000000.0,
     ttfb_ms = toDouble(web_vitals.time_to_first_byte) / 1000000.0,
-    load_ms = toDouble(web_vitals.load_event_end) / 1000000.0
+    load_ms = toDouble(performance.load_event_end) / 1000000.0
 | fieldsAdd bucket_key = formatTimestamp(start_time, format: "yyyy-MM-dd")
 | summarize
     lcp_val = avg(lcp_ms),
