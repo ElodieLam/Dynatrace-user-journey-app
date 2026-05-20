@@ -478,13 +478,17 @@ fetch user.events, from: now() - {timeframe}
 
 ### 14. Conversion Attribution
 
-**Purpose**: Identify factors most impacting conversion by device, browser, and speed buckets.
+**Purpose**: Identify factors most impacting conversion by device, browser, and speed buckets. Multi-touch attribution modeling shows which funnel steps have the highest influence on final conversion.
 
 **Key Features**:
 - Speed-to-conversion correlation (fast/medium/slow buckets)
 - Device type attribution
 - Browser attribution
 - Full device x browser cross-section table
+- **Multi-Touch Attribution Modeling**: 6 attribution models (First Touch, Last Touch, Linear, Position-Based, Time-Decay, Influence-Based) showing credit allocation per funnel step
+- **Step Influence Cards**: Ranked by influence-based weight, showing conditional conversion rate (P(convert | reached step)), drop-off rate, downstream value per session (AOV × conditional conv rate), and drop-off cost (lost sessions × downstream conv probability × AOV)
+- **Influence Visualization**: SVG bar chart showing relative influence weight per step
+- **Revenue Credit**: When AOV configured, shows how much revenue each step "earns" under the influence-based model
 
 **Queries**:
 
@@ -1147,6 +1151,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-20 | 4.49.67 | **Conversion Attribution — Multi-Touch Attribution Modeling**: Removed Marketing Channel Attribution (UTM). Added multi-touch attribution modeling with 6 models (First Touch, Last Touch, Linear, Position-Based, Time-Decay, Influence-Based). Step influence cards ranked by conditional conversion probability uplift. Attribution model comparison table with credit allocation per step. SVG influence visualization bar chart. Revenue credit per step when AOV configured. Drop-off cost estimation per step. Help, AI Insights, and DESIGN.md updated. |
 | 2026-05-20 | 4.49.62 | **Errors & Drop-offs — Predictive Drop-off Scoring**: Linear regression on hourly error rates per funnel step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues. Severity-colored cards (critical >5%, warning >2%) display current error rate, projected rate, and trend per hour. Uses `rootCauseStepDropQuery` data passed via `stepDropData` prop. Help, AI Insights, and DESIGN.md updated. |
 | 2026-05-20 | 4.49.60 | **Root Cause Correlation — Full-Stack Correlation**: Service topology filtered to only services called by the selected application via entity `calls[dt.entity.service]` relationships. BFS traversal up to 7 depth tiers. Clickable service nodes open Gen3 Dynatrace Services with matching timeframe. Names resolved for all tiers via lookup. Davis AI problems overlaid with red links. Impact banner. |
 | 2026-05-19 | 4.49.47 | **Navigation Flow Diagram & Click Issues Session Links**: Navigation Paths gains Sankey-like SVG flow diagram (BFS layer assignment, 220×52 nodes, curved links, horizontal scroll), graph-based conversion probability with drop-off-aware iterative relaxation, AI Path Optimization card. Click Issues gains Frustration Clusters by Page grouping and "View Sessions ↗" links to gen3 User Sessions (filtered by app+page+frustrated). Segmentation gains OS version table, AI Segment Discovery (always visible), ISO→country name translation. Sankey per-column limit raised to 12 with scroll. Davis problems now displays `event.name` (fixes Unknown Problem titles). |

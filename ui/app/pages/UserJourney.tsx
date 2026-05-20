@@ -2511,7 +2511,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Navigation Paths</Strong>: Shows actual user navigation flows (not just the expected funnel). Reveals unexpected paths, loops, and exit points. Includes a <Strong>Navigation Flow Diagram</Strong> — a Sankey-like SVG visualization showing pages arranged in columns by funnel step with curved links whose thickness represents traffic volume (scrollable horizontally). <Strong>AI Path Optimization</Strong> card at the top automatically identifies which page sequences correlate with higher conversion probability and surfaces actionable recommendations. <Strong>Conversion Probability</Strong> per page is computed client-side from the navigation graph using iterative relaxation with drop-off rates — shown as a "Conv Prob %" column in the All Transitions table and as a dedicated "Conversion Probability by Page" table. Page names are clickable and open the <Strong>Vitals</Strong> app for detailed analysis.</Paragraph>
         <Paragraph><Strong>Sankey</Strong>: Interactive Sankey flow diagram with 9 analysis sub-tabs organized above the chart. <Strong>Flow Chart</Strong> (default): 7 chart styles — Classic, Gradient, Directed Flow, Alluvial, State Machine, <Strong>Chord Diagram</Strong> (circular arc layout with clickable arcs for path highlighting, focus mode support, center label display), and <Strong>Transition Heatmap</Strong> (NxN grid with clickable row/column highlighting, selection summary, 52px cells). All styles support funnel highlighting, exit detection, and focus mode. <Strong>Conversion Paths</Strong>: Compares converted vs. abandoned session paths — shows differentiating pages, path lengths, and top transitions for each group. <Strong>Loop Analysis</Strong>: Detects A→B→A back-and-forth navigation patterns indicating user confusion, with error/LCP correlation. <Strong>Page Timing</Strong>: Average and P90 duration per page with health scores — identifies slow funnel bottlenecks. <Strong>Session Endpoints</Strong>: Where sessions end (browser close), bounce rate, and terminal page analysis with error correlation. <Strong>Revenue Paths</Strong> (AOV required): Top revenue-generating navigation paths and page touch rates for converting sessions. <Strong>Path Trends</Strong>: Period-over-period comparison of navigation patterns — detects new/dropped pages, frequency shifts, and transition changes. <Strong>Funnel Leakage</Strong>: Deep analysis of users who navigate away from the funnel — classifies sessions into recoverers (returned) vs lost users, compares their behavior, identifies exit step hotspots, maps off-funnel destinations, and correlates exit pages with CWV/errors for performance-driven optimization. <Strong>Funnel Velocity</Strong>: Measures time between funnel step transitions — shows median, P90, and average per step pair, journey time distribution histogram, and identifies the slowest transitions causing friction.</Paragraph>
         <Paragraph><Strong>Anomaly Detection</Strong>: Flags metrics with significant deviation from baseline (previous period). Shows stability score, per-metric severity (normal/medium/high/critical), per-step traffic anomalies, and a duration distribution histogram. Includes automated diagnosis with actionable recommendations. When AOV is set, shows Revenue at Risk from anomalous conversion drops.</Paragraph>
-        <Paragraph><Strong>Conversion Attribution</Strong>: Correlates conversion rates with performance factors. Shows how session speed, device type, and browser affect conversion. Speed buckets (fast/medium/slow) quantify the revenue impact of performance, with full device x browser cross-section. When AOV is set, adds revenue columns to device and browser tables and revenue totals to speed buckets.</Paragraph>
+        <Paragraph><Strong>Conversion Attribution</Strong>: Correlates conversion rates with performance factors. Shows how session speed, device type, and browser affect conversion. Speed buckets (fast/medium/slow) quantify the revenue impact of performance, with full device x browser cross-section. When AOV is set, adds revenue columns to device and browser tables and revenue totals to speed buckets. Multi-Touch Attribution modeling shows which funnel steps have the highest influence on final conversion using 5 models (First Touch, Last Touch, Linear, Position-Based, Time-Decay, Influence-Based). Step influence cards show conditional conversion rate, drop-off rate, downstream value, and drop-off cost per step.</Paragraph>
         <Paragraph><Strong>Executive Summary</Strong>: Report-card style overview for stakeholders. Weighted letter grade (A-F), key metric trends, funnel summary, bottleneck alert, CWV snapshot, and full performance table. When AOV is set, revenue appears in key metrics, performance snapshot, and exports. Use <Strong>Export PDF</Strong> to open a print-ready report in a new tab (use browser Print → Save as PDF), or <Strong>Copy Text</Strong> to get a plain-text summary for Slack/Teams/email. Designed for quick status checks and executive presentations.</Paragraph>
         <Paragraph><Strong>Segmentation</Strong>: Device, browser, geography, and <Strong>OS version</Strong> breakdowns with Apdex per segment. Geography shows full country names (translated from ISO codes). <Strong>AI Segment Discovery</Strong> card is always visible and automatically identifies the cohort with the worst Apdex or lowest conversion rate — surfacing which user segment needs attention without manual filtering.</Paragraph>
         <Paragraph><Strong>Errors &amp; Drop-offs</Strong>: Drop-off analysis between funnel steps with optimization recommendations. When AOV is set, each drop-off card shows the estimated revenue at risk from abandoned sessions. Includes Predictive Drop-off Scoring — linear regression on hourly error rates per step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues. Severity-colored cards (critical &gt;5%, warning &gt;2%) show current rate, projected rate, and trend per hour.</Paragraph>
@@ -3147,7 +3147,7 @@ export function UserJourney() {
             case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} />; break;
             case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} />; break;
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} />; break;
-            case "Conversion Attribution": content = <ConversionAttributionTab utmData={utmAttributionData} data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} />; break;
+            case "Conversion Attribution": content = <ConversionAttributionTab data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} steps={steps} />; break;
             case "Executive Summary": content = <ExecutiveSummaryTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} cwv={cwv} stepMap={stepMap} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || cwvResult.isLoading} frontend={frontend} steps={steps} aov={aov} />; break;
             case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} osVersions={(osVersionData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading || osVersionData.isLoading} aov={aov} overallConv={overallConv} />; break;
             case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} stepDropData={rootCauseStepDropData} />; break;
@@ -3823,7 +3823,7 @@ function analyzeConversionAttribution(data: any, overallConv: number, aov: numbe
     insights.push({ severity: "good", icon: "✅", text: "Conversion rates are relatively balanced across segments. No major attribution gaps." });
   }
 
-  const summary = `Conversion Attribution correlates conversion rates with performance factors, device types, and browser platforms to identify which user segments convert best and why. This tab is built for Growth Analysts optimizing conversion funnels, Product Managers making platform investment decisions, and Performance Engineers quantifying the business impact of speed. It answers: Does page speed affect conversion? Which devices convert best? Which browsers underperform? What is the revenue impact of the conversion gap between segments? Currently analyzing ${entries.length} segments. ${best ? `Best-performing segment: "${best.segment}" at ${fmtPct(best.convRate)} conversion.` : ""} ${worst ? `Worst-performing segment: "${worst.segment}" at ${fmtPct(worst.convRate)} conversion.` : ""} ${best && worst && best.convRate > worst.convRate * 2 ? `The ${(best.convRate / Math.max(0.01, worst.convRate)).toFixed(1)}x conversion gap represents a significant optimization opportunity.` : "Conversion rates are relatively balanced across segments."} When AOV is configured, revenue columns are added to device and browser tables. Use this to build data-driven business cases for platform-specific optimizations.`;
+  const summary = `Conversion Attribution correlates conversion rates with performance factors, device types, and browser platforms to identify which user segments convert best and why. It also provides Multi-Touch Attribution modeling showing which funnel steps have the highest influence on final conversion using 6 models (First Touch, Last Touch, Linear, Position-Based, Time-Decay, Influence-Based). This tab is built for Growth Analysts optimizing conversion funnels, Product Managers making platform investment decisions, and Performance Engineers quantifying the business impact of speed. It answers: Does page speed affect conversion? Which devices convert best? Which browsers underperform? Which funnel steps are the most critical conversion drivers? What is the revenue impact of optimizing each step? Currently analyzing ${entries.length} segments. ${best ? `Best-performing segment: "${best.segment}" at ${fmtPct(best.convRate)} conversion.` : ""} ${worst ? `Worst-performing segment: "${worst.segment}" at ${fmtPct(worst.convRate)} conversion.` : ""} ${best && worst && best.convRate > worst.convRate * 2 ? `The ${(best.convRate / Math.max(0.01, worst.convRate)).toFixed(1)}x conversion gap represents a significant optimization opportunity.` : "Conversion rates are relatively balanced across segments."} The Multi-Touch Attribution section ranks each funnel step by its influence on final conversion, with conditional conversion rates, drop-off costs, and revenue credit allocation per model.`;
   return { summary, insights, recommendations: recs };
 }
 
@@ -8073,7 +8073,7 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
 // ===========================================================================
 // TAB: Conversion Attribution — NEW
 // ===========================================================================
-function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCounts, utmData }: { data: any; isLoading: boolean; overallConv: number; aov: number; funnelCounts: number[]; utmData?: any }) {
+function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCounts, steps }: { data: any; isLoading: boolean; overallConv: number; aov: number; funnelCounts: number[]; steps: StepDef[] }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeConversionAttribution(data, overallConv, aov, funnelCounts), [data, overallConv, aov, funnelCounts]));
   if (isLoading) return <Loading />;
 
@@ -8221,36 +8221,125 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
         />
       </div>
 
-      {/* Marketing Channel Attribution (UTM) */}
-      <SectionHeader title="Marketing Channel Attribution (UTM)" />
-      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Conversion rates by marketing channel using UTM parameters from session data. Identifies which acquisition channels drive the highest-quality traffic.</Text>
+      {/* Multi-Touch Attribution Modeling */}
+      <SectionHeader title="Multi-Touch Attribution — Step Influence" />
+      <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Measures each funnel step's influence on final conversion using multiple attribution models. Steps with higher influence scores are critical conversion drivers.</Text>
       {(() => {
-        const utmRows = (utmData?.data?.records ?? []) as any[];
-        if (utmRows.length === 0) return <div className="uj-table-tile" style={{ padding: 16 }}><Text style={{ opacity: 0.5 }}>No UTM parameter data available. Ensure UTM tags (utm_source, utm_medium, utm_campaign) are present in URLs or custom properties.</Text></div>;
-        const channels = utmRows.map((r: any) => ({
-          source: String(r.utm_source ?? "direct"),
-          medium: String(r.utm_medium ?? "none"),
-          campaign: String(r.utm_campaign ?? "none"),
-          sessions: Number(r.total_sessions ?? 0),
-          conversions: Number(r.conv_sessions ?? 0),
-          convRate: Number(r.conv_rate ?? 0),
-        })).sort((a: any, b: any) => b.sessions - a.sessions);
-        // Multi-touch attribution weight (simplified position-based)
-        const totalConv = channels.reduce((a: number, c: any) => a + c.conversions, 0);
+        const lastIdx = steps.length - 1;
+        const conversions = funnelCounts[lastIdx] ?? 0;
+        const totalSessions = funnelCounts[0] ?? 1;
+        // Per-step attribution metrics
+        const stepAttribution = steps.map((step, i) => {
+          const sessionsAtStep = funnelCounts[i] ?? 0;
+          const conditionalConvRate = sessionsAtStep > 0 ? (conversions / sessionsAtStep) * 100 : 0;
+          const dropOff = i < lastIdx ? (funnelCounts[i] - funnelCounts[i + 1]) : 0;
+          const dropOffRate = sessionsAtStep > 0 ? (dropOff / sessionsAtStep) * 100 : 0;
+          // Downstream value: probability of converting after reaching this step × AOV
+          const downstreamValue = aov > 0 ? (conditionalConvRate / 100) * aov : 0;
+          // Drop-off cost: sessions lost × downstream conv probability × AOV
+          const dropOffCost = aov > 0 && i < lastIdx ? dropOff * (conversions / Math.max(funnelCounts[i + 1], 1)) * aov : 0;
+          return { step: step.label, idx: i, sessionsAtStep, conditionalConvRate, dropOff, dropOffRate, downstreamValue, dropOffCost };
+        });
+
+        // Attribution models
+        const numSteps = steps.length;
+        const linearWeight = 100 / numSteps;
+        const positionBased = steps.map((_, i) => {
+          if (numSteps === 1) return 100;
+          if (numSteps === 2) return 50;
+          if (i === 0) return 40;
+          if (i === numSteps - 1) return 40;
+          return 20 / (numSteps - 2);
+        });
+        // Influence-based: weight by how much conditional conv rate increases vs prior step
+        const influenceRaw = steps.map((_, i) => {
+          if (i === 0) return 1;
+          const prevConv = funnelCounts[i - 1] > 0 ? conversions / funnelCounts[i - 1] : 0;
+          const currConv = funnelCounts[i] > 0 ? conversions / funnelCounts[i] : 0;
+          return Math.max(0, currConv - prevConv) + 0.1; // baseline 0.1 so no step is zero
+        });
+        const influenceSum = influenceRaw.reduce((a, b) => a + b, 0);
+        const influenceWeights = influenceRaw.map(v => influenceSum > 0 ? (v / influenceSum) * 100 : linearWeight);
+
+        // Time-decay: more weight to later steps (exponential decay from end)
+        const decayFactor = 0.7;
+        const decayRaw = steps.map((_, i) => Math.pow(decayFactor, numSteps - 1 - i));
+        const decaySum = decayRaw.reduce((a, b) => a + b, 0);
+        const decayWeights = decayRaw.map(v => decaySum > 0 ? (v / decaySum) * 100 : linearWeight);
+
+        const maxInfluence = Math.max(...influenceWeights);
+
         return (
-          <div className="uj-table-tile"><DataTable sortable data={channels.map((c: any) => ({
-            Source: c.source, Medium: c.medium, Campaign: c.campaign === "none" ? "—" : c.campaign,
-            Sessions: c.sessions, Conversions: c.conversions, "Conv %": c.convRate,
-            "Attribution %": totalConv > 0 ? Number(((c.conversions / totalConv) * 100).toFixed(1)) : 0,
-          }))} columns={[
-            { id: "Source", header: "Source", accessor: "Source", cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> },
-            { id: "Medium", header: "Medium", accessor: "Medium", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{value}</Text> },
-            { id: "Campaign", header: "Campaign", accessor: "Campaign", cell: ({ value }: any) => <Text style={{ fontSize: 11, opacity: 0.6 }}>{value}</Text> },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
-            { id: "Conversions", header: "Conv", accessor: "Conversions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: GREEN }}>{value}</Strong> },
-            { id: "Conv %", header: "Conv %", accessor: "Conv %", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 5 ? GREEN : value > 2 ? YELLOW : RED }}>{fmtPct(value)}</Strong> },
-            { id: "Attribution %", header: "Attribution", accessor: "Attribution %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: 600 }}>{value}%</Text> },
-          ]} /></div>
+          <>
+            {/* Influence ranking cards */}
+            <Flex gap={12} flexWrap="wrap" style={{ marginBottom: 12 }}>
+              {stepAttribution.sort((a, b) => influenceWeights[b.idx] - influenceWeights[a.idx]).map((s) => {
+                const infW = influenceWeights[s.idx];
+                const severity = infW >= maxInfluence * 0.8 ? GREEN : infW >= maxInfluence * 0.4 ? YELLOW : "rgba(128,128,128,0.5)";
+                return (
+                  <div key={s.idx} className="uj-table-tile" style={{ padding: 14, borderLeft: `3px solid ${severity}`, flex: "1 1 280px", maxWidth: 360 }}>
+                    <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 6 }}>
+                      <Strong style={{ fontSize: 13 }}>Step {s.idx + 1}: {s.step}</Strong>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: `${severity}18`, color: severity, fontWeight: 700 }}>{infW.toFixed(1)}%</span>
+                    </Flex>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                      <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Cond. Conv Rate</Text><Strong style={{ display: "block", fontSize: 14, color: statusClr(s.conditionalConvRate) }}>{fmtPct(s.conditionalConvRate)}</Strong></div>
+                      <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Drop-off</Text><Strong style={{ display: "block", fontSize: 14, color: s.dropOffRate > 30 ? RED : s.dropOffRate > 15 ? ORANGE : GREEN }}>{fmtPct(s.dropOffRate)}</Strong></div>
+                      {aov > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Downstream Value</Text><Strong style={{ display: "block", fontSize: 13, color: CYAN }}>{fmtCurrency(s.downstreamValue)}</Strong></div>}
+                      {aov > 0 && s.dropOffCost > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Drop-off Cost</Text><Strong style={{ display: "block", fontSize: 13, color: RED }}>−{fmtCurrency(s.dropOffCost)}</Strong></div>}
+                    </div>
+                    <div style={{ height: 5, borderRadius: 3, background: "rgba(128,128,128,0.1)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.min(infW / maxInfluence * 100, 100)}%`, background: severity, borderRadius: 3 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </Flex>
+
+            {/* Model comparison table */}
+            <SectionHeader title="Attribution Model Comparison" />
+            <Text style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>Credit allocation per step across different attribution models. Influence-based weights by conditional conversion probability uplift.</Text>
+            <div className="uj-table-tile">
+              <DataTable sortable resizable fullWidth data={steps.map((step, i) => ({
+                Step: `${i + 1}. ${step.label}`,
+                "First Touch": i === 0 ? 100 : 0,
+                "Last Touch": i === lastIdx ? 100 : 0,
+                Linear: Number(linearWeight.toFixed(1)),
+                "Position-Based": Number(positionBased[i].toFixed(1)),
+                "Time-Decay": Number(decayWeights[i].toFixed(1)),
+                "Influence-Based": Number(influenceWeights[i].toFixed(1)),
+                ...(aov > 0 ? { "Revenue Credit": Number((influenceWeights[i] / 100 * conversions * aov).toFixed(0)) } : {}),
+              }))} columns={[
+                { id: "Step", header: "Step", accessor: "Step", cell: ({ value }: any) => <Strong style={{ fontSize: 12 }}>{value}</Strong> },
+                { id: "First Touch", header: "First Touch", accessor: "First Touch", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? GREEN : "inherit", fontWeight: value > 0 ? 700 : 400 }}>{value}%</Text> },
+                { id: "Last Touch", header: "Last Touch", accessor: "Last Touch", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 0 ? GREEN : "inherit", fontWeight: value > 0 ? 700 : 400 }}>{value}%</Text> },
+                { id: "Linear", header: "Linear", accessor: "Linear", sortType: "number" as any, cell: ({ value }: any) => <Text>{value}%</Text> },
+                { id: "Position-Based", header: "Position", accessor: "Position-Based", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: value > 20 ? 700 : 400 }}>{value}%</Text> },
+                { id: "Time-Decay", header: "Time-Decay", accessor: "Time-Decay", sortType: "number" as any, cell: ({ value }: any) => <Text>{value}%</Text> },
+                { id: "Influence-Based", header: "Influence", accessor: "Influence-Based", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{value}%</Strong> },
+                ...(aov > 0 ? [{ id: "Revenue Credit", header: "Revenue Credit", accessor: "Revenue Credit", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>{fmtCurrency(value)}</Strong> }] : []),
+              ]} />
+            </div>
+
+            {/* Influence SVG chart */}
+            <SectionHeader title="Step Influence Visualization" />
+            <div style={{ overflowX: "auto" }}>
+              <svg width={Math.max(steps.length * 120, 600)} height={180} style={{ display: "block" }}>
+                {steps.map((step, i) => {
+                  const barH = (influenceWeights[i] / maxInfluence) * 120;
+                  const x = i * 120 + 30;
+                  const barColor = influenceWeights[i] >= maxInfluence * 0.8 ? GREEN : influenceWeights[i] >= maxInfluence * 0.4 ? YELLOW : "rgba(128,128,128,0.4)";
+                  return (
+                    <g key={i}>
+                      <rect x={x} y={150 - barH} width={80} height={barH} rx={4} fill={barColor} opacity={0.7} />
+                      <text x={x + 40} y={145 - barH} textAnchor="middle" fill={barColor} fontSize={11} fontWeight={700}>{influenceWeights[i].toFixed(1)}%</text>
+                      <text x={x + 40} y={170} textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize={10}>{step.label.length > 14 ? step.label.slice(0, 12) + "…" : step.label}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          </>
         );
       })()}
 
