@@ -2352,6 +2352,18 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 26, 2026 — Services Overview App</Paragraph>
+            <Paragraph><Strong>Drillable Heatmap, Reliability Trend Period Queries, Anti-Pattern AI Report, On-Call Shift Hours</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Endpoint Heatmap — Drillable Grid Cells</Strong>: Each hourly cell in the heatmap grid is now clickable — opens Distributed Tracing explorer filtered to that service and timeframe for immediate root-cause investigation</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Unified Color Scheme</Strong>: Heatmap grid now uses the same GREEN/YELLOW/RED palette as the honeycomb (error rate: green &lt;0.5%, yellow 0.5–2%, red &gt;2%; latency percentiles: deviation-based green/yellow/red)</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Reliability Trend — Live Period Queries</Strong>: 7d / 14d / 30d period buttons now fire independent DQL queries for the selected lookback window — Avg Failure Rate, Fleet Health, and Direction all update when switching periods</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Anti-Patterns — Generate AI Report</Strong>: New button produces a verbose per-pattern breakdown showing: instance detail, all services involved, "What is this?" / "Why is it dangerous?" / "Operational Impact" / step-by-step remediation / industry references (Sam Newman, Google SRE, DORA). Includes AI Insights and prioritized recommendations</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>On-Call Rotation — Shift Hours</Strong>: Shift Start/End time pickers added (HH:MM) with presets: Day (08:00–20:00), Night (20:00–08:00), Business (09:00–17:00), Full Day. Hours column shown in table. Each shift row now has an × remove button</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Top Noisy Services</Strong>: Fixed "Unknown" service names — now reads the correct Affected entity array from Davis problems data</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>MTTR Duration Display</Strong>: Problem durations auto-convert to human-readable format (e.g. "5m", "2h 30m", "3d 4h") — fixes "3472d 5h" bug caused by nanoseconds being treated as milliseconds</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Encoding Fixes</Strong>: Replaced Unicode squares (■), triangle emojis (🔺), and sigma (σ) with CSS/HTML equivalents throughout to fix font rendering issues in Dynatrace apps</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 20, 2026</Paragraph>
             <Paragraph><Strong>Errors &amp; Drop-offs — Predictive Drop-off Scoring</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Predictive Drop-off Scoring</Strong>: Linear regression on hourly error rates per funnel step projects 2 hours forward, estimating how much additional drop-off will occur if the current error trajectory continues</Paragraph>
