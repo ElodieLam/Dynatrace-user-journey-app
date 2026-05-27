@@ -1,5 +1,24 @@
 # User Journey & Experience App — Design Document
 
+## Non-Strato Third-Party Libraries
+
+| Library | Version | Purpose | Used In |
+|---------|---------|---------|---------|
+| **d3-geo** | ^3.1.1 | Cartographic projections (`geoNaturalEarth1`, `geoAlbersUsa`) and SVG path generation (`geoPath`) for geographic heatmap visualizations | `ui/app/pages/UserJourney.tsx` — WorldMap tab |
+| **topojson-client** | ^3.1.0 | Converts TopoJSON topology data into GeoJSON features for map rendering via `feature()` | `ui/app/pages/UserJourney.tsx` — WorldMap tab |
+| **world-atlas** | ^2.0.2 | TopoJSON dataset of world country boundaries (110m resolution) | `ui/app/pages/UserJourney.tsx` — WorldMap tab (global view) |
+| **us-atlas** | ^3.0.1 | TopoJSON dataset of US state boundaries (10m resolution) | `ui/app/pages/UserJourney.tsx` — WorldMap tab (US drill-down view) |
+| **react-router-dom** | ^6.22.2 | Client-side routing (`BrowserRouter`, `Routes`, `Route`) for page-level navigation between UserJourney and ObservabilityJourney | `ui/main.tsx` (BrowserRouter wrapper), `ui/app/App.tsx` (route definitions) |
+| **react-intl** | 6.6.2 | Required peer dependency of Strato form components (IntlProvider for i18n context) — not directly imported in app code but needed at runtime | Peer dependency consumed by Strato internally |
+
+### Notes
+
+- **Geographic stack** (`d3-geo` + `topojson-client` + `world-atlas` + `us-atlas`): These four libraries work together to render the interactive SVG world/US maps in the Geographic tab. Country/state shapes are stored as TopoJSON, converted to GeoJSON features, projected onto 2D coordinates, and rendered as SVG `<path>` elements. The helper file `ui/app/worldMapPaths.ts` provides ISO alpha-2 → numeric code mappings for correlating DQL geo data with atlas geometry IDs.
+- **react-router-dom**: Provides two routes — `/` (UserJourney, the 31-tab main experience) and `/journey` (ObservabilityJourney maturity model). The `BrowserRouter` uses `basename="ui"` to align with the Dynatrace app shell URL structure.
+- **react-intl**: Not imported directly by any application component. It is a peer dependency required by Strato form input components at runtime. Installed explicitly to satisfy peer resolution.
+
+---
+
 ## Overview
 
 The User Journey & Experience App is a 31-tab frontend observability suite built as a Dynatrace Platform App. It provides comprehensive Real User Monitoring (RUM) analysis including funnel tracking, Web Vitals, geographic heatmaps, predictive forecasting, automated anomaly detection, and multidimensional radial performance exploration — all powered by DQL (Dynatrace Query Language).
