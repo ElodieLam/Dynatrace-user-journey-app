@@ -3,7 +3,7 @@ import { useDql, useUserAppState, useSetUserAppState } from "@dynatrace-sdk/reac
 import { getEnvironmentUrl } from "@dynatrace-sdk/app-environment";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text, Strong, Paragraph, Link } from "@dynatrace/strato-components/typography";
-import { Tabs, Tab } from "@dynatrace/strato-components/navigation";
+import { Tabs, Tab } from "@dynatrace/strato-components-preview/navigation";
 import { Select, TextInput } from "@dynatrace/strato-components-preview/forms";
 import { TimeframeSelector } from "@dynatrace/strato-components/filters";
 import type { Timeframe } from "@dynatrace/strato-components/core";
@@ -2970,11 +2970,14 @@ export function UserJourney() {
   const isLoading = funnelResult.isLoading || stepMetrics.isLoading;
   const isFunnelFetching = funnelResult.isFetching || stepMetrics.isFetching || qualityData.isFetching;
 
-  // Navigation helper — drill from KPI card to a specific tab
+  // Navigation helper — drill from KPI card to a specific tab (DOM-based click)
   const visibleTabs = useMemo(() => tabOrder.filter(t => tabVisibility[t] !== false), [tabOrder, tabVisibility]);
   const navigateToTab = React.useCallback((tabName: TabKey) => {
     const idx = visibleTabs.indexOf(tabName);
-    if (idx >= 0) setSelectedTabIndex(idx);
+    if (idx < 0) return;
+    // Find the tab button in the DOM and click it
+    const tabButtons = document.querySelectorAll('[role="tab"]');
+    if (tabButtons[idx]) (tabButtons[idx] as HTMLElement).click();
   }, [visibleTabs]);
 
   // Track last refreshed timestamp — update whenever queries finish fetching
@@ -3228,7 +3231,7 @@ export function UserJourney() {
 
       {/* Tabs — rendered in user-defined tabOrder */}
       <AIInsightsContext.Provider value={aiContextValue}>
-      <Tabs selectedIndex={selectedTabIndex} onChange={setSelectedTabIndex}>
+      <Tabs>
         {tabOrder.filter(t => isTabVisible(t)).map(tabId => {
           let content: React.ReactNode = null;
           switch (tabId) {
