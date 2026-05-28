@@ -361,6 +361,73 @@ function Delta({ current, previous, inverted = false, suffix = "" }: { current: 
   return <span style={{ fontSize: 13, color, fontWeight: 600 }}>{arrow} {Math.abs(pct).toFixed(1)}%{suffix}</span>;
 }
 
+// ---------------------------------------------------------------------------
+// Enhanced KPI Card — sparkline + comparison arrow + drill-to-forecast
+// ---------------------------------------------------------------------------
+interface KpiCardProps {
+  label: string;
+  value: string;
+  color: string;
+  rawValue?: number;
+  prevRawValue?: number | null;
+  inverted?: boolean;
+  sparkline?: number[];
+  onDrillToForecast?: () => void;
+  customContent?: React.ReactNode;
+}
+function KpiCard({ label, value, color, rawValue, prevRawValue, inverted = false, sparkline, onDrillToForecast, customContent }: KpiCardProps) {
+  const hasPrev = prevRawValue != null && rawValue != null;
+  const hasSpark = sparkline && sparkline.length >= 2;
+  const clickable = !!onDrillToForecast;
+
+  // Sparkline geometry
+  const SW = 120, SH = 24;
+  let sparkPts = "";
+  let dotX = 0, dotY = 0;
+  let sparkColor = color;
+  if (hasSpark) {
+    const sMin = Math.min(...sparkline);
+    const sMax = Math.max(...sparkline);
+    const sRange = sMax - sMin || 1;
+    sparkPts = sparkline.map((v, i) => `${(i / (sparkline.length - 1)) * SW},${SH - ((v - sMin) / sRange) * (SH - 4) + 2}`).join(" ");
+    dotX = SW;
+    dotY = SH - ((sparkline[sparkline.length - 1] - sMin) / sRange) * (SH - 4) + 2;
+  }
+
+  // Delta calculation
+  let deltaNode: React.ReactNode = null;
+  if (hasPrev) {
+    const delta = rawValue - prevRawValue;
+    const pct = Math.abs(prevRawValue) > 0 ? (delta / Math.abs(prevRawValue)) * 100 : (rawValue !== 0 ? 100 : 0);
+    const improving = inverted ? delta < 0 : delta > 0;
+    const deltaColor = Math.abs(pct) < 1 ? "rgba(128,128,128,0.5)" : improving ? GREEN : RED;
+    const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "—";
+    deltaNode = <span style={{ fontSize: 12, color: deltaColor, fontWeight: 600 }}>{arrow} {Math.abs(pct).toFixed(1)}%</span>;
+  }
+
+  return (
+    <div className={`uj-kpi-card-enhanced${clickable ? " clickable" : ""}`} onClick={clickable ? onDrillToForecast : undefined}>
+      {clickable && <span className="kpi-drill-hint">→ Forecast</span>}
+      <Text className="uj-kpi-label">{label}</Text>
+      {customContent ?? <Heading level={2} className="uj-kpi-value" style={{ color }}>{value}</Heading>}
+      {hasSpark && (
+        <svg width="100%" viewBox={`0 0 ${SW} ${SH}`} preserveAspectRatio="none" style={{ display: "block", margin: "6px 0 4px", overflow: "visible" }}>
+          <defs>
+            <linearGradient id={`kpi-grad-${label.replace(/\s/g, "")}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={sparkColor} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={sparkColor} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <polygon points={`0,${SH} ${sparkPts} ${SW},${SH}`} fill={`url(#kpi-grad-${label.replace(/\s/g, "")})`} />
+          <polyline points={sparkPts} fill="none" stroke={sparkColor} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" strokeOpacity={0.7} />
+          <circle cx={dotX} cy={dotY} r={2} fill={sparkColor} fillOpacity={0.9} />
+        </svg>
+      )}
+      {deltaNode && <div style={{ marginTop: 4 }}>{deltaNode}</div>}
+    </div>
+  );
+}
+
 // Polished chart card with maximize/minimize
 function ChartTile({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   const [maximized, setMaximized] = useState(false);
@@ -2352,6 +2419,15 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 28, 2026</Paragraph>
+            <Paragraph><Strong>KPI Cards — Sparklines, Comparison Arrows &amp; Drill-to-Forecast</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Enhanced KPI Cards</Strong>: The Funnel Overview and Executive Summary KPI rows now use rich cards with inline <Strong>sparklines</Strong> (time-bucketed mini-charts showing metric shape over the period), <Strong>comparison arrows</Strong> (▲/▼ with % delta vs. previous period), and color-coded trend indicators</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Drill-to-Forecast</Strong>: Click any KPI card to instantly navigate to the <Strong>Predictive Forecasting</Strong> tab — see where the metric is heading and whether it will breach a performance budget before it happens</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Inverted logic</Strong>: Error Rate and Avg Duration cards correctly show green when values decrease (lower = better) and red when values increase</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Hover hint</Strong>: Cards show a subtle "→ Forecast" label on hover, signaling clickability without cluttering the UI</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• AI Insights now recommends clicking through to Predictive Forecasting when a negative trend is detected, enabling proactive incident prevention</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 26, 2026 — Services Overview App</Paragraph>
             <Paragraph><Strong>Drillable Heatmap, Reliability Trend Period Queries, Anti-Pattern AI Report, On-Call Shift Hours</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Endpoint Heatmap — Drillable Grid Cells</Strong>: Each hourly cell in the heatmap grid is now clickable — opens Distributed Tracing explorer filtered to that service and timeframe for immediate root-cause investigation</Paragraph>
@@ -2512,7 +2588,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph style={{ fontSize: 13, opacity: 0.6, marginTop: 8 }}>Steps are configurable via Settings (⚙). Min {MIN_STEPS}, max {MAX_STEPS} steps. Each step supports <Strong>multiple pages</Strong> (OR logic) and <Strong>wildcards</Strong>: <code>/home*</code> (starts with), <code>*home</code> (ends with), <code>*home*</code> (contains). Logic: (Step1a OR Step1b) AND Step2 AND (Step3a OR Step3b) AND Step4.</Paragraph>
       </HelpSection>
       <HelpSection title="Tabs">
-        <Paragraph><Strong>Funnel Overview</Strong>: KPI bar (sessions, conversions, conversion rate, Apdex, error rate, avg duration). Organized into 4 sub-tabs: <Strong>Conversion Funnel</Strong> — Apdex satisfaction breakdown tile, 5 chart styles (<Strong>Classic</Strong> tapered SVG, <Strong>Horizontal Bar</Strong> waterfall, <Strong>Stacked Cohort</Strong> Marimekko, <Strong>Elapsed-Time Curve</Strong> survival curve, <Strong>Comparison Split</Strong> mirror funnel), and a Compare toggle that overlays the previous period as dashed outlines. Default style configurable via Settings. <Strong>Predictive Model</Strong> — appears once ≥2 hourly data points exist for today; fits a linear regression on this-morning's hourly conversion rates and projects the end-of-day rate, hourly velocity, confidence score, and hours remaining on a sparkline with a dashed projection line. <Strong>Step Analysis</Strong> — sortable table of every funnel step with sessions, avg/P90 duration, Apdex, conversion %, abandons, and errors. <Strong>Per-Page Breakdown</Strong> — per-page metrics for steps that span multiple page identifiers; shows sessions, Apdex, avg/P90, errors, and a satisfaction mini-bar per page.</Paragraph>
+        <Paragraph><Strong>Funnel Overview</Strong>: Enhanced KPI bar with 6 metric cards — each shows value, inline sparkline (time-bucketed trend shape), comparison arrow (▲/▼ % vs previous period), and drill-to-forecast on click. Metrics: sessions, conversions, conversion rate, Apdex, error rate, avg duration. Error rate and duration use inverted logic (lower = green). Organized into 4 sub-tabs: <Strong>Conversion Funnel</Strong> — Apdex satisfaction breakdown tile, 5 chart styles (<Strong>Classic</Strong> tapered SVG, <Strong>Horizontal Bar</Strong> waterfall, <Strong>Stacked Cohort</Strong> Marimekko, <Strong>Elapsed-Time Curve</Strong> survival curve, <Strong>Comparison Split</Strong> mirror funnel), and a Compare toggle that overlays the previous period as dashed outlines. Default style configurable via Settings. <Strong>Predictive Model</Strong> — appears once ≥2 hourly data points exist for today; fits a linear regression on this-morning's hourly conversion rates and projects the end-of-day rate, hourly velocity, confidence score, and hours remaining on a sparkline with a dashed projection line. <Strong>Step Analysis</Strong> — sortable table of every funnel step with sessions, avg/P90 duration, Apdex, conversion %, abandons, and errors. <Strong>Per-Page Breakdown</Strong> — per-page metrics for steps that span multiple page identifiers; shows sessions, Apdex, avg/P90, errors, and a satisfaction mini-bar per page.</Paragraph>
         <Paragraph><Strong>Trends</Strong>: Period-over-period comparison of all key metrics across 11 cards (Sessions, Total Actions, Conversion Rate, Apdex, Avg/P50/P90 Duration, Error Rate, Errors, Frustrated, and optionally Revenue when AOV is set). Each card shows: current value with color-coded delta arrow, a <Strong>daily sparkline</Strong> tracing the metric's shape across the current period, and an inline <Strong>anomaly badge</Strong> — <Strong>⚠ Anomaly</Strong> (current value exceeds 2 std dev of daily variance — statistically unusual), <Strong>↑ Notable</Strong> (1.2–2 std dev — worth watching), or <Strong>∿ Normal</Strong> (&lt;1.2 std dev — within expected noise). Inverted logic applies for duration/errors (lower = better). Use anomaly badges to distinguish real regressions from day-to-day noise. The AI Insights panel at the top narrates the most critical changes and recommends next steps.</Paragraph>
         <Paragraph><Strong>Web Vitals</Strong>: Core Web Vitals gauges (LCP, CLS, INP, TTFB), CWV trend line showing improvement/degradation over time, automated remediation recommendations per failing vital (top offending pages + actionable fixes), page-level breakdown, and performance health score.</Paragraph>
         <Paragraph><Strong>Step Details</Strong>: Per-step deep dive with Apdex gauges, satisfaction breakdown bars, and duration percentiles (P50/P90/P99). For multi-page steps: a <Strong>Page Drop-off Contributors</Strong> funnel shows which pages within each step have the highest traffic volume vs. drop-off — bars are color-coded by Apdex (green/amber/red) and sorted by event count, with a percentage drop indicator showing how each page compares to the top contributor. A <Strong>Compare Pages</Strong> button reveals per-page metrics with the first page as the primary baseline — delta indicators show how each additional page performs relative to it. Each per-page breakdown now includes <Strong>Core Web Vitals (LCP, CLS, INP)</Strong> color-coded against Google thresholds for instant performance assessment.</Paragraph>
@@ -2611,6 +2687,7 @@ export function UserJourney() {
   const [tabVisibility, setTabVisibility] = useState<Record<TabKey, boolean>>(DEFAULT_TAB_VISIBILITY);
   const [tabOrder, setTabOrder] = useState<TabKey[]>([...DEFAULT_TAB_ORDER]);
   const [draggedTabIdx, setDraggedTabIdx] = useState<number | null>(null);
+  const [selectedTabIndex, setSelectedTabIndex] = useState<number>(0);
   const [aiOpen, setAiOpen] = useState(false);
   const closeAiInsights = React.useCallback(() => setAiOpen(false), []);
   const aiContextValue = React.useMemo(() => ({ open: aiOpen, close: closeAiInsights }), [aiOpen, closeAiInsights]);
@@ -2893,6 +2970,13 @@ export function UserJourney() {
   const isLoading = funnelResult.isLoading || stepMetrics.isLoading;
   const isFunnelFetching = funnelResult.isFetching || stepMetrics.isFetching || qualityData.isFetching;
 
+  // Navigation helper — drill from KPI card to a specific tab
+  const visibleTabs = useMemo(() => tabOrder.filter(t => tabVisibility[t] !== false), [tabOrder, tabVisibility]);
+  const navigateToTab = React.useCallback((tabName: TabKey) => {
+    const idx = visibleTabs.indexOf(tabName);
+    if (idx >= 0) setSelectedTabIndex(idx);
+  }, [visibleTabs]);
+
   // Track last refreshed timestamp — update whenever queries finish fetching
   const prevFetchingRef = useRef(false);
   useEffect(() => {
@@ -3144,11 +3228,11 @@ export function UserJourney() {
 
       {/* Tabs — rendered in user-defined tabOrder */}
       <AIInsightsContext.Provider value={aiContextValue}>
-      <Tabs defaultIndex={0}>
+      <Tabs selectedIndex={selectedTabIndex} onChange={setSelectedTabIndex}>
         {tabOrder.filter(t => isTabVisible(t)).map(tabId => {
           let content: React.ReactNode = null;
           switch (tabId) {
-            case "Funnel Overview": content = <FunnelOverviewTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} overallConv={overallConv} overallApdex={overallApdex} stepMap={stepMap} pageMap={pageMap} quality={quality} compareMode={compareMode} setCompareMode={setCompareMode} isLoading={isLoading || qualityData.isLoading} isFetching={isFunnelFetching} lastRefreshedAt={lastRefreshedAt} refreshIntervalMs={refreshIntervalMs} appEntityId={appEntityId} steps={steps} aov={aov} funnelStyle={funnelStyle} onFunnelStyleChange={(v: FunnelStyle) => { setFunnelStyle(v); saveState({ key: FUNNEL_STYLE_STATE_KEY, body: { value: v } }); }} todayHourlyData={todayFunnelData} />; break;
+            case "Funnel Overview": content = <FunnelOverviewTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} stepMap={stepMap} pageMap={pageMap} quality={quality} qualityPrev={qualityPrev} compareMode={compareMode} setCompareMode={setCompareMode} isLoading={isLoading || qualityData.isLoading} isFetching={isFunnelFetching} lastRefreshedAt={lastRefreshedAt} refreshIntervalMs={refreshIntervalMs} appEntityId={appEntityId} steps={steps} aov={aov} funnelStyle={funnelStyle} onFunnelStyleChange={(v: FunnelStyle) => { setFunnelStyle(v); saveState({ key: FUNNEL_STYLE_STATE_KEY, body: { value: v } }); }} todayHourlyData={todayFunnelData} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={() => navigateToTab("Predictive Forecasting")} />; break;
             case "Trends": content = <TrendsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || funnelResult.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} />; break;
             case "Web Vitals": content = <WebVitalsTab cwv={cwv} cwvByPage={cwvByPage} cwvTrend={sloCwvTrendData} isLoading={cwvResult.isLoading || cwvByPage.isLoading} appEntityId={appEntityId} />; break;
             case "Step Details": content = <StepDetailsTab stepMap={stepMap} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
@@ -3162,7 +3246,7 @@ export function UserJourney() {
             case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} />; break;
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} />; break;
             case "Conversion Attribution": content = <ConversionAttributionTab data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} steps={steps} />; break;
-            case "Executive Summary": content = <ExecutiveSummaryTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} cwv={cwv} stepMap={stepMap} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || cwvResult.isLoading} frontend={frontend} steps={steps} aov={aov} />; break;
+            case "Executive Summary": content = <ExecutiveSummaryTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} cwv={cwv} stepMap={stepMap} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || cwvResult.isLoading} frontend={frontend} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={() => navigateToTab("Predictive Forecasting")} />; break;
             case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} osVersions={(osVersionData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading || osVersionData.isLoading} aov={aov} overallConv={overallConv} />; break;
             case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} stepDropData={rootCauseStepDropData} />; break;
             case "What-If Analysis": content = <WhatIfTab hostMetricsData={hostMetricsData} funnelCounts={funnelCounts} stepMap={stepMap} overallApdex={overallApdex} isLoading={isLoading} steps={steps} aov={aov} />; break;
@@ -3375,7 +3459,13 @@ function analyzeFunnelOverview(overallConv: number, overallApdex: number, qualit
   else if (quality.avg > 1000) insights.push({ severity: "info", icon: "📊", text: `Average action duration of ${fmt(quality.avg)} is acceptable but has room for improvement.` });
   else insights.push({ severity: "good", icon: "✅", text: `Average action duration of ${fmt(quality.avg)} is fast, meeting the <1s best practice.` });
 
-  const summary = `Funnel Overview is the primary command center for understanding end-to-end user conversion. It visualizes how ${fmtCount(quality.sessions)} sessions progress through your defined funnel steps, tracking where users advance, where they abandon, and why. This tab is designed for Product Managers evaluating conversion effectiveness, UX Designers identifying friction points, and Performance Engineers correlating speed with business outcomes. It answers: What is my overall conversion rate (currently ${fmtPct(overallConv)} against an industry average of 2-5%)? How satisfied are users with performance (Apdex ${overallApdex.toFixed(2)}, where ≥0.85 is excellent)? Where is the biggest drop-off in my funnel? ${worstDrop > 30 ? `The steepest abandonment occurs at "${worstStep}" where ${fmtPct(worstDrop)} of users leave — this is your highest-leverage optimization target.` : "Funnel progression is relatively smooth with no severe drop-off points."} ${errorRate > 1 ? `Error rate of ${fmtPct(errorRate)} exceeds the <1% industry benchmark and may be suppressing conversion.` : "Error rate is within healthy bounds."} The tab is organized into 4 sub-tabs: (1) Conversion Funnel — Apdex satisfaction breakdown, 5 visualization styles (Classic, Horizontal Bar, Stacked Cohort, Elapsed-Time Curve, Comparison Split), and Compare mode to overlay the previous period; (2) Predictive Model — linear regression on today's hourly conversion rates projects where the conversion rate will land by 23:59, with hourly velocity and confidence score; (3) Step Analysis — sortable table of all funnel steps with sessions, avg/P90 duration, Apdex, conversion %, abandons, and errors per step; (4) Per-Page Breakdown — per-page metrics for steps with multiple page identifiers. Revenue-lost annotations are shown when AOV is configured.`;
+  // Drill-to-forecast recommendation when negative trends detected
+  const hasNegativeTrend = overallConv < 5 || overallApdex < 0.7 || errorRate > 3 || quality.avg > 2000;
+  if (hasNegativeTrend) {
+    recs.push({ impact: "high", text: "Click any KPI card to drill into Predictive Forecasting — see where these metrics are heading and whether they will breach performance budgets before it happens. Proactive forecasting lets you intervene before users are impacted." });
+  }
+
+  const summary = `Funnel Overview is the primary command center for understanding end-to-end user conversion. It visualizes how ${fmtCount(quality.sessions)} sessions progress through your defined funnel steps, tracking where users advance, where they abandon, and why. KPI cards now feature inline sparklines showing metric trends over time, comparison arrows showing % change vs. the previous period, and one-click drill-to-forecast navigation. This tab is designed for Product Managers evaluating conversion effectiveness, UX Designers identifying friction points, and Performance Engineers correlating speed with business outcomes. It answers: What is my overall conversion rate (currently ${fmtPct(overallConv)} against an industry average of 2-5%)? How satisfied are users with performance (Apdex ${overallApdex.toFixed(2)}, where ≥0.85 is excellent)? Where is the biggest drop-off in my funnel? ${worstDrop > 30 ? `The steepest abandonment occurs at "${worstStep}" where ${fmtPct(worstDrop)} of users leave — this is your highest-leverage optimization target.` : "Funnel progression is relatively smooth with no severe drop-off points."} ${errorRate > 1 ? `Error rate of ${fmtPct(errorRate)} exceeds the <1% industry benchmark and may be suppressing conversion.` : "Error rate is within healthy bounds."} ${hasNegativeTrend ? "One or more metrics show concerning trends — click any KPI card to open Predictive Forecasting and see projected trajectory." : ""} The tab is organized into 4 sub-tabs: (1) Conversion Funnel — Apdex satisfaction breakdown, 5 visualization styles (Classic, Horizontal Bar, Stacked Cohort, Elapsed-Time Curve, Comparison Split), and Compare mode to overlay the previous period; (2) Predictive Model — linear regression on today's hourly conversion rates projects where the conversion rate will land by 23:59, with hourly velocity and confidence score; (3) Step Analysis — sortable table of all funnel steps with sessions, avg/P90 duration, Apdex, conversion %, abandons, and errors per step; (4) Per-Page Breakdown — per-page metrics for steps with multiple page identifiers. Revenue-lost annotations are shown when AOV is configured.`;
 
   return { summary, insights, recommendations: recs };
 }
@@ -3410,7 +3500,13 @@ function analyzeTrends(quality: any, qualityPrev: any, overallApdex: number, ove
     insights.push({ severity: "good", icon: "📊", text: "Metric changes are moderate. Use the sparkline shapes on each card to verify trend direction, and check ↑ Notable badges for metrics approaching significance thresholds." });
   }
 
-  const summary = `Trends provides period-over-period comparison of every key performance and business metric, enabling you to detect regressions, validate improvements, and understand momentum. It is designed for Engineering Managers tracking release impact, Product Owners monitoring business health, and SREs validating incident resolution. It answers: Are we improving or regressing? How do sessions, conversion, Apdex, errors, and duration compare to the previous equivalent period? Currently, sessions are ${sessionDelta >= 0 ? "up" : "down"} ${Math.abs(sessionDelta).toFixed(1)}%, conversion is ${convDelta >= 0 ? "up" : "down"} ${Math.abs(convDelta).toFixed(1)}%, and Apdex is ${apdexDelta >= 0 ? "up" : "down"} ${Math.abs(apdexDelta).toFixed(1)}%. ${convDelta < -5 || apdexDelta < -10 ? "A regression has been detected — correlate with recent deployments or infrastructure changes." : "Metrics are trending stable or positive."} Each metric card includes a daily sparkline tracing the metric's shape across the current period, and an inline anomaly badge powered by z-score analysis: ⚠ Anomaly (>2 std dev from daily mean — statistically significant change), ↑ Notable (1.2–2 std dev), or ∿ Normal (<1.2 std dev — within expected noise). Use the anomaly badges to quickly distinguish real regressions from day-to-day variance before digging into root cause. When AOV is configured, a Revenue trend card shows estimated revenue change. Use this tab after every deployment or campaign launch to verify impact.`;
+  // Drill-to-forecast recommendation on negative trends
+  const hasNegativeTrajectory = convDelta < -5 || apdexDelta < -10 || (errRate > errRatePrev * 1.3 && errRate > 1);
+  if (hasNegativeTrajectory) {
+    recs.push({ impact: "high", text: "Negative trend detected. Go to Funnel Overview and click any KPI card to drill into Predictive Forecasting — see projected trajectory and days-to-breach estimates. Proactive forecasting enables intervention before users are impacted at scale." });
+  }
+
+  const summary = `Trends provides period-over-period comparison of every key performance and business metric, enabling you to detect regressions, validate improvements, and understand momentum. It is designed for Engineering Managers tracking release impact, Product Owners monitoring business health, and SREs validating incident resolution. It answers: Are we improving or regressing? How do sessions, conversion, Apdex, errors, and duration compare to the previous equivalent period? Currently, sessions are ${sessionDelta >= 0 ? "up" : "down"} ${Math.abs(sessionDelta).toFixed(1)}%, conversion is ${convDelta >= 0 ? "up" : "down"} ${Math.abs(convDelta).toFixed(1)}%, and Apdex is ${apdexDelta >= 0 ? "up" : "down"} ${Math.abs(apdexDelta).toFixed(1)}%. ${convDelta < -5 || apdexDelta < -10 ? "A regression has been detected — correlate with recent deployments or infrastructure changes. Click any KPI card in Funnel Overview to drill into Predictive Forecasting for trajectory analysis." : "Metrics are trending stable or positive."} Each metric card includes a daily sparkline tracing the metric's shape across the current period, and an inline anomaly badge powered by z-score analysis: ⚠ Anomaly (>2 std dev from daily mean — statistically significant change), ↑ Notable (1.2–2 std dev), or ∿ Normal (<1.2 std dev — within expected noise). Use the anomaly badges to quickly distinguish real regressions from day-to-day variance before digging into root cause. When AOV is configured, a Revenue trend card shows estimated revenue change. Use this tab after every deployment or campaign launch to verify impact.`;
   return { summary, insights, recommendations: recs };
 }
 
@@ -4203,7 +4299,7 @@ function analyzeErrorClustering(clusters: any[], totalErrors: number): AIInsight
 // ===========================================================================
 // TAB: Funnel Overview (with Compare)
 // ===========================================================================
-function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overallApdex, stepMap, pageMap, quality, compareMode, setCompareMode, isLoading, isFetching, lastRefreshedAt, refreshIntervalMs, appEntityId, steps, aov, funnelStyle, onFunnelStyleChange, todayHourlyData }: { funnelCounts: number[]; funnelCountsPrev: number[]; overallConv: number; overallApdex: number; stepMap: Map<string, any>; pageMap: Map<string, any>; quality: any; compareMode: boolean; setCompareMode: (v: boolean) => void; isLoading: boolean; isFetching: boolean; lastRefreshedAt: number; refreshIntervalMs: number; appEntityId?: string; steps: StepDef[]; aov: number; funnelStyle: FunnelStyle; onFunnelStyleChange: (v: FunnelStyle) => void; todayHourlyData: any; }) {
+function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overallConvPrev, overallApdex, overallApdexPrev, stepMap, pageMap, quality, qualityPrev, compareMode, setCompareMode, isLoading, isFetching, lastRefreshedAt, refreshIntervalMs, appEntityId, steps, aov, funnelStyle, onFunnelStyleChange, todayHourlyData, sparklineRecords, convSparklineRecords, onDrillToForecast }: { funnelCounts: number[]; funnelCountsPrev: number[]; overallConv: number; overallConvPrev: number; overallApdex: number; overallApdexPrev: number; stepMap: Map<string, any>; pageMap: Map<string, any>; quality: any; qualityPrev: any; compareMode: boolean; setCompareMode: (v: boolean) => void; isLoading: boolean; isFetching: boolean; lastRefreshedAt: number; refreshIntervalMs: number; appEntityId?: string; steps: StepDef[]; aov: number; funnelStyle: FunnelStyle; onFunnelStyleChange: (v: FunnelStyle) => void; todayHourlyData: any; sparklineRecords: any[]; convSparklineRecords: any[]; onDrillToForecast: () => void; }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeFunnelOverview(overallConv, overallApdex, quality, funnelCounts, steps, stepMap, aov, pageMap), [overallConv, overallApdex, quality, funnelCounts, steps, stepMap, aov, pageMap]));
   // Ticker to keep "last refreshed X ago" text updating
   const [, setTick] = React.useState(0);
@@ -4234,6 +4330,27 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
   const funnelSteps = makeFunnelSteps(funnelCounts);
   const prevFunnelSteps = compareMode ? makeFunnelSteps(funnelCountsPrev) : undefined;
   const errorRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+  const errorRatePrev = qualityPrev.total > 0 ? (qualityPrev.errors / qualityPrev.total) * 100 : 0;
+
+  // Parse sparkline series for KPI cards
+  const sparkSeries = useMemo(() => {
+    const rows = sparklineRecords.map((r: any) => ({
+      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
+      avg_dur: Number(r.avg_dur ?? 0), errors: Number(r.errors ?? 0),
+      satisfied: Number(r.satisfied ?? 0), tolerating: Number(r.tolerating ?? 0),
+    }));
+    const convRows = convSparklineRecords.map((r: any) => ({
+      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
+    }));
+    return {
+      sessions: rows.map(r => r.sessions),
+      convRate: convRows.map(r => r.conv_rate),
+      conversions: convRows.map(r => r.converted),
+      errorRate: rows.map(r => r.total > 0 ? (r.errors / r.total) * 100 : 0),
+      avgDur: rows.map(r => r.avg_dur),
+      apdex: rows.map(r => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0),
+    };
+  }, [sparklineRecords, convSparklineRecords]);
 
   // Predictive EOD model — linear regression on today's 10-min conv rates
   const todayRecords = (todayHourlyData?.data?.records ?? []) as any[];
@@ -4293,30 +4410,63 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
 
       {/* KPI row */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Total Sessions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(funnelCounts[0])}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Conversions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(funnelCounts[funnelCounts.length - 1])}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Conversion Rate</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: statusClr(overallConv) }}>{fmtPct(overallConv)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Overall Apdex</Text>
-          <ApdexGauge score={overallApdex} size={72} />
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Error Rate</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: errorRate > 5 ? RED : errorRate > 1 ? YELLOW : GREEN }}>{fmtPct(errorRate)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Avg Duration</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: quality.avg > 3000 ? RED : quality.avg > 1000 ? YELLOW : GREEN }}>{fmt(quality.avg)}</Heading>
-        </div>
+        <KpiCard
+          label="Total Sessions"
+          value={fmtCount(funnelCounts[0])}
+          color={BLUE}
+          rawValue={funnelCounts[0]}
+          prevRawValue={funnelCountsPrev[0] ?? null}
+          sparkline={sparkSeries.sessions}
+          onDrillToForecast={onDrillToForecast}
+        />
+        <KpiCard
+          label="Conversions"
+          value={fmtCount(funnelCounts[funnelCounts.length - 1])}
+          color={GREEN}
+          rawValue={funnelCounts[funnelCounts.length - 1]}
+          prevRawValue={funnelCountsPrev[funnelCountsPrev.length - 1] ?? null}
+          sparkline={sparkSeries.conversions}
+          onDrillToForecast={onDrillToForecast}
+        />
+        <KpiCard
+          label="Conversion Rate"
+          value={fmtPct(overallConv)}
+          color={statusClr(overallConv)}
+          rawValue={overallConv}
+          prevRawValue={overallConvPrev}
+          sparkline={sparkSeries.convRate}
+          onDrillToForecast={onDrillToForecast}
+        />
+        <KpiCard
+          label="Overall Apdex"
+          value={overallApdex.toFixed(2)}
+          color={apdexClr(overallApdex)}
+          rawValue={overallApdex}
+          prevRawValue={overallApdexPrev}
+          sparkline={sparkSeries.apdex}
+          onDrillToForecast={onDrillToForecast}
+          customContent={<ApdexGauge score={overallApdex} size={72} />}
+        />
+        <KpiCard
+          label="Error Rate"
+          value={fmtPct(errorRate)}
+          color={errorRate > 5 ? RED : errorRate > 1 ? YELLOW : GREEN}
+          rawValue={errorRate}
+          prevRawValue={errorRatePrev}
+          inverted={true}
+          sparkline={sparkSeries.errorRate}
+          onDrillToForecast={onDrillToForecast}
+        />
+        <KpiCard
+          label="Avg Duration"
+          value={fmt(quality.avg)}
+          color={quality.avg > 3000 ? RED : quality.avg > 1000 ? YELLOW : GREEN}
+          rawValue={quality.avg}
+          prevRawValue={qualityPrev.avg}
+          inverted={true}
+          sparkline={sparkSeries.avgDur}
+          onDrillToForecast={onDrillToForecast}
+        />
       </Flex>
 
       {/* Apdex satisfaction breakdown */}
@@ -8364,7 +8514,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
 // ===========================================================================
 // TAB: Executive Summary — NEW
 // ===========================================================================
-function ExecutiveSummaryTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, cwv: cwvMetrics, stepMap, isLoading, frontend, steps, aov }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; cwv: { lcp: number; cls: number; inp: number; ttfb: number; load: number }; stepMap: Map<string, any>; isLoading: boolean; frontend: string; steps: StepDef[]; aov: number }) {
+function ExecutiveSummaryTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, cwv: cwvMetrics, stepMap, isLoading, frontend, steps, aov, sparklineRecords, convSparklineRecords, onDrillToForecast }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; cwv: { lcp: number; cls: number; inp: number; ttfb: number; load: number }; stepMap: Map<string, any>; isLoading: boolean; frontend: string; steps: StepDef[]; aov: number; sparklineRecords: any[]; convSparklineRecords: any[]; onDrillToForecast: () => void }) {
   const [copied, setCopied] = useState(false);
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeFunnelOverview(overallConv, overallApdex, quality, funnelCounts, steps, stepMap, aov), [overallConv, overallApdex, quality, funnelCounts, steps, stepMap, aov]));
   if (isLoading) return <Loading />;
@@ -8398,6 +8548,24 @@ function ExecutiveSummaryTab({ quality, qualityPrev, overallApdex, overallApdexP
     { label: "Apdex", value: overallApdex.toFixed(2), trend: overallApdex > overallApdexPrev ? "up" : overallApdex < overallApdexPrev ? "down" : "flat", good: overallApdex >= overallApdexPrev },
     { label: "Error Rate", value: fmtPct(errorRate), trend: errorRate < errorRatePrev ? "up" : errorRate > errorRatePrev ? "down" : "flat", good: errorRate <= errorRatePrev },
   ];
+
+  // Sparkline series for executive KPI cards
+  const execSparkSeries = useMemo(() => {
+    const rows = sparklineRecords.map((r: any) => ({
+      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
+      errors: Number(r.errors ?? 0), satisfied: Number(r.satisfied ?? 0), tolerating: Number(r.tolerating ?? 0),
+    }));
+    const convRows = convSparklineRecords.map((r: any) => ({
+      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
+    }));
+    return {
+      sessions: rows.map(r => r.sessions),
+      convRate: convRows.map(r => r.conv_rate),
+      revenue: convRows.map(r => r.converted * aov),
+      apdex: rows.map(r => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0),
+      errorRate: rows.map(r => r.total > 0 ? (r.errors / r.total) * 100 : 0),
+    };
+  }, [sparklineRecords, convSparklineRecords, aov]);
 
   // Bottleneck identification
   const worstStep = steps.slice(1).map((step, i) => {
@@ -8608,13 +8776,11 @@ ${bottleneckHtml}
       {/* Key metrics with trends */}
       <SectionHeader title="Key Metrics" />
       <Flex gap={16} flexWrap="wrap">
-        {highlights.map((h) => (
-          <div key={h.label} className="uj-kpi-card" style={{ minWidth: 140 }}>
-            <Text className="uj-kpi-label">{h.label}</Text>
-            <Heading level={3} className="uj-kpi-value" style={{ color: h.good ? GREEN : RED }}>{h.value}</Heading>
-            <Text style={{ fontSize: 13, color: h.good ? GREEN : RED }}>{h.trend === "up" ? "▲" : h.trend === "down" ? "▼" : "●"} vs prev period</Text>
-          </div>
-        ))}
+        <KpiCard label="Sessions" value={fmtCount(quality.sessions)} color={BLUE} rawValue={quality.sessions} prevRawValue={qualityPrev.sessions} sparkline={execSparkSeries.sessions} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Conversion" value={fmtPct(overallConv)} color={statusClr(overallConv)} rawValue={overallConv} prevRawValue={overallConvPrev} sparkline={execSparkSeries.convRate} onDrillToForecast={onDrillToForecast} />
+        {aov > 0 && <KpiCard label="Revenue" value={fmtCurrency(currRevenue)} color={currRevenue >= prevRevenue ? GREEN : RED} rawValue={currRevenue} prevRawValue={prevRevenue} sparkline={execSparkSeries.revenue} onDrillToForecast={onDrillToForecast} />}
+        <KpiCard label="Apdex" value={overallApdex.toFixed(2)} color={apdexClr(overallApdex)} rawValue={overallApdex} prevRawValue={overallApdexPrev} sparkline={execSparkSeries.apdex} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Error Rate" value={fmtPct(errorRate)} color={errorRate > 5 ? RED : errorRate > 1 ? YELLOW : GREEN} rawValue={errorRate} prevRawValue={errorRatePrev} inverted={true} sparkline={execSparkSeries.errorRate} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Funnel summary */}

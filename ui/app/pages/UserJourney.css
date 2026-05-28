@@ -71,6 +71,38 @@
   max-width: 220px;
 }
 
+/* Enhanced KPI Card with sparkline + arrow */
+.uj-kpi-card-enhanced {
+  flex: 1 1 160px;
+  min-width: 160px;
+  max-width: 260px;
+  background: rgba(128, 128, 128, 0.06);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 12px;
+  padding: 16px 20px;
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.uj-kpi-card-enhanced:hover {
+  border-color: rgba(69, 137, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(69, 137, 255, 0.08);
+}
+.uj-kpi-card-enhanced.clickable {
+  cursor: pointer;
+}
+.uj-kpi-card-enhanced .kpi-drill-hint {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 10px;
+  opacity: 0;
+  color: rgba(69, 137, 255, 0.7);
+  transition: opacity 0.2s;
+}
+.uj-kpi-card-enhanced:hover .kpi-drill-hint {
+  opacity: 1;
+}
+
 .uj-kpi-label {
   font-size: 12px;
   text-transform: uppercase;
