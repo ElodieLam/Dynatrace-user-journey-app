@@ -6,19 +6,18 @@ import { useUserAppState, useSetUserAppState } from "@dynatrace-sdk/react-hooks"
 // ---------------------------------------------------------------------------
 export type StepDef = { label: string; identifiers: string[]; type: "view" | "request" };
 
-export const DEFAULT_FRONTEND = "Product_Browse";
+export const DEFAULT_FRONTEND = "www.angular.easytravel.com";
 export const MIN_STEPS = 2;
 export const MAX_STEPS = 10;
 
 export const DEFAULT_FUNNEL_STEPS: StepDef[] = [
-  { label: "Landing", identifiers: ["/", "/home", "/index"], type: "view" },
-  { label: "Browse / Category", identifiers: ["/products", "/category/*", "/search"], type: "view" },
-  { label: "Product Detail", identifiers: ["/product/*", "/products/:id:"], type: "view" },
-  { label: "Add to Cart", identifiers: ["/cart"], type: "view" },
-  { label: "Checkout / Purchase", identifiers: ["/checkout", "/order/confirm*"], type: "view" },
+  { label: "Home", identifiers: ["/easytravel/home", "/"], type: "view" },
+  { label: "Search", identifiers: ["/easytravel/search"], type: "view" },
+  { label: "Journey Detail", identifiers: ["/easytravel/journeys/:id:"], type: "view" },
+  { label: "Book", identifiers: ["/easytravel/journeys/:id:/book"], type: "view" },
 ];
 
-export const DEFAULT_AOV = 0;
+export const DEFAULT_AOV = 1200;
 const FRONTEND_STATE_KEY = "uj-frontend-app";
 const STEPS_STATE_KEY = "uj-funnel-steps";
 const AOV_STATE_KEY = "uj-average-order-value";

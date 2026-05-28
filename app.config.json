@@ -3,8 +3,8 @@
   "environmentUrl": "https://guu84124.apps.dynatrace.com",
   "app": {
     "name": "User Journey & Experience",
-    "version": "4.49.85",
-    "description": "User Journey & Experience — frontend observability suite",
+    "version": "4.49.90",
+    "description": "Not an official Dynatrace app. https://github.com/TechShady/user-journey-app.",
     "id": "my.user.journey.app",
     "scopes": [
       { "name": "storage:events:read", "comment": "read user events" },
