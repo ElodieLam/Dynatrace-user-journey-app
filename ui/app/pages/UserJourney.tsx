@@ -3,7 +3,7 @@ import { useDql, useUserAppState, useSetUserAppState } from "@dynatrace-sdk/reac
 import { getEnvironmentUrl } from "@dynatrace-sdk/app-environment";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text, Strong, Paragraph, Link } from "@dynatrace/strato-components/typography";
-import { Tabs, Tab } from "@dynatrace/strato-components-preview/navigation";
+import { Tabs, Tab } from "@dynatrace/strato-components/navigation";
 import { Select, TextInput } from "@dynatrace/strato-components-preview/forms";
 import { TimeframeSelector } from "@dynatrace/strato-components/filters";
 import type { Timeframe } from "@dynatrace/strato-components/core";
