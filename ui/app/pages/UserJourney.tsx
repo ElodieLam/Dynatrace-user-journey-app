@@ -3108,7 +3108,7 @@ export function UserJourney() {
 
   // Per-step sparklines: step_tag → { avgDur[], p50[], p90[], p99[], total[], errors[] }
   const stepSparklines = useMemo(() => {
-    const m = new Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[] }>();
+    const m = new Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }>();
     const records = (stepSparklineData.data?.records ?? []) as any[];
     // Group by step_tag, sorted by time
     const byStep = new Map<string, any[]>();
@@ -3119,13 +3119,16 @@ export function UserJourney() {
       byStep.get(tag)!.push(r);
     }
     for (const [tag, rows] of byStep) {
+      const totalArr = rows.map(r => Number(r.total ?? 0));
+      const errorsArr = rows.map(r => Number(r.errors ?? 0));
       m.set(tag, {
         avgDur: rows.map(r => Number(r.avg_dur ?? 0)),
         p50: rows.map(r => Number(r.p50_dur ?? 0)),
         p90: rows.map(r => Number(r.p90_dur ?? 0)),
         p99: rows.map(r => Number(r.p99_dur ?? 0)),
-        total: rows.map(r => Number(r.total ?? 0)),
-        errors: rows.map(r => Number(r.errors ?? 0)),
+        total: totalArr,
+        errors: errorsArr,
+        errRate: totalArr.map((t, i) => t > 0 ? (errorsArr[i] / t) * 100 : 0),
       });
     }
     return m;
@@ -5311,7 +5314,7 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId, onD
 // ===========================================================================
 // TAB: Step Details
 // ===========================================================================
-function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; stepMapPrev: Map<string, any>; stepSparklines: Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[] }>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; stepMapPrev: Map<string, any>; stepSparklines: Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeStepDetails(stepMap, steps, funnelCounts), [stepMap, steps, funnelCounts]));
   const [compareSteps, setCompareSteps] = React.useState<Set<number>>(new Set());
   const [cwvSteps, setCwvSteps] = React.useState<Set<number>>(new Set());
@@ -5369,7 +5372,7 @@ function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPa
     return <span style={{ fontSize: 11, color: clr, fontWeight: 600, marginLeft: 4 }}>{arrow}{Math.abs(pct).toFixed(1)}%{suffix}</span>;
   };
 
-  const renderMetricRow = (label: string, met: ReturnType<typeof extractMetrics>, primaryMet?: ReturnType<typeof extractMetrics>, isPrimary = false, sparklines?: { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[] }, prevMet?: ReturnType<typeof extractMetrics>) => (
+  const renderMetricRow = (label: string, met: ReturnType<typeof extractMetrics>, primaryMet?: ReturnType<typeof extractMetrics>, isPrimary = false, sparklines?: { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }, prevMet?: ReturnType<typeof extractMetrics>) => (
     <>
       <Flex gap={12} flexWrap="wrap">
         <KpiCard label="Avg Duration" value={fmt(met.avg)} color={met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN} rawValue={met.avg} prevRawValue={prevMet ? prevMet.avg : (primaryMet && !isPrimary ? primaryMet.avg : null)} sparkline={sparklines?.avgDur} inverted={true} />
@@ -5378,7 +5381,7 @@ function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPa
         <KpiCard label="P99" value={fmt(met.p99)} color={met.p99 > 5000 ? RED : GREEN} rawValue={met.p99} prevRawValue={prevMet ? prevMet.p99 : (primaryMet && !isPrimary ? primaryMet.p99 : null)} sparkline={sparklines?.p99} inverted={true} />
         <KpiCard label="Events" value={fmtCount(met.total)} color={BLUE} rawValue={met.total} prevRawValue={prevMet ? prevMet.total : (primaryMet && !isPrimary ? primaryMet.total : null)} sparkline={sparklines?.total} higherIsBetter={true} />
         <KpiCard label="Errors" value={fmtCount(met.errors)} color={met.errors > 0 ? RED : GREEN} rawValue={met.errors} prevRawValue={prevMet ? prevMet.errors : null} sparkline={sparklines?.errors} inverted={true} />
-        <KpiCard label="Error Rate" value={fmtPct(met.errRate)} color={met.errRate > 5 ? RED : met.errRate > 1 ? YELLOW : GREEN} rawValue={met.errRate} prevRawValue={prevMet ? prevMet.errRate : (primaryMet && !isPrimary ? primaryMet.errRate : null)} inverted={true} />
+        <KpiCard label="Error Rate" value={fmtPct(met.errRate)} color={met.errRate > 5 ? RED : met.errRate > 1 ? YELLOW : GREEN} rawValue={met.errRate} prevRawValue={prevMet ? prevMet.errRate : (primaryMet && !isPrimary ? primaryMet.errRate : null)} sparkline={sparklines?.errRate} inverted={true} />
       </Flex>
       <Flex gap={12} alignItems="center" style={{ marginTop: 8 }}>
         <Text style={{ fontSize: 12, color: GREEN }}>Satisfied: {fmtCount(met.sat)}</Text>
