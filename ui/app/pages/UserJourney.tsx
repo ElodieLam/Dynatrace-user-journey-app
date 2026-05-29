@@ -4313,6 +4313,26 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
   }, [refreshIntervalMs]);
   const [funnelSubTab, setFunnelSubTab] = React.useState<"funnel"|"predictive"|"steps"|"pages">("funnel");
 
+  // Parse sparkline series for KPI cards (must be before early return — Rules of Hooks)
+  const sparkSeries = useMemo(() => {
+    const rows = sparklineRecords.map((r: any) => ({
+      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
+      avg_dur: Number(r.avg_dur ?? 0), errors: Number(r.errors ?? 0),
+      satisfied: Number(r.satisfied ?? 0), tolerating: Number(r.tolerating ?? 0),
+    }));
+    const convRows = convSparklineRecords.map((r: any) => ({
+      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
+    }));
+    return {
+      sessions: rows.map(r => r.sessions),
+      convRate: convRows.map(r => r.conv_rate),
+      conversions: convRows.map(r => r.converted),
+      errorRate: rows.map(r => r.total > 0 ? (r.errors / r.total) * 100 : 0),
+      avgDur: rows.map(r => r.avg_dur),
+      apdex: rows.map(r => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0),
+    };
+  }, [sparklineRecords, convSparklineRecords]);
+
   // On initial load (no data yet) show spinner; on auto-refresh keep existing data visible
   const hasNoData = funnelCounts.every(c => c === 0) && quality.total === 0;
   if (isLoading && hasNoData) return <Loading />;
@@ -4334,26 +4354,6 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
   const prevFunnelSteps = compareMode ? makeFunnelSteps(funnelCountsPrev) : undefined;
   const errorRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
   const errorRatePrev = qualityPrev.total > 0 ? (qualityPrev.errors / qualityPrev.total) * 100 : 0;
-
-  // Parse sparkline series for KPI cards
-  const sparkSeries = useMemo(() => {
-    const rows = sparklineRecords.map((r: any) => ({
-      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
-      avg_dur: Number(r.avg_dur ?? 0), errors: Number(r.errors ?? 0),
-      satisfied: Number(r.satisfied ?? 0), tolerating: Number(r.tolerating ?? 0),
-    }));
-    const convRows = convSparklineRecords.map((r: any) => ({
-      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
-    }));
-    return {
-      sessions: rows.map(r => r.sessions),
-      convRate: convRows.map(r => r.conv_rate),
-      conversions: convRows.map(r => r.converted),
-      errorRate: rows.map(r => r.total > 0 ? (r.errors / r.total) * 100 : 0),
-      avgDur: rows.map(r => r.avg_dur),
-      apdex: rows.map(r => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0),
-    };
-  }, [sparklineRecords, convSparklineRecords]);
 
   // Predictive EOD model — linear regression on today's 10-min conv rates
   const todayRecords = (todayHourlyData?.data?.records ?? []) as any[];
@@ -8520,6 +8520,25 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
 function ExecutiveSummaryTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, cwv: cwvMetrics, stepMap, isLoading, frontend, steps, aov, sparklineRecords, convSparklineRecords, onDrillToForecast }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; cwv: { lcp: number; cls: number; inp: number; ttfb: number; load: number }; stepMap: Map<string, any>; isLoading: boolean; frontend: string; steps: StepDef[]; aov: number; sparklineRecords: any[]; convSparklineRecords: any[]; onDrillToForecast: () => void }) {
   const [copied, setCopied] = useState(false);
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeFunnelOverview(overallConv, overallApdex, quality, funnelCounts, steps, stepMap, aov), [overallConv, overallApdex, quality, funnelCounts, steps, stepMap, aov]));
+
+  // Sparkline series for executive KPI cards (must be before early return — Rules of Hooks)
+  const execSparkSeries = useMemo(() => {
+    const rows = sparklineRecords.map((r: any) => ({
+      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
+      errors: Number(r.errors ?? 0), satisfied: Number(r.satisfied ?? 0), tolerating: Number(r.tolerating ?? 0),
+    }));
+    const convRows = convSparklineRecords.map((r: any) => ({
+      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
+    }));
+    return {
+      sessions: rows.map(r => r.sessions),
+      convRate: convRows.map(r => r.conv_rate),
+      revenue: convRows.map(r => r.converted * aov),
+      apdex: rows.map(r => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0),
+      errorRate: rows.map(r => r.total > 0 ? (r.errors / r.total) * 100 : 0),
+    };
+  }, [sparklineRecords, convSparklineRecords, aov]);
+
   if (isLoading) return <Loading />;
 
   const errorRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
@@ -8551,24 +8570,6 @@ function ExecutiveSummaryTab({ quality, qualityPrev, overallApdex, overallApdexP
     { label: "Apdex", value: overallApdex.toFixed(2), trend: overallApdex > overallApdexPrev ? "up" : overallApdex < overallApdexPrev ? "down" : "flat", good: overallApdex >= overallApdexPrev },
     { label: "Error Rate", value: fmtPct(errorRate), trend: errorRate < errorRatePrev ? "up" : errorRate > errorRatePrev ? "down" : "flat", good: errorRate <= errorRatePrev },
   ];
-
-  // Sparkline series for executive KPI cards
-  const execSparkSeries = useMemo(() => {
-    const rows = sparklineRecords.map((r: any) => ({
-      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
-      errors: Number(r.errors ?? 0), satisfied: Number(r.satisfied ?? 0), tolerating: Number(r.tolerating ?? 0),
-    }));
-    const convRows = convSparklineRecords.map((r: any) => ({
-      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
-    }));
-    return {
-      sessions: rows.map(r => r.sessions),
-      convRate: convRows.map(r => r.conv_rate),
-      revenue: convRows.map(r => r.converted * aov),
-      apdex: rows.map(r => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0),
-      errorRate: rows.map(r => r.total > 0 ? (r.errors / r.total) * 100 : 0),
-    };
-  }, [sparklineRecords, convSparklineRecords, aov]);
 
   // Bottleneck identification
   const worstStep = steps.slice(1).map((step, i) => {
