@@ -42,7 +42,8 @@ The User Journey & Experience App is a 31-tab frontend observability suite built
 - Period-over-period comparison overlay (optional)
 - Per-step Apdex gauges and satisfaction breakdowns
 - KPI cards: Total Sessions, Conversions, Conversion Rate, Apdex, Error Rate, Avg Duration
-- **Enhanced KPI cards**: Inline sparklines (time-bucketed trend shapes), comparison arrows showing % delta vs. previous period, and one-click drill-to-forecast (navigates to Predictive Forecasting tab)
+- **Enhanced KPI cards**: Inline sparklines (time-bucketed trend shapes), comparison arrows showing % delta vs. previous period, and one-click forecast popup (opens ForecastModal with 6 statistical models: Holt-Winters, Triple Exp., Prophet, ARIMA, SARIMA, Linear Regression)
+- **Forecast Modal** (`ui/app/components/ForecastModal.tsx`): Full-screen overlay with interactive SVG chart showing historical data + 7-day forecast + confidence band. Supports model switching via dropdown. Hover crosshair shows exact values. Click-outside or Close button to dismiss
 - **Revenue lost annotations** per funnel drop-off step when AOV is configured (shows estimated $ lost at each stage)
 
 **Queries**:
@@ -1166,7 +1167,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 ### Help System
 
-- **Help Sheet**: Slide-out panel (`<Sheet>`) with `HelpContent` component covering all 30 tabs, configuration, Apdex, CWV thresholds, and tips
+- **Help Sheet**: Slide-out panel (`<Sheet>`) with `HelpContent` component covering all 31 tabs, configuration, Apdex, CWV thresholds, and tips
 - **What's New section**: Changelog at the top of Help, newest entries first. Each entry has a date stamp, title, and bullet-pointed feature list. Styled with blue left-border accent cards. New changes are added at the top; older entries slide down — serves as an in-app audit log of feature changes
 
 ---
@@ -1175,6 +1176,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-05-29 | 4.49.98 | **Forecast Modal — Multi-Model Popup Forecasting**: Clicking any KPI card now opens a full-screen `ForecastModal` popup (`ui/app/components/ForecastModal.tsx`) instead of navigating to the Predictive Forecasting tab. Modal displays historical sparkline data + 7-day forecast with confidence band in an interactive SVG chart. Users select from 6 forecasting models via dropdown: Holt-Winters (Double Exponential Smoothing), Triple Exponential Smoothing, Prophet (piecewise trend + Fourier seasonality), ARIMA(5,1,2), SARIMA(3,1,1)(1,1,1,m), and Linear Regression. Hover crosshair shows actual/forecast values with confidence interval. Click-outside or Close button dismisses. KpiCard `onDrillToForecast` prop changed from `() => void` to `(label, sparkline, color) => void`; cards only show clickable state when sparkline has ≥2 points. AI Assist recommendations updated to reference Forecast Modal. Help panel updated with new What's New entry and Tips section. |
 | 2026-05-28 | 4.49.94 | **KPI Cards — Sparklines, Comparison Arrows & Drill-to-Forecast**: Funnel Overview and Executive Summary KPI cards upgraded with inline sparklines (time-bucketed trend lines from `trendsSparklineQuery`/`trendsConvSparklineQuery`), period-over-period comparison arrows showing % delta vs. previous timeframe (`prevRawValue`), and one-click drill-to-forecast navigation (clicking a card navigates to the Predictive Forecasting tab). AI Assist (`analyzeFunnelOverview`, `analyzeTrends`) now proactively recommends drilling into Predictive Forecasting when negative trends are detected (low conversion, poor Apdex, rising errors). Help panel updated with What's New entry and tab description refresh. |
 | 2026-05-20 | 4.49.68 | **What-If Analysis — Infrastructure Headroom & Latency Improvement**: Added Latency Improvement slider (0-50%) simulating performance optimizations that reduce projected latency and partially offset conversion degradation. Added Infrastructure Headroom section using `dt.host.cpu.usage` and `dt.host.memory.usage` to assess whether hosts can sustain simulated traffic — shows projected CPU/memory, max sustainable increase before 85% threshold, gauge bars, and SUFFICIENT/AT RISK/CRITICAL verdict. |
 | 2026-05-20 | 4.49.67 | **Conversion Attribution — Multi-Touch Attribution Modeling**: Removed Marketing Channel Attribution (UTM). Added multi-touch attribution modeling with 6 models (First Touch, Last Touch, Linear, Position-Based, Time-Decay, Influence-Based). Step influence cards ranked by conditional conversion probability uplift. Attribution model comparison table with credit allocation per step. SVG influence visualization bar chart. Revenue credit per step when AOV configured. Drop-off cost estimation per step. Help, AI Insights, and DESIGN.md updated. |
