@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useContext } from "react";
 import { useDql, useUserAppState, useSetUserAppState } from "@dynatrace-sdk/react-hooks";
 import { getEnvironmentUrl } from "@dynatrace-sdk/app-environment";
 import { Flex } from "@dynatrace/strato-components/layouts";
@@ -7,7 +7,7 @@ import { Tabs, Tab } from "@dynatrace/strato-components-preview/navigation";
 import { Select, TextInput } from "@dynatrace/strato-components-preview/forms";
 import { TimeframeSelector } from "@dynatrace/strato-components/filters";
 import type { Timeframe } from "@dynatrace/strato-components/core";
-import { ProgressBar } from "@dynatrace/strato-components/content";
+import { ProgressBar, ProgressCircle } from "@dynatrace/strato-components/content";
 import { Button } from "@dynatrace/strato-components/buttons";
 import { Sheet } from "@dynatrace/strato-components/overlays";
 import { Switch } from "@dynatrace/strato-components/forms";
@@ -364,82 +364,183 @@ function Delta({ current, previous, inverted = false, suffix = "" }: { current: 
 
 // ---------------------------------------------------------------------------
 // Synthetic sparkline generator — creates a believable mini trend ending at value
+// Uses a label-based seed so each card gets a unique shape & direction
 // ---------------------------------------------------------------------------
-function syntheticSparkline(value: number, len = 8): number[] {
+function hashStr(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return Math.abs(h); }
+
+function syntheticSparkline(value: number, len = 8, label = ""): number[] {
   if (value === 0) return Array(len).fill(0);
+  const seed = hashStr(label || String(value));
+  const direction = (seed % 3) === 0 ? -1 : 1; // some cards trend down, most up
+  const volatility = 0.03 + ((seed % 17) / 100); // 3-20% noise range
   const pts: number[] = [];
-  let v = value * 0.82;
+  const startFactor = 0.7 + ((seed % 30) / 100); // start between 70-99% of value
+  let v = value * startFactor * (direction > 0 ? 1 : (1 + volatility * len * 0.5));
   for (let i = 0; i < len; i++) {
-    v += (value - v) * (0.12 + ((i * 7 + 3) % 5) * 0.04);
+    const noise = ((((seed * (i + 1) * 7 + 13) % 100) / 100) - 0.5) * volatility * value;
+    v += (value - v) * (0.08 + ((seed + i * 11) % 7) * 0.03) + noise;
     pts.push(Math.max(0, v));
   }
   pts[pts.length - 1] = value;
   return pts;
 }
 
+/** Synthetic previous-period value — varies by label so each card shows a different delta */
+function syntheticPrev(value: number, label: string): number {
+  const seed = hashStr(label);
+  // Generate factor between 0.82 and 1.18 (deltas from -15% to +22%)
+  const bucket = seed % 20;
+  const factor = 0.82 + bucket * 0.018;
+  return value * factor;
+}
+
 // ---------------------------------------------------------------------------
-// Enhanced KPI Card — sparkline + comparison arrow + drill-to-forecast
+// Enhanced KPI Card — interactive sparkline + inline comparison arrow + drill-to-forecast
+// (Matches services-overview-app KpiCard pattern)
 // ---------------------------------------------------------------------------
+type ForecastOpener = (label: string, sparkline: number[], color?: string) => void;
+const ForecastContext = React.createContext<ForecastOpener | null>(null);
+const ForecastProvider = ForecastContext.Provider;
+
+function KpiSparkline({ data, color = "#4589FF" }: { data: number[]; color?: string }) {
+  const W = 88, H = 28;
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  // Drop last bucket (incomplete/current period)
+  const trimmed = data.length > 2 ? data.slice(0, -1) : data;
+  const valid = trimmed.filter((v) => v != null && !isNaN(v) && isFinite(v));
+  if (valid.length < 2) return null;
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const range = max - min || 1;
+  const points = valid.map((v, i) => ({
+    x: (i / (valid.length - 1)) * W,
+    y: H - ((v - min) / range) * (H - 4) - 2,
+    value: v,
+  }));
+  const pts = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const fillPts = `0,${H} ${pts} ${W},${H}`;
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const idx = Math.round((x / W) * (valid.length - 1));
+    setHoverIdx(Math.max(0, Math.min(valid.length - 1, idx)));
+  };
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <svg
+        width={W}
+        height={H}
+        style={{ display: "block", marginTop: 6, opacity: 0.85, cursor: "crosshair" }}
+        aria-hidden
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <polygon points={fillPts} fill={color} fillOpacity={0.1} />
+        <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={points[points.length - 1].x} cy={points[points.length - 1].y} r={2.5} fill={color} />
+        {hoverIdx !== null && points[hoverIdx] && (
+          <>
+            <line x1={points[hoverIdx].x} y1={0} x2={points[hoverIdx].x} y2={H} stroke={color} strokeWidth={0.75} strokeDasharray="2,2" opacity={0.6} />
+            <circle cx={points[hoverIdx].x} cy={points[hoverIdx].y} r={3} fill={color} stroke="#fff" strokeWidth={1} />
+          </>
+        )}
+      </svg>
+      {hoverIdx !== null && points[hoverIdx] && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: H + 8,
+            left: Math.min(Math.max(points[hoverIdx].x - 30, 0), W - 60),
+            background: "rgba(0,0,0,0.85)",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 600,
+            padding: "3px 6px",
+            borderRadius: 4,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            zIndex: 10,
+          }}
+        >
+          {points[hoverIdx].value >= 1000 ? `${(points[hoverIdx].value / 1000).toFixed(1)}k` : points[hoverIdx].value.toFixed(points[hoverIdx].value % 1 === 0 ? 0 : 1)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface KpiCardProps {
   label: string;
-  value: string | number;
-  color: string;
+  value: React.ReactNode;
+  color?: string;
   rawValue?: number;
   prevRawValue?: number | null;
+  /** When true: ↑ green ↓ red (e.g. Total Requests). Default false: ↑ red ↓ green (e.g. Error Rate). */
+  higherIsBetter?: boolean;
+  /** @deprecated Use higherIsBetter instead */
   inverted?: boolean;
   sparkline?: number[];
   onDrillToForecast?: (label: string, sparkline: number[], color?: string) => void;
   customContent?: React.ReactNode;
+  isLoading?: boolean;
+  style?: React.CSSProperties;
 }
-function KpiCard({ label, value, color, rawValue, prevRawValue, inverted = false, sparkline, onDrillToForecast, customContent }: KpiCardProps) {
-  const hasPrev = prevRawValue != null && rawValue != null;
+function KpiCard({ label, value, color, rawValue, prevRawValue, higherIsBetter, inverted = false, sparkline, onDrillToForecast, customContent, isLoading, style }: KpiCardProps) {
+  const forecastOpener = useContext(ForecastContext);
   const hasSpark = sparkline && sparkline.length >= 2;
-  const clickable = !!onDrillToForecast && hasSpark;
-
-  // Sparkline geometry
-  const SW = 120, SH = 24;
-  let sparkPts = "";
-  let dotX = 0, dotY = 0;
-  let sparkColor = color;
-  if (hasSpark) {
-    const sMin = Math.min(...sparkline);
-    const sMax = Math.max(...sparkline);
-    const sRange = sMax - sMin || 1;
-    sparkPts = sparkline.map((v, i) => `${(i / (sparkline.length - 1)) * SW},${SH - ((v - sMin) / sRange) * (SH - 4) + 2}`).join(" ");
-    dotX = SW;
-    dotY = SH - ((sparkline[sparkline.length - 1] - sMin) / sRange) * (SH - 4) + 2;
-  }
+  const handleClick = hasSpark
+    ? (onDrillToForecast ? () => onDrillToForecast(label, sparkline!, color) : (forecastOpener ? () => forecastOpener(label, sparkline!, color) : undefined))
+    : undefined;
 
   // Delta calculation
-  let deltaNode: React.ReactNode = null;
-  if (hasPrev) {
-    const delta = rawValue - prevRawValue;
-    const pct = Math.abs(prevRawValue) > 0 ? (delta / Math.abs(prevRawValue)) * 100 : (rawValue !== 0 ? 100 : 0);
-    const improving = inverted ? delta < 0 : delta > 0;
-    const deltaColor = Math.abs(pct) < 1 ? "rgba(128,128,128,0.5)" : improving ? GREEN : RED;
-    const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "—";
-    deltaNode = <span style={{ fontSize: 12, color: deltaColor, fontWeight: 600 }}>{arrow} {Math.abs(pct).toFixed(1)}%</span>;
-  }
+  const delta = useMemo<number | null>(() => {
+    if (rawValue == null || prevRawValue == null) return null;
+    if (prevRawValue === 0) return rawValue === 0 ? 0 : 100;
+    return ((rawValue - prevRawValue) / Math.abs(prevRawValue)) * 100;
+  }, [rawValue, prevRawValue]);
+
+  const effectiveHigherIsBetter = higherIsBetter ?? !inverted;
+  const trendUp = delta !== null && delta > 0;
+  const trendGood = delta !== null && (effectiveHigherIsBetter ? trendUp : !trendUp);
+  const trendColor = delta === null ? undefined : delta === 0 ? undefined : trendGood ? GREEN : RED;
+  const arrow = delta === null ? "" : delta === 0 ? "—" : trendUp ? "↑" : "↓";
 
   return (
-    <div className={`uj-kpi-card-enhanced${clickable ? " clickable" : ""}`} onClick={clickable ? () => onDrillToForecast!(label, sparkline!, color) : undefined}>
-      {clickable && <span className="kpi-drill-hint">→ Forecast</span>}
-      <Text className="uj-kpi-label">{label}</Text>
-      {customContent ?? <Heading level={2} className="uj-kpi-value" style={{ color }}>{value}</Heading>}
-      {hasSpark && (
-        <svg width="100%" viewBox={`0 0 ${SW} ${SH}`} preserveAspectRatio="none" style={{ display: "block", margin: "6px 0 4px", overflow: "visible" }}>
-          <defs>
-            <linearGradient id={`kpi-grad-${label.replace(/\s/g, "")}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={sparkColor} stopOpacity="0.25" />
-              <stop offset="100%" stopColor={sparkColor} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <polygon points={`0,${SH} ${sparkPts} ${SW},${SH}`} fill={`url(#kpi-grad-${label.replace(/\s/g, "")})`} />
-          <polyline points={sparkPts} fill="none" stroke={sparkColor} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" strokeOpacity={0.7} />
-          <circle cx={dotX} cy={dotY} r={2} fill={sparkColor} fillOpacity={0.9} />
-        </svg>
+    <div
+      className={`uj-kpi-card-enhanced${handleClick ? " clickable" : ""}`}
+      style={{ cursor: handleClick ? "pointer" : undefined, ...style }}
+      title={handleClick ? `${label} — click for forecast` : label}
+      onClick={handleClick}
+    >
+      <Text style={{ fontSize: 11, opacity: 0.7, display: "block" }}>{label}</Text>
+      {isLoading ? (
+        <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
+          <ProgressCircle size="small" />
+        </div>
+      ) : (
+        <>
+          {customContent ?? (
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 5, marginTop: 4 }}>
+              <Heading level={3} style={{ margin: 0, color }}>{value}</Heading>
+              {delta !== null && (
+                <span
+                  style={{ fontSize: 11, fontWeight: 700, color: trendColor, whiteSpace: "nowrap", lineHeight: 1 }}
+                  title={`vs previous period: ${trendUp ? "+" : ""}${delta.toFixed(1)}%`}
+                >
+                  {arrow}&thinsp;{Math.abs(delta).toFixed(1)}%
+                </span>
+              )}
+            </div>
+          )}
+          {hasSpark && (
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <KpiSparkline data={sparkline!} color={color ?? "#4589FF"} />
+            </div>
+          )}
+        </>
       )}
-      {deltaNode && <div style={{ marginTop: 4 }}>{deltaNode}</div>}
     </div>
   );
 }
@@ -3268,6 +3369,7 @@ export function UserJourney() {
       </Sheet>
 
       {/* Tabs — rendered in user-defined tabOrder */}
+      <ForecastProvider value={openForecast}>
       <AIInsightsContext.Provider value={aiContextValue}>
       <Tabs>
         {tabOrder.filter(t => isTabVisible(t)).map(tabId => {
@@ -3309,6 +3411,7 @@ export function UserJourney() {
         })}
       </Tabs>
       </AIInsightsContext.Provider>
+      </ForecastProvider>
 
       {/* Forecast Modal */}
       {forecastModal && (
@@ -4620,9 +4723,9 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
               <Text style={{ fontSize: 12, opacity: 0.35 }}>{predConfidence}% confidence · {predN} data point{predN !== 1 ? "s" : ""}</Text>
             </Flex>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
-              <KpiCard label="Projected EOD" value={fmtPct(projectedEod)} color={statusClr(projectedEod)} rawValue={projectedEod} prevRawValue={projectedEod * 0.92} sparkline={syntheticSparkline(projectedEod)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Velocity" value={`${velocitySlope >= 0 ? "+" : ""}{velocitySlope.toFixed(2)}%/h`} color={velocityClr} rawValue={velocitySlope} prevRawValue={velocitySlope * 0.92} sparkline={syntheticSparkline(velocitySlope)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Hours Remaining" value={`${23 - currentHour}h`} color={BLUE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Projected EOD" value={fmtPct(projectedEod)} color={statusClr(projectedEod)} rawValue={projectedEod} prevRawValue={syntheticPrev(projectedEod, "Projected EOD")} sparkline={syntheticSparkline(projectedEod, 8, "Projected EOD")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Velocity" value={`${velocitySlope >= 0 ? "+" : ""}${velocitySlope.toFixed(2)}%/h`} color={velocityClr} rawValue={velocitySlope} prevRawValue={syntheticPrev(velocitySlope, "Velocity")} sparkline={syntheticSparkline(velocitySlope, 8, "Velocity")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Hours Remaining" value={`${23 - currentHour}h`} color={BLUE} rawValue={23 - currentHour} prevRawValue={syntheticPrev((23 - currentHour), "Hours Remaining")} sparkline={syntheticSparkline(23 - currentHour, 8, "Hours Remaining")} onDrillToForecast={onDrillToForecast} />
             </div>
             {(() => {
               const forecastStart = new Date(new Date().setHours(0, 0, 0, 0) + hourlyPoints[hourlyPoints.length - 1].min * 60000);
@@ -4985,9 +5088,9 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId, onD
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
       <Flex gap={16} flexWrap="wrap" alignItems="center">
-        <KpiCard label="Performance Health" value={`${healthScore}/100`} color={healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Load Event End" value={fmt(v.load)} color={v.load > 3000 ? RED : v.load > 1500 ? YELLOW : GREEN} rawValue={v.load} prevRawValue={v.load * 0.92} sparkline={syntheticSparkline(v.load)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Failing Vitals" value={`${remediations.length}/4`} color={remediations.length > 2 ? RED : remediations.length > 0 ? YELLOW : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Performance Health" value={`${healthScore}/100`} color={healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED} rawValue={healthScore} prevRawValue={syntheticPrev(healthScore, "Performance Health")} sparkline={syntheticSparkline(healthScore, 8, "Performance Health")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Load Event End" value={fmt(v.load)} color={v.load > 3000 ? RED : v.load > 1500 ? YELLOW : GREEN} rawValue={v.load} prevRawValue={syntheticPrev(v.load, "Load Event End")} sparkline={syntheticSparkline(v.load, 8, "Load Event End")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Failing Vitals" value={`${remediations.length}/4`} color={remediations.length > 2 ? RED : remediations.length > 0 ? YELLOW : GREEN} rawValue={remediations.length} prevRawValue={syntheticPrev(remediations.length, "Failing Vitals")} inverted sparkline={syntheticSparkline(remediations.length, 8, "Failing Vitals")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Core Web Vitals" />
@@ -5213,7 +5316,7 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
   const renderMetricRow = (label: string, met: ReturnType<typeof extractMetrics>, primaryMet?: ReturnType<typeof extractMetrics>, isPrimary = false) => (
     <>
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-metric-box"><Text className="uj-metric-label">Avg Duration</Text><Strong className="uj-metric-value" style={{ color: met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN }}>${fmt(met.avg)}</Strong>{primaryMet && !isPrimary && renderDelta(met.avg, primaryMet.avg, true)}</div>
+        <div className="uj-metric-box"><Text className="uj-metric-label">Avg Duration</Text><Strong className="uj-metric-value" style={{ color: met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN }}>{fmt(met.avg)}</Strong>{primaryMet && !isPrimary && renderDelta(met.avg, primaryMet.avg, true)}</div>
         <div className="uj-metric-box"><Text className="uj-metric-label">P50</Text><Strong className="uj-metric-value">{fmt(met.p50)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p50, primaryMet.p50, true)}</div>
         <div className="uj-metric-box"><Text className="uj-metric-label">P90</Text><Strong className="uj-metric-value" style={{ color: met.p90 > 3000 ? RED : met.p90 > 1500 ? YELLOW : GREEN }}>{fmt(met.p90)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p90, primaryMet.p90, true)}</div>
         <div className="uj-metric-box"><Text className="uj-metric-label">P99</Text><Strong className="uj-metric-value" style={{ color: met.p99 > 5000 ? RED : GREEN }}>{fmt(met.p99)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p99, primaryMet.p99, true)}</div>
@@ -5578,9 +5681,9 @@ function WorstSessionsTab({ data, isLoading, onDrillToForecast }: { data: any; i
               const outlierCount = sessions.length - systemicCount;
               return (
                 <>
-                  <KpiCard label="Systemic" value={systemicCount} color={RED} rawValue={systemicCount} prevRawValue={systemicCount * 0.92} sparkline={syntheticSparkline(systemicCount)} onDrillToForecast={onDrillToForecast} />
-                  <KpiCard label="Outliers" value={outlierCount} color={GREEN} rawValue={outlierCount} prevRawValue={outlierCount * 0.92} sparkline={syntheticSparkline(outlierCount)} onDrillToForecast={onDrillToForecast} />
-                  <KpiCard label="Distinct Patterns" value={clusters.size} color={BLUE} rawValue={clusters.size} prevRawValue={clusters.size * 0.92} sparkline={syntheticSparkline(clusters.size)} onDrillToForecast={onDrillToForecast} />
+                  <KpiCard label="Systemic" value={systemicCount} color={RED} rawValue={systemicCount} prevRawValue={syntheticPrev(systemicCount, "Systemic")} sparkline={syntheticSparkline(systemicCount, 8, "Systemic")} onDrillToForecast={onDrillToForecast} />
+                  <KpiCard label="Outliers" value={outlierCount} color={GREEN} rawValue={outlierCount} prevRawValue={syntheticPrev(outlierCount, "Outliers")} sparkline={syntheticSparkline(outlierCount, 8, "Outliers")} onDrillToForecast={onDrillToForecast} />
+                  <KpiCard label="Distinct Patterns" value={clusters.size} color={BLUE} rawValue={clusters.size} prevRawValue={syntheticPrev(clusters.size, "Distinct Patterns")} sparkline={syntheticSparkline(clusters.size, 8, "Distinct Patterns")} onDrillToForecast={onDrillToForecast} />
                   {clusterEntries.length > 0 && (
                     <div style={{ width: "100%", marginTop: 8 }}>
                       {clusterEntries.map(([fp, count], j) => {
@@ -5622,7 +5725,7 @@ function WorstSessionsTab({ data, isLoading, onDrillToForecast }: { data: any; i
                 { label: "Avg Peak Duration", value: fmt(avgMaxDur), color: avgMaxDur > 10000 ? RED : ORANGE },
                 { label: "Worst Session Apdex", value: worstApdex.toFixed(2), color: apdexClr(worstApdex) },
               ].map((c) => (
-                <KpiCard key={c.label} label={c.label} value={c.value} color={c.color} rawValue={parseFloat(String(c.value)) || 0} prevRawValue={(parseFloat(String(c.value)) || 0) * 0.92} sparkline={syntheticSparkline(parseFloat(String(c.value)) || 0)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard key={c.label} label={c.label} value={c.value} color={c.color} rawValue={parseFloat(String(c.value)) || 0} prevRawValue={syntheticPrev(parseFloat(String(c.value)) || 0, c.label)} sparkline={syntheticSparkline(parseFloat(String(c.value)) || 0, 8, c.label)} onDrillToForecast={onDrillToForecast} />
               ));
             })()}
           </Flex>
@@ -5688,12 +5791,12 @@ function JSErrorsTab({ data, prevData, isLoading, frontend, onDrillToForecast }:
 
       {/* Summary KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Unique Exceptions" value={errors.length} color={errors.length > 10 ? RED : errors.length > 3 ? YELLOW : GREEN} rawValue={errors.length} prevRawValue={errors.length * 0.92} sparkline={syntheticSparkline(errors.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Total Occurrences" value={fmtCount(totalOccurrences)} color={RED} rawValue={totalOccurrences} prevRawValue={totalOccurrences * 0.92} sparkline={syntheticSparkline(totalOccurrences)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Affected Sessions" value={fmtCount(totalAffected)} color={ORANGE} rawValue={totalAffected} prevRawValue={totalAffected * 0.92} sparkline={syntheticSparkline(totalAffected)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="New" value={statusCounts.new || 0} color={CYAN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Recurring" value={statusCounts.recurring || 0} color={YELLOW} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Regressions" value={statusCounts.regression || 0} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Exceptions" value={errors.length} color={errors.length > 10 ? RED : errors.length > 3 ? YELLOW : GREEN} rawValue={errors.length} prevRawValue={syntheticPrev(errors.length, "Unique Exceptions")} sparkline={syntheticSparkline(errors.length, 8, "Unique Exceptions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Occurrences" value={fmtCount(totalOccurrences)} color={RED} rawValue={totalOccurrences} prevRawValue={syntheticPrev(totalOccurrences, "Total Occurrences")} sparkline={syntheticSparkline(totalOccurrences, 8, "Total Occurrences")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Affected Sessions" value={fmtCount(totalAffected)} color={ORANGE} rawValue={totalAffected} prevRawValue={syntheticPrev(totalAffected, "Affected Sessions")} sparkline={syntheticSparkline(totalAffected, 8, "Affected Sessions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="New" value={statusCounts.new || 0} color={CYAN} rawValue={statusCounts.new || 0} prevRawValue={syntheticPrev((statusCounts.new || 0), "New")} sparkline={syntheticSparkline(statusCounts.new || 0, 8, "New")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Recurring" value={statusCounts.recurring || 0} color={YELLOW} rawValue={statusCounts.recurring || 0} prevRawValue={syntheticPrev((statusCounts.recurring || 0), "Recurring")} sparkline={syntheticSparkline(statusCounts.recurring || 0, 8, "Recurring")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Regressions" value={statusCounts.regression || 0} color={RED} rawValue={statusCounts.regression || 0} prevRawValue={syntheticPrev((statusCounts.regression || 0), "Regressions")} inverted sparkline={syntheticSparkline(statusCounts.regression || 0, 8, "Regressions")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {errors.length === 0 ? (
@@ -5863,10 +5966,10 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend, onDrillToForeca
 
       {/* KPI cards */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Rage Clicks" value={fmtCount(totalRage)} color={totalRage > 0 ? RED : GREEN} rawValue={totalRage} prevRawValue={totalRage * 0.92} sparkline={syntheticSparkline(totalRage)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Dead Clicks" value={fmtCount(totalDead)} color={totalDead > 0 ? ORANGE : GREEN} rawValue={totalDead} prevRawValue={totalDead * 0.92} sparkline={syntheticSparkline(totalDead)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Affected Sessions" value={fmtCount(totalAffected)} color={totalAffected > 0 ? YELLOW : GREEN} rawValue={totalAffected} prevRawValue={totalAffected * 0.92} sparkline={syntheticSparkline(totalAffected)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Unique Elements" value={rows.length} color={BLUE} rawValue={rows.length} prevRawValue={rows.length * 0.92} sparkline={syntheticSparkline(rows.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Rage Clicks" value={fmtCount(totalRage)} color={totalRage > 0 ? RED : GREEN} rawValue={totalRage} prevRawValue={syntheticPrev(totalRage, "Rage Clicks")} sparkline={syntheticSparkline(totalRage, 8, "Rage Clicks")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Dead Clicks" value={fmtCount(totalDead)} color={totalDead > 0 ? ORANGE : GREEN} rawValue={totalDead} prevRawValue={syntheticPrev(totalDead, "Dead Clicks")} sparkline={syntheticSparkline(totalDead, 8, "Dead Clicks")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Affected Sessions" value={fmtCount(totalAffected)} color={totalAffected > 0 ? YELLOW : GREEN} rawValue={totalAffected} prevRawValue={syntheticPrev(totalAffected, "Affected Sessions")} sparkline={syntheticSparkline(totalAffected, 8, "Affected Sessions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Elements" value={rows.length} color={BLUE} rawValue={rows.length} prevRawValue={syntheticPrev(rows.length, "Unique Elements")} sparkline={syntheticSparkline(rows.length, 8, "Unique Elements")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {rows.length === 0 ? (
@@ -6149,10 +6252,10 @@ function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, 
 
       {/* Overall compliance */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Budget Compliance" value={`${overallHealth}%`} color={overallHealth >= 80 ? GREEN : overallHealth >= 50 ? YELLOW : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Passing" value={passingCount} color={GREEN} rawValue={passingCount} prevRawValue={passingCount * 0.92} sparkline={syntheticSparkline(passingCount)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Failing" value={budgetStatus.length - passingCount} color={budgetStatus.length - passingCount > 0 ? RED : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Near Breach" value={nearBreachCount} color={nearBreachCount > 0 ? YELLOW : GREEN} rawValue={nearBreachCount} prevRawValue={nearBreachCount * 0.92} sparkline={syntheticSparkline(nearBreachCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Budget Compliance" value={`${overallHealth}%`} color={overallHealth >= 80 ? GREEN : overallHealth >= 50 ? YELLOW : RED} rawValue={overallHealth} prevRawValue={syntheticPrev(overallHealth, "Budget Compliance")} sparkline={syntheticSparkline(overallHealth, 8, "Budget Compliance")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Passing" value={passingCount} color={GREEN} rawValue={passingCount} prevRawValue={syntheticPrev(passingCount, "Passing")} sparkline={syntheticSparkline(passingCount, 8, "Passing")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Failing" value={budgetStatus.length - passingCount} color={budgetStatus.length - passingCount > 0 ? RED : GREEN} rawValue={budgetStatus.length - passingCount} prevRawValue={syntheticPrev((budgetStatus.length - passingCount), "Failing")} inverted sparkline={syntheticSparkline(budgetStatus.length - passingCount, 8, "Failing")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Near Breach" value={nearBreachCount} color={nearBreachCount > 0 ? YELLOW : GREEN} rawValue={nearBreachCount} prevRawValue={syntheticPrev(nearBreachCount, "Near Breach")} sparkline={syntheticSparkline(nearBreachCount, 8, "Near Breach")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Budget cards */}
@@ -6407,10 +6510,10 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData,
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Countries" value={totalCountries} color={BLUE} rawValue={totalCountries} prevRawValue={totalCountries * 0.92} sparkline={syntheticSparkline(totalCountries)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Best Apdex" value={bestApdex.toFixed(2)} color={apdexClr(bestApdex)} rawValue={bestApdex} prevRawValue={bestApdex * 0.92} sparkline={syntheticSparkline(bestApdex)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Worst Apdex" value={worstApdex.toFixed(2)} color={apdexClr(worstApdex)} rawValue={worstApdex} prevRawValue={worstApdex * 0.92} sparkline={syntheticSparkline(worstApdex)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg Apdex" value={avgApdex.toFixed(2)} color={apdexClr(avgApdex)} rawValue={avgApdex} prevRawValue={avgApdex * 0.92} sparkline={syntheticSparkline(avgApdex)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Countries" value={totalCountries} color={BLUE} rawValue={totalCountries} prevRawValue={syntheticPrev(totalCountries, "Countries")} sparkline={syntheticSparkline(totalCountries, 8, "Countries")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Best Apdex" value={bestApdex.toFixed(2)} color={apdexClr(bestApdex)} rawValue={bestApdex} prevRawValue={syntheticPrev(bestApdex, "Best Apdex")} sparkline={syntheticSparkline(bestApdex, 8, "Best Apdex")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Worst Apdex" value={worstApdex.toFixed(2)} color={apdexClr(worstApdex)} rawValue={worstApdex} prevRawValue={syntheticPrev(worstApdex, "Worst Apdex")} sparkline={syntheticSparkline(worstApdex, 8, "Worst Apdex")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Apdex" value={avgApdex.toFixed(2)} color={apdexClr(avgApdex)} rawValue={avgApdex} prevRawValue={syntheticPrev(avgApdex, "Avg Apdex")} sparkline={syntheticSparkline(avgApdex, 8, "Avg Apdex")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {countries.length === 0 ? (
@@ -7255,9 +7358,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               <Text style={{ opacity: 0.6, marginLeft: 8, fontSize: 12 }}>US state-level map visualization is under development. Currently showing aggregate US data from the world map query.</Text>
             </div>
             <Flex gap={16} flexWrap="wrap">
-              <KpiCard label="US Sessions" value={fmtCount(usTotals.sessions)} color={BLUE} rawValue={usTotals.sessions} prevRawValue={usTotals.sessions * 0.92} sparkline={syntheticSparkline(usTotals.sessions)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="US Apdex" value={usApdex.toFixed(2)} color={apdexClr(usApdex)} rawValue={usApdex} prevRawValue={usApdex * 0.92} sparkline={syntheticSparkline(usApdex)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="States with Data" value={states.length} color={PURPLE} rawValue={states.length} prevRawValue={states.length * 0.92} sparkline={syntheticSparkline(states.length)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="US Sessions" value={fmtCount(usTotals.sessions)} color={BLUE} rawValue={usTotals.sessions} prevRawValue={syntheticPrev(usTotals.sessions, "US Sessions")} sparkline={syntheticSparkline(usTotals.sessions, 8, "US Sessions")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="US Apdex" value={usApdex.toFixed(2)} color={apdexClr(usApdex)} rawValue={usApdex} prevRawValue={syntheticPrev(usApdex, "US Apdex")} sparkline={syntheticSparkline(usApdex, 8, "US Apdex")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="States with Data" value={states.length} color={PURPLE} rawValue={states.length} prevRawValue={syntheticPrev(states.length, "States with Data")} sparkline={syntheticSparkline(states.length, 8, "States with Data")} onDrillToForecast={onDrillToForecast} />
             </Flex>
 
             <div style={{ background: "rgba(6,10,20,0.95)", borderRadius: 12, padding: 16, border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -7663,11 +7766,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Total Transitions" value={fmtCount(totalTransitions)} color={BLUE} rawValue={totalTransitions} prevRawValue={totalTransitions * 0.92} sparkline={syntheticSparkline(totalTransitions)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Unique Paths" value={uniquePaths} color={PURPLE} rawValue={uniquePaths} prevRawValue={uniquePaths * 0.92} sparkline={syntheticSparkline(uniquePaths)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg Session Depth" value={`${avgDepth.toFixed(1)} pages`} color={CYAN} rawValue={avgDepth} prevRawValue={avgDepth * 0.92} sparkline={syntheticSparkline(avgDepth)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Transitions" value={fmtCount(totalTransitions)} color={BLUE} rawValue={totalTransitions} prevRawValue={syntheticPrev(totalTransitions, "Total Transitions")} sparkline={syntheticSparkline(totalTransitions, 8, "Total Transitions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Paths" value={uniquePaths} color={PURPLE} rawValue={uniquePaths} prevRawValue={syntheticPrev(uniquePaths, "Unique Paths")} sparkline={syntheticSparkline(uniquePaths, 8, "Unique Paths")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Session Depth" value={`${avgDepth.toFixed(1)} pages`} color={CYAN} rawValue={avgDepth} prevRawValue={syntheticPrev(avgDepth, "Avg Session Depth")} sparkline={syntheticSparkline(avgDepth, 8, "Avg Session Depth")} onDrillToForecast={onDrillToForecast} />
         {avgConv > 0 && (
-          <KpiCard label="Avg Page Conv Rate" value={fmtPct(avgConv)} color={GREEN} rawValue={avgConv} prevRawValue={avgConv * 0.92} sparkline={syntheticSparkline(avgConv)} onDrillToForecast={onDrillToForecast} />
+          <KpiCard label="Avg Page Conv Rate" value={fmtPct(avgConv)} color={GREEN} rawValue={avgConv} prevRawValue={syntheticPrev(avgConv, "Avg Page Conv Rate")} sparkline={syntheticSparkline(avgConv, 8, "Avg Page Conv Rate")} onDrillToForecast={onDrillToForecast} />
         )}
       </Flex>
 
@@ -8002,16 +8105,16 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Stability Score" value={`${healthScore}/100`} color={healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Anomalies Detected" value={anomalyCount} color={anomalyCount > 3 ? RED : anomalyCount > 0 ? ORANGE : GREEN} rawValue={anomalyCount} prevRawValue={anomalyCount * 0.92} sparkline={syntheticSparkline(anomalyCount)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Critical" value={criticalCount} color={criticalCount > 0 ? RED : GREEN} rawValue={criticalCount} prevRawValue={criticalCount * 0.92} sparkline={syntheticSparkline(criticalCount)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Metrics Monitored" value={anomalies.length} color={BLUE} rawValue={anomalies.length} prevRawValue={anomalies.length * 0.92} sparkline={syntheticSparkline(anomalies.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Stability Score" value={`${healthScore}/100`} color={healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED} rawValue={healthScore} prevRawValue={syntheticPrev(healthScore, "Stability Score")} sparkline={syntheticSparkline(healthScore, 8, "Stability Score")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Anomalies Detected" value={anomalyCount} color={anomalyCount > 3 ? RED : anomalyCount > 0 ? ORANGE : GREEN} rawValue={anomalyCount} prevRawValue={syntheticPrev(anomalyCount, "Anomalies Detected")} sparkline={syntheticSparkline(anomalyCount, 8, "Anomalies Detected")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Critical" value={criticalCount} color={criticalCount > 0 ? RED : GREEN} rawValue={criticalCount} prevRawValue={syntheticPrev(criticalCount, "Critical")} sparkline={syntheticSparkline(criticalCount, 8, "Critical")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Metrics Monitored" value={anomalies.length} color={BLUE} rawValue={anomalies.length} prevRawValue={syntheticPrev(anomalies.length, "Metrics Monitored")} sparkline={syntheticSparkline(anomalies.length, 8, "Metrics Monitored")} onDrillToForecast={onDrillToForecast} />
         {aov > 0 && (() => {
           const convAnomaly = anomalies.find(a => a.metric === "Conversion");
           const convDrop = convAnomaly && convAnomaly.deviation < 0 ? Math.abs(convAnomaly.deviation) : 0;
           const revenueAtRisk = convDrop > 0 ? (funnelCounts[0] ?? 0) * (convDrop / 100) * aov : 0;
           return revenueAtRisk > 0 ? (
-            <KpiCard label="Revenue at Risk" value={fmtCurrency(revenueAtRisk)} color={RED} rawValue={revenueAtRisk} prevRawValue={revenueAtRisk * 0.92} sparkline={syntheticSparkline(revenueAtRisk)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Revenue at Risk" value={fmtCurrency(revenueAtRisk)} color={RED} rawValue={revenueAtRisk} prevRawValue={syntheticPrev(revenueAtRisk, "Revenue at Risk")} sparkline={syntheticSparkline(revenueAtRisk, 8, "Revenue at Risk")} onDrillToForecast={onDrillToForecast} />
           ) : null;
         })()}
       </Flex>
@@ -8752,7 +8855,7 @@ ${bottleneckHtml}
           { label: "INP", value: cwvMetrics.inp, metric: "inp" as const, unit: "ms" },
           { label: "TTFB", value: cwvMetrics.ttfb, metric: "ttfb" as const, unit: "ms" },
         ]).map((v) => (
-          <KpiCard key={v.label} label={v.label} value={v.metric === "cls" ? v.value.toFixed(3) : fmt(v.value)} color={cwvClr(v.value, v.metric)} rawValue={v.value} prevRawValue={v.value * 0.92} sparkline={syntheticSparkline(v.value)} onDrillToForecast={onDrillToForecast} />
+          <KpiCard key={v.label} label={v.label} value={v.metric === "cls" ? v.value.toFixed(3) : fmt(v.value)} color={cwvClr(v.value, v.metric)} rawValue={v.value} prevRawValue={syntheticPrev(v.value, "v.label")} sparkline={syntheticSparkline(v.value, 8, "v.label")} onDrillToForecast={onDrillToForecast} />
         ))}
       </Flex>
 
@@ -9092,10 +9195,10 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
       </div>
 
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Projected Sessions" value={fmtCount(projFunnel[0])} color={PURPLE} rawValue={projFunnel[0]} prevRawValue={projFunnel[0] * 0.92} sparkline={syntheticSparkline(projFunnel[0])} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Projected Apdex" value={projApdex.toFixed(2)} color={apdexClr(projApdex)} rawValue={projApdex} prevRawValue={projApdex * 0.92} sparkline={syntheticSparkline(projApdex)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Projected Conv" value={fmtPct(projConv)} color={statusClr(projConv)} rawValue={projConv} prevRawValue={projConv * 0.92} sparkline={syntheticSparkline(projConv)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Latency Factor" value={`${latFactor.toFixed(2)}x`} color={latFactor > 2 ? RED : latFactor > 1.5 ? YELLOW : BLUE} rawValue={latFactor} prevRawValue={latFactor * 0.92} sparkline={syntheticSparkline(latFactor)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Projected Sessions" value={fmtCount(projFunnel[0])} color={PURPLE} rawValue={projFunnel[0]} prevRawValue={syntheticPrev(projFunnel[0], "Projected Sessions")} sparkline={syntheticSparkline(projFunnel[0], 8, "Projected Sessions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Projected Apdex" value={projApdex.toFixed(2)} color={apdexClr(projApdex)} rawValue={projApdex} prevRawValue={syntheticPrev(projApdex, "Projected Apdex")} sparkline={syntheticSparkline(projApdex, 8, "Projected Apdex")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Projected Conv" value={fmtPct(projConv)} color={statusClr(projConv)} rawValue={projConv} prevRawValue={syntheticPrev(projConv, "Projected Conv")} sparkline={syntheticSparkline(projConv, 8, "Projected Conv")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Latency Factor" value={`${latFactor.toFixed(2)}x`} color={latFactor > 2 ? RED : latFactor > 1.5 ? YELLOW : BLUE} rawValue={latFactor} prevRawValue={syntheticPrev(latFactor, "Latency Factor")} sparkline={syntheticSparkline(latFactor, 8, "Latency Factor")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <Flex gap={16} flexWrap="wrap">
@@ -9113,9 +9216,9 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
         <>
           <SectionHeader title="Revenue Impact" />
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={currRevenue * 0.92} sparkline={syntheticSparkline(currRevenue)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Projected Revenue (+{pctChange}%)" value={fmtCurrency(projRevenue)} color={projRevenue > currRevenue ? GREEN : RED} rawValue={projRevenue} prevRawValue={projRevenue * 0.92} sparkline={syntheticSparkline(projRevenue)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Net Revenue Change" value={`${revenueDelta >= 0 ? "+" : ""}${fmtCurrency(revenueDelta)}`} color={revenueDelta >= 0 ? GREEN : RED} rawValue={revenueDelta} prevRawValue={revenueDelta * 0.92} sparkline={syntheticSparkline(revenueDelta)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={syntheticPrev(currRevenue, "Current Revenue")} sparkline={syntheticSparkline(currRevenue, 8, "Current Revenue")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Projected Revenue (+{pctChange}%)" value={fmtCurrency(projRevenue)} color={projRevenue > currRevenue ? GREEN : RED} rawValue={projRevenue} prevRawValue={syntheticPrev(projRevenue, "Projected Revenue (+pctChange")} sparkline={syntheticSparkline(projRevenue, 8, "Projected Revenue (+pctChange")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Net Revenue Change" value={`${revenueDelta >= 0 ? "+" : ""}${fmtCurrency(revenueDelta)}`} color={revenueDelta >= 0 ? GREEN : RED} rawValue={revenueDelta} prevRawValue={syntheticPrev(revenueDelta, "Net Revenue Change")} sparkline={syntheticSparkline(revenueDelta, 8, "Net Revenue Change")} onDrillToForecast={onDrillToForecast} />
             <div className={`uj-impact-card uj-impact-negative`}>
               <Text className="uj-metric-label">Conv Degradation Loss</Text>
               <Strong className="uj-metric-value" style={{ color: RED }}>${fmtCurrency(convLossRevenue)}</Strong>
@@ -9355,23 +9458,23 @@ function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overa
       {aiPanel}
       {/* Top-line revenue KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={currRevenue * 0.92} sparkline={syntheticSparkline(currRevenue)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Previous Period" value={fmtCurrency(prevRevenue)} color={"rgba(128,128,128,0.7)"} rawValue={prevRevenue} prevRawValue={prevRevenue * 0.92} sparkline={syntheticSparkline(prevRevenue)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={syntheticPrev(currRevenue, "Current Revenue")} sparkline={syntheticSparkline(currRevenue, 8, "Current Revenue")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Previous Period" value={fmtCurrency(prevRevenue)} color={"rgba(128,128,128,0.7)"} rawValue={prevRevenue} prevRawValue={syntheticPrev(prevRevenue, "Previous Period")} sparkline={syntheticSparkline(prevRevenue, 8, "Previous Period")} onDrillToForecast={onDrillToForecast} />
         <div className={`uj-revenue-card ${revenueDelta >= 0 ? "uj-revenue-positive" : "uj-revenue-negative"}`}>
           <Text className="uj-metric-label">Revenue Change</Text>
           <Strong className="uj-metric-value" style={{ color: revenueDelta >= 0 ? GREEN : RED }}>{revenueDelta >= 0 ? "+" : ""}${fmtCurrency(revenueDelta)}</Strong>
           <Text style={{ fontSize: 13, color: revenueDelta >= 0 ? GREEN : RED }}>{revenueDelta >= 0 ? "▲" : "▼"} {fmtPct(Math.abs(revenueDeltaPct))} vs prev</Text>
         </div>
-        <KpiCard label="Revenue per Session" value={fmtCurrency(rps)} color={CYAN} rawValue={rps} prevRawValue={rps * 0.92} sparkline={syntheticSparkline(rps)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Revenue per Session" value={fmtCurrency(rps)} color={CYAN} rawValue={rps} prevRawValue={syntheticPrev(rps, "Revenue per Session")} sparkline={syntheticSparkline(rps, 8, "Revenue per Session")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Performance Tax Summary */}
       <SectionHeader title="Performance Tax" />
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Latency Tax" value={fmtCurrency(latencyRevLoss)} color={RED} rawValue={latencyRevLoss} prevRawValue={latencyRevLoss * 0.92} sparkline={syntheticSparkline(latencyRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Frustration Tax" value={fmtCurrency(frustratedRevLoss)} color={RED} rawValue={frustratedRevLoss} prevRawValue={frustratedRevLoss * 0.92} sparkline={syntheticSparkline(frustratedRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Error Tax" value={fmtCurrency(errorRevLoss)} color={RED} rawValue={errorRevLoss} prevRawValue={errorRevLoss * 0.92} sparkline={syntheticSparkline(errorRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Total Perf Tax" value={fmtCurrency(latencyRevLoss + frustratedRevLoss + errorRevLoss)} color={RED} rawValue={latencyRevLoss + frustratedRevLoss + errorRevLoss} prevRawValue={(latencyRevLoss + frustratedRevLoss + errorRevLoss) * 0.92} sparkline={syntheticSparkline(latencyRevLoss + frustratedRevLoss + errorRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Latency Tax" value={fmtCurrency(latencyRevLoss)} color={RED} rawValue={latencyRevLoss} prevRawValue={syntheticPrev(latencyRevLoss, "Latency Tax")} sparkline={syntheticSparkline(latencyRevLoss, 8, "Latency Tax")} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Frustration Tax" value={fmtCurrency(frustratedRevLoss)} color={RED} rawValue={frustratedRevLoss} prevRawValue={syntheticPrev(frustratedRevLoss, "Frustration Tax")} sparkline={syntheticSparkline(frustratedRevLoss, 8, "Frustration Tax")} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Error Tax" value={fmtCurrency(errorRevLoss)} color={RED} rawValue={errorRevLoss} prevRawValue={syntheticPrev(errorRevLoss, "Error Tax")} sparkline={syntheticSparkline(errorRevLoss, 8, "Error Tax")} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Perf Tax" value={fmtCurrency(latencyRevLoss + frustratedRevLoss + errorRevLoss)} color={RED} rawValue={latencyRevLoss + frustratedRevLoss + errorRevLoss} prevRawValue={syntheticPrev((latencyRevLoss + frustratedRevLoss + errorRevLoss), "Total Perf Tax")} sparkline={syntheticSparkline(latencyRevLoss + frustratedRevLoss + errorRevLoss, 8, "Total Perf Tax")} inverted onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Funnel Revenue Leakage */}
@@ -10422,12 +10525,12 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       </Flex>
       <Text style={{ fontSize: 12, opacity: 0.5 }}>{SANKEY_STYLE_OPTIONS.find(o => o.value === chartStyle)?.label}: User navigation flows. Top {nodes.length} page nodes shown.</Text>
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Total Sessions" value={fmtCount(totalSessions)} color={BLUE} rawValue={totalSessions} prevRawValue={totalSessions * 0.92} sparkline={syntheticSparkline(totalSessions)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Unique Pages" value={uniquePages} color={PURPLE} rawValue={uniquePages} prevRawValue={uniquePages * 0.92} sparkline={syntheticSparkline(uniquePages)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Flow Transitions" value={links.length} color={CYAN} rawValue={links.length} prevRawValue={links.length * 0.92} sparkline={syntheticSparkline(links.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Max Depth" value={`${maxDepth + 1} pages`} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Funnel Completion" value={fmtPct(pathAnalysis.totalPaths > 0 ? (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) * 100 : 0)} color={pathAnalysis.totalPaths > 0 && (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) < 0.3 ? RED : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Funnel Exits" value={fmtCount(pathAnalysis.funnelExits)} color={RED} rawValue={pathAnalysis.funnelExits} prevRawValue={pathAnalysis.funnelExits * 0.92} sparkline={syntheticSparkline(pathAnalysis.funnelExits)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Sessions" value={fmtCount(totalSessions)} color={BLUE} rawValue={totalSessions} prevRawValue={syntheticPrev(totalSessions, "Total Sessions")} sparkline={syntheticSparkline(totalSessions, 8, "Total Sessions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Pages" value={uniquePages} color={PURPLE} rawValue={uniquePages} prevRawValue={syntheticPrev(uniquePages, "Unique Pages")} sparkline={syntheticSparkline(uniquePages, 8, "Unique Pages")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Flow Transitions" value={links.length} color={CYAN} rawValue={links.length} prevRawValue={syntheticPrev(links.length, "Flow Transitions")} sparkline={syntheticSparkline(links.length, 8, "Flow Transitions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Max Depth" value={`${maxDepth + 1} pages`} color={GREEN} rawValue={maxDepth + 1} prevRawValue={syntheticPrev((maxDepth + 1), "Max Depth")} sparkline={syntheticSparkline(maxDepth + 1, 8, "Max Depth")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Funnel Completion" value={fmtPct(pathAnalysis.totalPaths > 0 ? (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) * 100 : 0)} color={pathAnalysis.totalPaths > 0 && (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) < 0.3 ? RED : GREEN} rawValue={pathAnalysis.totalPaths > 0 ? (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) * 100 : 0} prevRawValue={syntheticPrev((pathAnalysis.totalPaths > 0 ? (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) * 100 : 0), "Funnel Completion")} sparkline={syntheticSparkline(pathAnalysis.funnelCompletions, 8, "Funnel Completion")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Funnel Exits" value={fmtCount(pathAnalysis.funnelExits)} color={RED} rawValue={pathAnalysis.funnelExits} prevRawValue={syntheticPrev(pathAnalysis.funnelExits, "Funnel Exits")} sparkline={syntheticSparkline(pathAnalysis.funnelExits, 8, "Funnel Exits")} onDrillToForecast={onDrillToForecast} />
       </Flex>
       <Flex gap={12} alignItems="center" style={{ padding: "4px 0" }}>
         <Flex gap={4} alignItems="center"><span style={{ width: 12, height: 12, borderRadius: 2, background: "#FFD700", display: "inline-block", border: "1px dashed rgba(255,215,0,0.6)" }} /><Text style={{ fontSize: 11, opacity: 0.6 }}>Funnel Page</Text></Flex>
@@ -11292,11 +11395,11 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <>
               <SectionHeader title="Funnel Exit Analysis" />
               <Flex gap={16} flexWrap="wrap">
-                <KpiCard label="Sessions Analyzed" value={fmtCount(pathAnalysis.totalPaths)} color={BLUE} rawValue={pathAnalysis.totalPaths} prevRawValue={pathAnalysis.totalPaths * 0.92} sparkline={syntheticSparkline(pathAnalysis.totalPaths)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Funnel Completions" value={fmtCount(pathAnalysis.funnelCompletions)} color={GREEN} rawValue={pathAnalysis.funnelCompletions} prevRawValue={pathAnalysis.funnelCompletions * 0.92} sparkline={syntheticSparkline(pathAnalysis.funnelCompletions)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Funnel Exits" value={fmtCount(pathAnalysis.funnelExits)} color={RED} rawValue={pathAnalysis.funnelExits} prevRawValue={pathAnalysis.funnelExits * 0.92} sparkline={syntheticSparkline(pathAnalysis.funnelExits)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Return After Exit" value={`${fmtCount(pathAnalysis.returnsAfterExit)} (${fmtPct(pathAnalysis.funnelExits > 0 ? (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) * 100 : 0)})`} color={pathAnalysis.funnelExits > 0 && (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) < 0.3 ? RED : YELLOW} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-                {aov > 0 && <KpiCard label="Est. Lost Revenue" value={fmtCurrency((pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5)} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />}
+                <KpiCard label="Sessions Analyzed" value={fmtCount(pathAnalysis.totalPaths)} color={BLUE} rawValue={pathAnalysis.totalPaths} prevRawValue={syntheticPrev(pathAnalysis.totalPaths, "Sessions Analyzed")} sparkline={syntheticSparkline(pathAnalysis.totalPaths, 8, "Sessions Analyzed")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Funnel Completions" value={fmtCount(pathAnalysis.funnelCompletions)} color={GREEN} rawValue={pathAnalysis.funnelCompletions} prevRawValue={syntheticPrev(pathAnalysis.funnelCompletions, "Funnel Completions")} sparkline={syntheticSparkline(pathAnalysis.funnelCompletions, 8, "Funnel Completions")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Funnel Exits" value={fmtCount(pathAnalysis.funnelExits)} color={RED} rawValue={pathAnalysis.funnelExits} prevRawValue={syntheticPrev(pathAnalysis.funnelExits, "Funnel Exits")} sparkline={syntheticSparkline(pathAnalysis.funnelExits, 8, "Funnel Exits")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Return After Exit" value={`${fmtCount(pathAnalysis.returnsAfterExit)} (${fmtPct(pathAnalysis.funnelExits > 0 ? (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) * 100 : 0)})`} color={pathAnalysis.funnelExits > 0 && (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) < 0.3 ? RED : YELLOW} rawValue={pathAnalysis.returnsAfterExit} prevRawValue={syntheticPrev(pathAnalysis.returnsAfterExit, "Return After Exit")} sparkline={syntheticSparkline(pathAnalysis.returnsAfterExit, 8, "Return After Exit")} onDrillToForecast={onDrillToForecast} />
+                {aov > 0 && <KpiCard label="Est. Lost Revenue" value={fmtCurrency((pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5)} color={RED} rawValue={(pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5} prevRawValue={syntheticPrev((pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5, "Est. Lost Revenue")} inverted sparkline={syntheticSparkline((pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5, 8, "Est. Lost Revenue")} onDrillToForecast={onDrillToForecast} />}
               </Flex>
               <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathAnalysis.sortedExits.slice(0, 15).map(e => ({ "Exit Page": e.page.substring(0, 40), Exits: e.exits, Returns: e.returns, "Return Rate": e.exits > 0 ? (e.returns / e.exits) * 100 : 0, "Non-Returning": e.exits - e.returns, "Lost Revenue": aov > 0 ? (e.exits - e.returns) * aov * 0.5 : 0, "Top Destination": e.nextPagesList[0]?.[0]?.substring(0, 30) ?? "—" }))} columns={[ { id: "Exit Page", header: "Exit Page", accessor: "Exit Page", cell: ({ value }: any) => <Strong style={{ color: RED }}>{value}</Strong> }, { id: "Exits", header: "Exits", accessor: "Exits", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> }, { id: "Returns", header: "Returns", accessor: "Returns", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: GREEN }}>{fmtCount(value)}</Text> }, { id: "Return Rate", header: "Return %", accessor: "Return Rate", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: value < 20 ? RED : value < 50 ? YELLOW : GREEN, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Non-Returning", header: "Lost Users", accessor: "Non-Returning", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{fmtCount(value)}</Strong> }, ...(aov > 0 ? [{ id: "Lost Revenue", header: "Est. Lost Revenue", accessor: "Lost Revenue", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{fmtCurrency(value)}</Strong> }] : []), { id: "Top Destination", header: "Where They Go", accessor: "Top Destination", cell: ({ value }: any) => <Text style={{ color: ORANGE }}>{value}</Text> } ]} /></div>
             </>
@@ -11330,12 +11433,12 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "convPaths" && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Total Sessions" value={fmtCount(conversionPaths.converted.length + conversionPaths.abandoned.length)} color={BLUE} rawValue={conversionPaths.converted.length + conversionPaths.abandoned.length} prevRawValue={conversionPaths.converted.length + conversionPaths.abandoned.length * 0.92} sparkline={syntheticSparkline(conversionPaths.converted.length + conversionPaths.abandoned.length)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Converted" value={fmtCount(conversionPaths.converted.length)} color={GREEN} rawValue={conversionPaths.converted.length} prevRawValue={conversionPaths.converted.length * 0.92} sparkline={syntheticSparkline(conversionPaths.converted.length)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Abandoned" value={fmtCount(conversionPaths.abandoned.length)} color={RED} rawValue={conversionPaths.abandoned.length} prevRawValue={conversionPaths.abandoned.length * 0.92} sparkline={syntheticSparkline(conversionPaths.abandoned.length)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Conversion Rate" value={fmtPct(conversionPaths.convRate)} color={conversionPaths.convRate >= 20 ? GREEN : conversionPaths.convRate >= 10 ? YELLOW : RED} rawValue={conversionPaths.convRate} prevRawValue={conversionPaths.convRate * 0.92} sparkline={syntheticSparkline(conversionPaths.convRate)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Avg Path (Conv)" value={`${conversionPaths.avgConvLen.toFixed(1)} pages`} color={BLUE} rawValue={conversionPaths.avgConvLen} prevRawValue={conversionPaths.avgConvLen * 0.92} sparkline={syntheticSparkline(conversionPaths.avgConvLen)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Avg Path (Aband)" value={`${conversionPaths.avgAbandLen.toFixed(1)} pages`} color={BLUE} rawValue={conversionPaths.avgAbandLen} prevRawValue={conversionPaths.avgAbandLen * 0.92} sparkline={syntheticSparkline(conversionPaths.avgAbandLen)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Total Sessions" value={fmtCount(conversionPaths.converted.length + conversionPaths.abandoned.length)} color={BLUE} rawValue={conversionPaths.converted.length + conversionPaths.abandoned.length} prevRawValue={syntheticPrev(conversionPaths.converted.length + conversionPaths.abandoned.length, "Total Sessions")} sparkline={syntheticSparkline(conversionPaths.converted.length + conversionPaths.abandoned.length, 8, "Total Sessions")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Converted" value={fmtCount(conversionPaths.converted.length)} color={GREEN} rawValue={conversionPaths.converted.length} prevRawValue={syntheticPrev(conversionPaths.converted.length, "Converted")} sparkline={syntheticSparkline(conversionPaths.converted.length, 8, "Converted")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Abandoned" value={fmtCount(conversionPaths.abandoned.length)} color={RED} rawValue={conversionPaths.abandoned.length} prevRawValue={syntheticPrev(conversionPaths.abandoned.length, "Abandoned")} sparkline={syntheticSparkline(conversionPaths.abandoned.length, 8, "Abandoned")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Conversion Rate" value={fmtPct(conversionPaths.convRate)} color={conversionPaths.convRate >= 20 ? GREEN : conversionPaths.convRate >= 10 ? YELLOW : RED} rawValue={conversionPaths.convRate} prevRawValue={syntheticPrev(conversionPaths.convRate, "Conversion Rate")} sparkline={syntheticSparkline(conversionPaths.convRate, 8, "Conversion Rate")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Avg Path (Conv)" value={`${conversionPaths.avgConvLen.toFixed(1)} pages`} color={BLUE} rawValue={conversionPaths.avgConvLen} prevRawValue={syntheticPrev(conversionPaths.avgConvLen, "Avg Path (Conv)")} sparkline={syntheticSparkline(conversionPaths.avgConvLen, 8, "Avg Path (Conv)")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Avg Path (Aband)" value={`${conversionPaths.avgAbandLen.toFixed(1)} pages`} color={BLUE} rawValue={conversionPaths.avgAbandLen} prevRawValue={syntheticPrev(conversionPaths.avgAbandLen, "Avg Path (Aband)")} sparkline={syntheticSparkline(conversionPaths.avgAbandLen, 8, "Avg Path (Aband)")} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           <SectionHeader title="Path Differentiators — Pages that distinguish converted from abandoned" />
@@ -11358,9 +11461,9 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "loops" && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Sessions with Loops" value={fmtCount(loopAnalysis.sessionsWithLoops)} color={loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN} rawValue={loopAnalysis.sessionsWithLoops} prevRawValue={loopAnalysis.sessionsWithLoops * 0.92} sparkline={syntheticSparkline(loopAnalysis.sessionsWithLoops)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Loop Rate" value={fmtPct(loopAnalysis.loopRate)} color={loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN} rawValue={loopAnalysis.loopRate} prevRawValue={loopAnalysis.loopRate * 0.92} sparkline={syntheticSparkline(loopAnalysis.loopRate)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Unique Loop Pairs" value={loopAnalysis.loops.length} color={BLUE} rawValue={loopAnalysis.loops.length} prevRawValue={loopAnalysis.loops.length * 0.92} sparkline={syntheticSparkline(loopAnalysis.loops.length)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Sessions with Loops" value={fmtCount(loopAnalysis.sessionsWithLoops)} color={loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN} rawValue={loopAnalysis.sessionsWithLoops} prevRawValue={syntheticPrev(loopAnalysis.sessionsWithLoops, "Sessions with Loops")} sparkline={syntheticSparkline(loopAnalysis.sessionsWithLoops, 8, "Sessions with Loops")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Loop Rate" value={fmtPct(loopAnalysis.loopRate)} color={loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN} rawValue={loopAnalysis.loopRate} prevRawValue={syntheticPrev(loopAnalysis.loopRate, "Loop Rate")} sparkline={syntheticSparkline(loopAnalysis.loopRate, 8, "Loop Rate")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Unique Loop Pairs" value={loopAnalysis.loops.length} color={BLUE} rawValue={loopAnalysis.loops.length} prevRawValue={syntheticPrev(loopAnalysis.loops.length, "Unique Loop Pairs")} sparkline={syntheticSparkline(loopAnalysis.loops.length, 8, "Unique Loop Pairs")} onDrillToForecast={onDrillToForecast} />
           </Flex>
           {loopAnalysis.loops.length > 0 ? (
             <>
@@ -11391,8 +11494,8 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "endpoints" && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Bounce Rate" value={fmtPct(endpointAnalysis.bounceRate)} color={endpointAnalysis.bounceRate > 30 ? RED : endpointAnalysis.bounceRate > 15 ? YELLOW : GREEN} rawValue={endpointAnalysis.bounceRate} prevRawValue={endpointAnalysis.bounceRate * 0.92} sparkline={syntheticSparkline(endpointAnalysis.bounceRate)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Total Sessions" value={fmtCount(endpointAnalysis.totalSessions)} color={BLUE} rawValue={endpointAnalysis.totalSessions} prevRawValue={endpointAnalysis.totalSessions * 0.92} sparkline={syntheticSparkline(endpointAnalysis.totalSessions)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Bounce Rate" value={fmtPct(endpointAnalysis.bounceRate)} color={endpointAnalysis.bounceRate > 30 ? RED : endpointAnalysis.bounceRate > 15 ? YELLOW : GREEN} rawValue={endpointAnalysis.bounceRate} prevRawValue={syntheticPrev(endpointAnalysis.bounceRate, "Bounce Rate")} sparkline={syntheticSparkline(endpointAnalysis.bounceRate, 8, "Bounce Rate")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Total Sessions" value={fmtCount(endpointAnalysis.totalSessions)} color={BLUE} rawValue={endpointAnalysis.totalSessions} prevRawValue={syntheticPrev(endpointAnalysis.totalSessions, "Total Sessions")} sparkline={syntheticSparkline(endpointAnalysis.totalSessions, 8, "Total Sessions")} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           <SectionHeader title="Where Sessions End — Pages where users close the browser" />
@@ -11422,9 +11525,9 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "revPaths" && revenuePaths && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Conversions" value={fmtCount(revenuePaths.totalConversions)} color={GREEN} rawValue={revenuePaths.totalConversions} prevRawValue={revenuePaths.totalConversions * 0.92} sparkline={syntheticSparkline(revenuePaths.totalConversions)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Total Revenue" value={fmtCurrency(revenuePaths.totalRevenue)} color={GREEN} rawValue={revenuePaths.totalRevenue} prevRawValue={revenuePaths.totalRevenue * 0.92} sparkline={syntheticSparkline(revenuePaths.totalRevenue)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="AOV" value={fmtCurrency(aov)} color={BLUE} rawValue={aov} prevRawValue={aov * 0.92} sparkline={syntheticSparkline(aov)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Conversions" value={fmtCount(revenuePaths.totalConversions)} color={GREEN} rawValue={revenuePaths.totalConversions} prevRawValue={syntheticPrev(revenuePaths.totalConversions, "Conversions")} sparkline={syntheticSparkline(revenuePaths.totalConversions, 8, "Conversions")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Total Revenue" value={fmtCurrency(revenuePaths.totalRevenue)} color={GREEN} rawValue={revenuePaths.totalRevenue} prevRawValue={syntheticPrev(revenuePaths.totalRevenue, "Total Revenue")} sparkline={syntheticSparkline(revenuePaths.totalRevenue, 8, "Total Revenue")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="AOV" value={fmtCurrency(aov)} color={BLUE} rawValue={aov} prevRawValue={syntheticPrev(aov, "AOV")} sparkline={syntheticSparkline(aov, 8, "AOV")} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           <SectionHeader title="Top Revenue-Generating Paths" />
@@ -11444,10 +11547,10 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           {pathTrends ? (
             <>
               <Flex gap={16} flexWrap="wrap">
-                <KpiCard label="Current Sessions" value={fmtCount(pathTrends.currSessions)} color={BLUE} rawValue={pathTrends.currSessions} prevRawValue={pathTrends.currSessions * 0.92} sparkline={syntheticSparkline(pathTrends.currSessions)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Previous Sessions" value={fmtCount(pathTrends.prevSessions)} color={"inherit"} rawValue={pathTrends.prevSessions} prevRawValue={pathTrends.prevSessions * 0.92} sparkline={syntheticSparkline(pathTrends.prevSessions)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Avg Path (Current)" value={`${pathTrends.currAvgLen.toFixed(1)} pages`} color={BLUE} rawValue={pathTrends.currAvgLen} prevRawValue={pathTrends.currAvgLen * 0.92} sparkline={syntheticSparkline(pathTrends.currAvgLen)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Avg Path (Previous)" value={`${pathTrends.prevAvgLen.toFixed(1)} pages`} color={BLUE} rawValue={pathTrends.prevAvgLen} prevRawValue={pathTrends.prevAvgLen * 0.92} sparkline={syntheticSparkline(pathTrends.prevAvgLen)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Current Sessions" value={fmtCount(pathTrends.currSessions)} color={BLUE} rawValue={pathTrends.currSessions} prevRawValue={syntheticPrev(pathTrends.currSessions, "Current Sessions")} sparkline={syntheticSparkline(pathTrends.currSessions, 8, "Current Sessions")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Previous Sessions" value={fmtCount(pathTrends.prevSessions)} color={"inherit"} rawValue={pathTrends.prevSessions} prevRawValue={syntheticPrev(pathTrends.prevSessions, "Previous Sessions")} sparkline={syntheticSparkline(pathTrends.prevSessions, 8, "Previous Sessions")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Avg Path (Current)" value={`${pathTrends.currAvgLen.toFixed(1)} pages`} color={BLUE} rawValue={pathTrends.currAvgLen} prevRawValue={syntheticPrev(pathTrends.currAvgLen, "Avg Path (Current)")} sparkline={syntheticSparkline(pathTrends.currAvgLen, 8, "Avg Path (Current)")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Avg Path (Previous)" value={`${pathTrends.prevAvgLen.toFixed(1)} pages`} color={BLUE} rawValue={pathTrends.prevAvgLen} prevRawValue={syntheticPrev(pathTrends.prevAvgLen, "Avg Path (Previous)")} sparkline={syntheticSparkline(pathTrends.prevAvgLen, 8, "Avg Path (Previous)")} onDrillToForecast={onDrillToForecast} />
               </Flex>
 
               {pathTrends.newPages.length > 0 && (
@@ -11491,12 +11594,12 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
 
           {/* KPIs */}
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Total Sessions" value={fmtCount(leakageAnalysis.sessions)} color={BLUE} rawValue={leakageAnalysis.sessions} prevRawValue={leakageAnalysis.sessions * 0.92} sparkline={syntheticSparkline(leakageAnalysis.sessions)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Left Funnel" value={`${fmtCount(leakageAnalysis.leavers)} (${fmtPct(leakageAnalysis.leakageRate)})`} color={RED} rawValue={leakageAnalysis.leakageRate} prevRawValue={leakageAnalysis.leakageRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.leakageRate)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Returned" value={`${fmtCount(leakageAnalysis.recoverers)} (${fmtPct(leakageAnalysis.recoveryRate)})`} color={leakageAnalysis.recoveryRate > 40 ? GREEN : leakageAnalysis.recoveryRate > 20 ? YELLOW : RED} rawValue={leakageAnalysis.recoveryRate} prevRawValue={leakageAnalysis.recoveryRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.recoveryRate)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Lost (Never Returned)" value={fmtCount(leakageAnalysis.lostUsers)} color={RED} rawValue={leakageAnalysis.lostUsers} prevRawValue={leakageAnalysis.lostUsers * 0.92} sparkline={syntheticSparkline(leakageAnalysis.lostUsers)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Leaker Conv Rate" value={fmtPct(leakageAnalysis.leakConvRate)} color={leakageAnalysis.leakConvRate >= 20 ? GREEN : leakageAnalysis.leakConvRate >= 10 ? YELLOW : RED} rawValue={leakageAnalysis.leakConvRate} prevRawValue={leakageAnalysis.leakConvRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.leakConvRate)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Straight-Through" value={`${fmtCount(leakageAnalysis.straightThrough)} (${fmtPct(leakageAnalysis.straightConvRate)})`} color={GREEN} rawValue={leakageAnalysis.straightConvRate} prevRawValue={leakageAnalysis.straightConvRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.straightConvRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Total Sessions" value={fmtCount(leakageAnalysis.sessions)} color={BLUE} rawValue={leakageAnalysis.sessions} prevRawValue={syntheticPrev(leakageAnalysis.sessions, "Total Sessions")} sparkline={syntheticSparkline(leakageAnalysis.sessions, 8, "Total Sessions")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Left Funnel" value={`${fmtCount(leakageAnalysis.leavers)} (${fmtPct(leakageAnalysis.leakageRate)})`} color={RED} rawValue={leakageAnalysis.leakageRate} prevRawValue={syntheticPrev(leakageAnalysis.leakageRate, "Left Funnel")} sparkline={syntheticSparkline(leakageAnalysis.leakageRate, 8, "Left Funnel")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Returned" value={`${fmtCount(leakageAnalysis.recoverers)} (${fmtPct(leakageAnalysis.recoveryRate)})`} color={leakageAnalysis.recoveryRate > 40 ? GREEN : leakageAnalysis.recoveryRate > 20 ? YELLOW : RED} rawValue={leakageAnalysis.recoveryRate} prevRawValue={syntheticPrev(leakageAnalysis.recoveryRate, "Returned")} sparkline={syntheticSparkline(leakageAnalysis.recoveryRate, 8, "Returned")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Lost (Never Returned)" value={fmtCount(leakageAnalysis.lostUsers)} color={RED} rawValue={leakageAnalysis.lostUsers} prevRawValue={syntheticPrev(leakageAnalysis.lostUsers, "Lost (Never Returned)")} sparkline={syntheticSparkline(leakageAnalysis.lostUsers, 8, "Lost (Never Returned)")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Leaker Conv Rate" value={fmtPct(leakageAnalysis.leakConvRate)} color={leakageAnalysis.leakConvRate >= 20 ? GREEN : leakageAnalysis.leakConvRate >= 10 ? YELLOW : RED} rawValue={leakageAnalysis.leakConvRate} prevRawValue={syntheticPrev(leakageAnalysis.leakConvRate, "Leaker Conv Rate")} sparkline={syntheticSparkline(leakageAnalysis.leakConvRate, 8, "Leaker Conv Rate")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Straight-Through" value={`${fmtCount(leakageAnalysis.straightThrough)} (${fmtPct(leakageAnalysis.straightConvRate)})`} color={GREEN} rawValue={leakageAnalysis.straightConvRate} prevRawValue={syntheticPrev(leakageAnalysis.straightConvRate, "Straight-Through")} sparkline={syntheticSparkline(leakageAnalysis.straightConvRate, 8, "Straight-Through")} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           {/* Exit Step Distribution */}
@@ -11607,9 +11710,9 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <>
               <SectionHeader title="Revenue Impact of Funnel Leakage" />
               <Flex gap={16} flexWrap="wrap">
-                <KpiCard label="Lost Users" value={fmtCount(leakageAnalysis.lostUsers)} color={RED} rawValue={leakageAnalysis.lostUsers} prevRawValue={leakageAnalysis.lostUsers * 0.92} sparkline={syntheticSparkline(leakageAnalysis.lostUsers)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Est. Revenue at Risk" value={fmtCurrency(leakageAnalysis.lostUsers * aov * (leakageAnalysis.leakConvRate / 100))} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-                <KpiCard label="Recovery Revenue Saved" value={fmtCurrency(leakageAnalysis.recoverers * aov * (leakageAnalysis.recConvRate / 100))} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Lost Users" value={fmtCount(leakageAnalysis.lostUsers)} color={RED} rawValue={leakageAnalysis.lostUsers} prevRawValue={syntheticPrev(leakageAnalysis.lostUsers, "Lost Users")} sparkline={syntheticSparkline(leakageAnalysis.lostUsers, 8, "Lost Users")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Est. Revenue at Risk" value={fmtCurrency(leakageAnalysis.lostUsers * aov * (leakageAnalysis.leakConvRate / 100))} color={RED} sparkline={syntheticSparkline(0, 8, "Est. Revenue at Risk")} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Recovery Revenue Saved" value={fmtCurrency(leakageAnalysis.recoverers * aov * (leakageAnalysis.recConvRate / 100))} color={GREEN} sparkline={syntheticSparkline(0, 8, "Recovery Revenue Saved")} onDrillToForecast={onDrillToForecast} />
               </Flex>
             </>
           )}
@@ -11691,10 +11794,10 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           <>
             <SectionHeader title="Funnel Velocity — How fast do users progress through the funnel?" />
             <Flex gap={16} flexWrap="wrap">
-              <KpiCard label="Sessions Analyzed" value={fmtCount(timings.length)} color={BLUE} rawValue={timings.length} prevRawValue={timings.length * 0.92} sparkline={syntheticSparkline(timings.length)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Avg Total Journey" value={totalAvg < 60 ? `${totalAvg.toFixed(1)}s` : `${(totalAvg / 60).toFixed(1)}m`} color={PURPLE} rawValue={totalAvg} prevRawValue={totalAvg * 0.92} sparkline={syntheticSparkline(totalAvg)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Slowest Transition" value={slowest.label.substring(0, 25)} color={RED} rawValue={slowest.median} prevRawValue={slowest.median * 0.92} sparkline={syntheticSparkline(slowest.median)} inverted onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Fastest Transition" value={fastest.label.substring(0, 25)} color={GREEN} rawValue={fastest.median} prevRawValue={fastest.median * 0.92} sparkline={syntheticSparkline(fastest.median)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Sessions Analyzed" value={fmtCount(timings.length)} color={BLUE} rawValue={timings.length} prevRawValue={syntheticPrev(timings.length, "Sessions Analyzed")} sparkline={syntheticSparkline(timings.length, 8, "Sessions Analyzed")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Avg Total Journey" value={totalAvg < 60 ? `${totalAvg.toFixed(1)}s` : `${(totalAvg / 60).toFixed(1)}m`} color={PURPLE} rawValue={totalAvg} prevRawValue={syntheticPrev(totalAvg, "Avg Total Journey")} sparkline={syntheticSparkline(totalAvg, 8, "Avg Total Journey")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Slowest Transition" value={slowest.label.substring(0, 25)} color={RED} rawValue={slowest.median} prevRawValue={syntheticPrev(slowest.median, "Slowest Transition")} sparkline={syntheticSparkline(slowest.median, 8, "Slowest Transition")} inverted onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Fastest Transition" value={fastest.label.substring(0, 25)} color={GREEN} rawValue={fastest.median} prevRawValue={syntheticPrev(fastest.median, "Fastest Transition")} sparkline={syntheticSparkline(fastest.median, 8, "Fastest Transition")} onDrillToForecast={onDrillToForecast} />
             </Flex>
 
             {/* Step-by-step velocity chart */}
@@ -11872,19 +11975,19 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
 
       {/* Period-over-period change summary */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Conversion Δ" value={`${convChange >= 0 ? "▲" : "▼"} {Math.abs(convChange).toFixed(1)}%`} color={convChange >= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Apdex Δ" value={`${apdexChange >= 0 ? "▲" : "▼"} {Math.abs(apdexChange).toFixed(1)}%`} color={apdexChange >= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Error Rate Δ" value={`${errorChange > 0 ? "▲" : "▼"} {Math.abs(errorChange).toFixed(1)}%`} color={errorChange <= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Duration Δ" value={`${durationChange > 0 ? "▲" : "▼"} {Math.abs(durationChange).toFixed(1)}%`} color={durationChange <= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Impact Hours" value={impactHours.length} color={impactHours.length > 3 ? RED : impactHours.length > 0 ? ORANGE : GREEN} rawValue={impactHours.length} prevRawValue={impactHours.length * 0.92} sparkline={syntheticSparkline(impactHours.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Critical Hours" value={criticalHours.length} color={criticalHours.length > 0 ? RED : GREEN} rawValue={criticalHours.length} prevRawValue={criticalHours.length * 0.92} sparkline={syntheticSparkline(criticalHours.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Conversion Δ" value={`${convChange >= 0 ? "▲" : "▼"} ${Math.abs(convChange).toFixed(1)}%`} color={convChange >= 0 ? GREEN : RED} rawValue={convChange} prevRawValue={syntheticPrev(convChange, "Conversion Δ")} sparkline={syntheticSparkline(Math.abs(convChange), 8, "Conversion Δ")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Apdex Δ" value={`${apdexChange >= 0 ? "▲" : "▼"} ${Math.abs(apdexChange).toFixed(1)}%`} color={apdexChange >= 0 ? GREEN : RED} rawValue={apdexChange} prevRawValue={syntheticPrev(apdexChange, "Apdex Δ")} sparkline={syntheticSparkline(Math.abs(apdexChange), 8, "Apdex Δ")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Error Rate Δ" value={`${errorChange > 0 ? "▲" : "▼"} ${Math.abs(errorChange).toFixed(1)}%`} color={errorChange <= 0 ? GREEN : RED} rawValue={errorChange} prevRawValue={syntheticPrev(errorChange, "Error Rate Δ")} inverted sparkline={syntheticSparkline(Math.abs(errorChange), 8, "Error Rate Δ")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Duration Δ" value={`${durationChange > 0 ? "▲" : "▼"} ${Math.abs(durationChange).toFixed(1)}%`} color={durationChange <= 0 ? GREEN : RED} rawValue={durationChange} prevRawValue={syntheticPrev(durationChange, "Duration Δ")} inverted sparkline={syntheticSparkline(Math.abs(durationChange), 8, "Duration Δ")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Impact Hours" value={impactHours.length} color={impactHours.length > 3 ? RED : impactHours.length > 0 ? ORANGE : GREEN} rawValue={impactHours.length} prevRawValue={syntheticPrev(impactHours.length, "Impact Hours")} sparkline={syntheticSparkline(impactHours.length, 8, "Impact Hours")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Critical Hours" value={criticalHours.length} color={criticalHours.length > 0 ? RED : GREEN} rawValue={criticalHours.length} prevRawValue={syntheticPrev(criticalHours.length, "Critical Hours")} sparkline={syntheticSparkline(criticalHours.length, 8, "Critical Hours")} onDrillToForecast={onDrillToForecast} />
         {aov > 0 && (() => {
           const lastIdx = steps.length - 1;
           const totalSessions = hourly.reduce((s, h) => s + h.sessions, 0);
           const impactSessions = impactHours.reduce((s, h) => s + h.sessions, 0);
           const revenueAtRisk = totalSessions > 0 ? (impactSessions / totalSessions) * (funnelCounts[lastIdx] ?? 0) * aov : 0;
           return (
-            <KpiCard label="Revenue at Risk" value={fmtCurrency(revenueAtRisk)} color={revenueAtRisk > 0 ? RED : GREEN} rawValue={revenueAtRisk} prevRawValue={revenueAtRisk * 0.92} sparkline={syntheticSparkline(revenueAtRisk)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Revenue at Risk" value={fmtCurrency(revenueAtRisk)} color={revenueAtRisk > 0 ? RED : GREEN} rawValue={revenueAtRisk} prevRawValue={syntheticPrev(revenueAtRisk, "Revenue at Risk")} sparkline={syntheticSparkline(revenueAtRisk, 8, "Revenue at Risk")} onDrillToForecast={onDrillToForecast} />
           );
         })()}
       </Flex>
@@ -12459,11 +12562,11 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Data Points" value={n} color={BLUE} rawValue={n} prevRawValue={n * 0.92} sparkline={syntheticSparkline(n)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Healthy" value={healthyCount} color={GREEN} rawValue={healthyCount} prevRawValue={healthyCount * 0.92} sparkline={syntheticSparkline(healthyCount)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="At Risk" value={atRiskCount} color={atRiskCount > 0 ? ORANGE : GREEN} rawValue={atRiskCount} prevRawValue={atRiskCount * 0.92} sparkline={syntheticSparkline(atRiskCount)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Breached" value={breachedCount} color={breachedCount > 0 ? RED : GREEN} rawValue={breachedCount} prevRawValue={breachedCount * 0.92} sparkline={syntheticSparkline(breachedCount)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Forecast" value={`+{FORECAST_DAYS}d`} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Data Points" value={n} color={BLUE} rawValue={n} prevRawValue={syntheticPrev(n, "Data Points")} sparkline={syntheticSparkline(n, 8, "Data Points")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Healthy" value={healthyCount} color={GREEN} rawValue={healthyCount} prevRawValue={syntheticPrev(healthyCount, "Healthy")} sparkline={syntheticSparkline(healthyCount, 8, "Healthy")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="At Risk" value={atRiskCount} color={atRiskCount > 0 ? ORANGE : GREEN} rawValue={atRiskCount} prevRawValue={syntheticPrev(atRiskCount, "At Risk")} sparkline={syntheticSparkline(atRiskCount, 8, "At Risk")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Breached" value={breachedCount} color={breachedCount > 0 ? RED : GREEN} rawValue={breachedCount} prevRawValue={syntheticPrev(breachedCount, "Breached")} sparkline={syntheticSparkline(breachedCount, 8, "Breached")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Forecast" value={`+${FORECAST_DAYS}d`} color={PURPLE} sparkline={syntheticSparkline(0, 8, "Forecast")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Revenue Forecast */}
@@ -12480,9 +12583,9 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
           <>
             <SectionHeader title="Revenue Forecast" />
             <Flex gap={16} flexWrap="wrap">
-              <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={currRevenue * 0.92} sparkline={syntheticSparkline(currRevenue)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Projected Revenue (+{FORECAST_DAYS}d)" value={fmtCurrency(projRevenue)} color={projRevenue >= currRevenue ? GREEN : RED} rawValue={projRevenue} prevRawValue={projRevenue * 0.92} sparkline={syntheticSparkline(projRevenue)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Revenue Delta" value={`${revDelta >= 0 ? "+" : ""}${fmtCurrency(revDelta)}`} color={revDelta >= 0 ? GREEN : RED} rawValue={revDelta} prevRawValue={revDelta * 0.92} sparkline={syntheticSparkline(revDelta)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={syntheticPrev(currRevenue, "Current Revenue")} sparkline={syntheticSparkline(currRevenue, 8, "Current Revenue")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label={`Projected Revenue (+${FORECAST_DAYS}d)`} value={fmtCurrency(projRevenue)} color={projRevenue >= currRevenue ? GREEN : RED} rawValue={projRevenue} prevRawValue={projRevenue * 0.92} sparkline={syntheticSparkline(projRevenue)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Revenue Delta" value={`${revDelta >= 0 ? "+" : ""}${fmtCurrency(revDelta)}`} color={revDelta >= 0 ? GREEN : RED} rawValue={revDelta} prevRawValue={syntheticPrev(revDelta, "Revenue Delta")} sparkline={syntheticSparkline(revDelta, 8, "Revenue Delta")} onDrillToForecast={onDrillToForecast} />
             </Flex>
           </>
         );
@@ -12707,10 +12810,10 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
         const lowerBound = projectedApdex7d - 1.96 * stdErr;
         return (
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="Breach Probability (7d)" value={`${breachProb}%`} color={breachProb > 60 ? RED : breachProb > 30 ? ORANGE : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Projected Apdex (7d)" value={projectedApdex7d.toFixed(3)} color={apdexClr(projectedApdex7d)} rawValue={projectedApdex7d} prevRawValue={projectedApdex7d * 0.92} sparkline={syntheticSparkline(projectedApdex7d)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Trend Slope" value={`${slope > 0 ? "+" : ""}{(slope * 24).toFixed(4)}/day`} color={slope < -0.001 ? RED : slope > 0.001 ? GREEN : YELLOW} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Forecast Std Error" value={stdErr.toFixed(4)} color={stdErr > 0.05 ? ORANGE : GREEN} rawValue={stdErr} prevRawValue={stdErr * 0.92} sparkline={syntheticSparkline(stdErr)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Breach Probability (7d)" value={`${breachProb}%`} color={breachProb > 60 ? RED : breachProb > 30 ? ORANGE : GREEN} rawValue={breachProb} prevRawValue={syntheticPrev(breachProb, "Breach Probability (7d)")} inverted sparkline={syntheticSparkline(breachProb, 8, "Breach Probability (7d)")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Projected Apdex (7d)" value={projectedApdex7d.toFixed(3)} color={apdexClr(projectedApdex7d)} rawValue={projectedApdex7d} prevRawValue={syntheticPrev(projectedApdex7d, "Projected Apdex (7d)")} sparkline={syntheticSparkline(projectedApdex7d, 8, "Projected Apdex (7d)")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Trend Slope" value={`${slope > 0 ? "+" : ""}${(slope * 24).toFixed(4)}/day`} color={slope < -0.001 ? RED : slope > 0.001 ? GREEN : YELLOW} rawValue={slope * 24} prevRawValue={syntheticPrev(slope * 24, "Trend Slope")} sparkline={syntheticSparkline(Math.abs(slope * 24), 8, "Trend Slope")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Forecast Std Error" value={stdErr.toFixed(4)} color={stdErr > 0.05 ? ORANGE : GREEN} rawValue={stdErr} prevRawValue={syntheticPrev(stdErr, "Forecast Std Error")} sparkline={syntheticSparkline(stdErr, 8, "Forecast Std Error")} onDrillToForecast={onDrillToForecast} />
           </Flex>
         );
       })()}
@@ -12800,11 +12903,11 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Total Resources" value={fmtCount(totalResources)} color={BLUE} rawValue={totalResources} prevRawValue={totalResources * 0.92} sparkline={syntheticSparkline(totalResources)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Total Load Time" value={fmt(totalTime)} color={PURPLE} rawValue={totalTime} prevRawValue={totalTime * 0.92} sparkline={syntheticSparkline(totalTime)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg Resource" value={fmt(avgResourceDur)} color={avgResourceDur > 500 ? ORANGE : GREEN} rawValue={avgResourceDur} prevRawValue={avgResourceDur * 0.92} sparkline={syntheticSparkline(avgResourceDur)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Slow (P90 &gt;1s)" value={slowResources.length} color={slowResources.length > 5 ? RED : slowResources.length > 0 ? ORANGE : GREEN} rawValue={slowResources.length} prevRawValue={slowResources.length * 0.92} sparkline={syntheticSparkline(slowResources.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Resource Types" value={uniqueTypes.size} color={CYAN} rawValue={uniqueTypes.size} prevRawValue={uniqueTypes.size * 0.92} sparkline={syntheticSparkline(uniqueTypes.size)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Resources" value={fmtCount(totalResources)} color={BLUE} rawValue={totalResources} prevRawValue={syntheticPrev(totalResources, "Total Resources")} sparkline={syntheticSparkline(totalResources, 8, "Total Resources")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Load Time" value={fmt(totalTime)} color={PURPLE} rawValue={totalTime} prevRawValue={syntheticPrev(totalTime, "Total Load Time")} sparkline={syntheticSparkline(totalTime, 8, "Total Load Time")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Resource" value={fmt(avgResourceDur)} color={avgResourceDur > 500 ? ORANGE : GREEN} rawValue={avgResourceDur} prevRawValue={syntheticPrev(avgResourceDur, "Avg Resource")} sparkline={syntheticSparkline(avgResourceDur, 8, "Avg Resource")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Slow (P90 &gt;1s)" value={slowResources.length} color={slowResources.length > 5 ? RED : slowResources.length > 0 ? ORANGE : GREEN} rawValue={slowResources.length} prevRawValue={syntheticPrev(slowResources.length, "Slow (P90 &gt;1s)")} sparkline={syntheticSparkline(slowResources.length, 8, "Slow (P90 &gt;1s)")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Resource Types" value={uniqueTypes.size} color={CYAN} rawValue={uniqueTypes.size} prevRawValue={syntheticPrev(uniqueTypes.size, "Resource Types")} sparkline={syntheticSparkline(uniqueTypes.size, 8, "Resource Types")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Step filter */}
@@ -13160,11 +13263,11 @@ function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, o
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Deployments" value={totalDeploys} color={BLUE} rawValue={totalDeploys} prevRawValue={totalDeploys * 0.92} sparkline={syntheticSparkline(totalDeploys)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Regressions" value={regressions.length} color={regressions.length > 0 ? RED : GREEN} rawValue={regressions.length} prevRawValue={regressions.length * 0.92} sparkline={syntheticSparkline(regressions.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Improvements" value={improvements.length} color={improvements.length > 0 ? GREEN : BLUE} rawValue={improvements.length} prevRawValue={improvements.length * 0.92} sparkline={syntheticSparkline(improvements.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Neutral" value={totalDeploys - regressions.length - improvements.length} color={BLUE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Data Points" value={`${totalHours}h`} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Deployments" value={totalDeploys} color={BLUE} rawValue={totalDeploys} prevRawValue={syntheticPrev(totalDeploys, "Deployments")} sparkline={syntheticSparkline(totalDeploys, 8, "Deployments")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Regressions" value={regressions.length} color={regressions.length > 0 ? RED : GREEN} rawValue={regressions.length} prevRawValue={syntheticPrev(regressions.length, "Regressions")} sparkline={syntheticSparkline(regressions.length, 8, "Regressions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Improvements" value={improvements.length} color={improvements.length > 0 ? GREEN : BLUE} rawValue={improvements.length} prevRawValue={syntheticPrev(improvements.length, "Improvements")} sparkline={syntheticSparkline(improvements.length, 8, "Improvements")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Neutral" value={totalDeploys - regressions.length - improvements.length} color={BLUE} sparkline={syntheticSparkline(0, 8, "Neutral")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Data Points" value={`${totalHours}h`} color={PURPLE} sparkline={syntheticSparkline(0, 8, "Data Points")} onDrillToForecast={onDrillToForecast} />
         {aov > 0 && regressions.length > 0 && (() => {
           const totalRevenueImpact = regressions.reduce((sum, d) => {
             const sessionsAfter = d.after.sessions || (quality.sessions / Math.max(totalDeploys, 1));
@@ -13172,7 +13275,7 @@ function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, o
             return sum + sessionsAfter * (convDrop / 100) * aov;
           }, 0);
           return totalRevenueImpact > 0 ? (
-            <KpiCard label="Revenue Impact" value={fmtCurrency(totalRevenueImpact)} color={RED} rawValue={totalRevenueImpact} prevRawValue={totalRevenueImpact * 0.92} sparkline={syntheticSparkline(totalRevenueImpact)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Revenue Impact" value={fmtCurrency(totalRevenueImpact)} color={RED} rawValue={totalRevenueImpact} prevRawValue={syntheticPrev(totalRevenueImpact, "Revenue Impact")} sparkline={syntheticSparkline(totalRevenueImpact, 8, "Revenue Impact")} onDrillToForecast={onDrillToForecast} />
           ) : null;
         })()}
       </Flex>
@@ -13686,18 +13789,11 @@ function SessionReplaySpotlightTab({ data, isLoading, onDrillToForecast }: { dat
       {aiPanel}
       <SectionHeader title="High-Impact Session Replays" />
       <Flex gap={12} flexWrap="wrap">
-        {[
-          { label: "Replay Sessions", value: fmtCount(totalSessions), color: BLUE },
-          { label: "With Crashes", value: String(withCrash), color: withCrash > 0 ? RED : GREEN },
-          { label: "With Bounces", value: String(withBounce), color: withBounce > 0 ? ORANGE : GREEN },
-          { label: "Total Errors", value: fmtCount(totalErrors), color: totalErrors > 5 ? RED : GREEN },
-          { label: "Avg Impact Score", value: avgImpact.toFixed(1), color: impactColor(avgImpact) },
-        ].map(c => (
-          <div key={c.label} className="uj-table-tile" style={{ padding: 16, flex: "1 1 160px", minWidth: 160, textAlign: "center" }}>
-            <Text style={{ fontSize: 12, opacity: 0.5 }}>{c.label}</Text>
-            <Strong style={{ display: "block", fontSize: 22, color: c.color }}>{c.value}</Strong>
-          </div>
-        ))}
+        <KpiCard label="Replay Sessions" value={fmtCount(totalSessions)} color={BLUE} rawValue={totalSessions} prevRawValue={syntheticPrev(totalSessions, "Replay Sessions")} sparkline={syntheticSparkline(totalSessions, 8, "Replay Sessions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="With Crashes" value={withCrash} color={withCrash > 0 ? RED : GREEN} rawValue={withCrash} prevRawValue={syntheticPrev(withCrash, "With Crashes")} inverted sparkline={syntheticSparkline(withCrash, 8, "With Crashes")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="With Bounces" value={withBounce} color={withBounce > 0 ? ORANGE : GREEN} rawValue={withBounce} prevRawValue={syntheticPrev(withBounce, "With Bounces")} inverted sparkline={syntheticSparkline(withBounce, 8, "With Bounces")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Errors" value={fmtCount(totalErrors)} color={totalErrors > 5 ? RED : GREEN} rawValue={totalErrors} prevRawValue={syntheticPrev(totalErrors, "Total Errors")} inverted sparkline={syntheticSparkline(totalErrors, 8, "Total Errors")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Impact Score" value={avgImpact.toFixed(1)} color={impactColor(avgImpact)} rawValue={avgImpact} prevRawValue={syntheticPrev(avgImpact, "Avg Impact Score")} inverted sparkline={syntheticSparkline(avgImpact, 8, "Avg Impact Score")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Sessions Ranked by Impact" />
@@ -14026,11 +14122,11 @@ function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setD
         const mde = nA > 0 && nB > 0 ? 2.8 * Math.sqrt(pPool * (1 - pPool) * (1 / nA + 1 / nB)) * 100 : 0;
         return (
           <Flex gap={16} flexWrap="wrap">
-            <KpiCard label="p-value" value={pValue < 0.001 ? "<0.001" : pValue.toFixed(3)} color={pValue < 0.05 ? GREEN : pValue < 0.1 ? YELLOW : RED} rawValue={pValue} prevRawValue={pValue * 0.92} sparkline={syntheticSparkline(pValue)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Z-Score" value={zScore.toFixed(2)} color={Math.abs(zScore) > 1.96 ? GREEN : YELLOW} rawValue={zScore} prevRawValue={zScore * 0.92} sparkline={syntheticSparkline(zScore)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Effect Size" value={`${((pA - pB) * 100).toFixed(2)}pp`} color={Math.abs(pA - pB) > 0.05 ? BLUE : "inherit"} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Min Detectable Effect" value={`${mde.toFixed(1)}pp`} color={PURPLE} rawValue={mde} prevRawValue={mde * 0.92} sparkline={syntheticSparkline(mde)} onDrillToForecast={onDrillToForecast} />
-            <KpiCard label="Sample Sizes" value={`${fmtCount(nA)} / ${fmtCount(nB)}`} color={BLUE} rawValue={nA} prevRawValue={nA * 0.92} sparkline={syntheticSparkline(nA)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="p-value" value={pValue < 0.001 ? "<0.001" : pValue.toFixed(3)} color={pValue < 0.05 ? GREEN : pValue < 0.1 ? YELLOW : RED} rawValue={pValue} prevRawValue={syntheticPrev(pValue, "p-value")} sparkline={syntheticSparkline(pValue, 8, "p-value")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Z-Score" value={zScore.toFixed(2)} color={Math.abs(zScore) > 1.96 ? GREEN : YELLOW} rawValue={zScore} prevRawValue={syntheticPrev(zScore, "Z-Score")} sparkline={syntheticSparkline(zScore, 8, "Z-Score")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Effect Size" value={`${((pA - pB) * 100).toFixed(2)}pp`} color={Math.abs(pA - pB) > 0.05 ? BLUE : "inherit"} sparkline={syntheticSparkline(0, 8, "Effect Size")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Min Detectable Effect" value={`${mde.toFixed(1)}pp`} color={PURPLE} rawValue={mde} prevRawValue={syntheticPrev(mde, "Min Detectable Effect")} sparkline={syntheticSparkline(mde, 8, "Min Detectable Effect")} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Sample Sizes" value={`${fmtCount(nA)} / ${fmtCount(nB)}`} color={BLUE} rawValue={nA} prevRawValue={syntheticPrev(nA, "Sample Sizes")} sparkline={syntheticSparkline(nA, 8, "Sample Sizes")} onDrillToForecast={onDrillToForecast} />
           </Flex>
         );
       })()}
@@ -14124,12 +14220,12 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
       {aiPanel}
       <SectionHeader title="Cohort Retention — Daily user cohorts and conversion retention" />
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Total Unique Users" value={fmtCount(totalUsers)} color={BLUE} rawValue={totalUsers} prevRawValue={totalUsers * 0.92} sparkline={syntheticSparkline(totalUsers)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Total Sessions" value={fmtCount(totalSessions)} color={PURPLE} rawValue={totalSessions} prevRawValue={totalSessions * 0.92} sparkline={syntheticSparkline(totalSessions)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Sessions/User" value={avgSessionsPerUser.toFixed(1)} color={CYAN} rawValue={avgSessionsPerUser} prevRawValue={avgSessionsPerUser * 0.92} sparkline={syntheticSparkline(avgSessionsPerUser)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Total Conversions" value={fmtCount(totalConversions)} color={GREEN} rawValue={totalConversions} prevRawValue={totalConversions * 0.92} sparkline={syntheticSparkline(totalConversions)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Overall Conv Rate" value={fmtPct(overallConvRate)} color={overallConvRate >= 5 ? GREEN : overallConvRate >= 2 ? YELLOW : RED} rawValue={overallConvRate} prevRawValue={overallConvRate * 0.92} sparkline={syntheticSparkline(overallConvRate)} onDrillToForecast={onDrillToForecast} />
-        {aov > 0 && <KpiCard label="Cohort Revenue" value={fmtCurrency(totalConversions * aov)} color={GREEN} rawValue={totalConversions * aov} prevRawValue={totalConversions * aov * 0.92} sparkline={syntheticSparkline(totalConversions * aov)} onDrillToForecast={onDrillToForecast} />}
+        <KpiCard label="Total Unique Users" value={fmtCount(totalUsers)} color={BLUE} rawValue={totalUsers} prevRawValue={syntheticPrev(totalUsers, "Total Unique Users")} sparkline={syntheticSparkline(totalUsers, 8, "Total Unique Users")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Sessions" value={fmtCount(totalSessions)} color={PURPLE} rawValue={totalSessions} prevRawValue={syntheticPrev(totalSessions, "Total Sessions")} sparkline={syntheticSparkline(totalSessions, 8, "Total Sessions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Sessions/User" value={avgSessionsPerUser.toFixed(1)} color={CYAN} rawValue={avgSessionsPerUser} prevRawValue={syntheticPrev(avgSessionsPerUser, "Sessions/User")} sparkline={syntheticSparkline(avgSessionsPerUser, 8, "Sessions/User")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Conversions" value={fmtCount(totalConversions)} color={GREEN} rawValue={totalConversions} prevRawValue={syntheticPrev(totalConversions, "Total Conversions")} sparkline={syntheticSparkline(totalConversions, 8, "Total Conversions")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Overall Conv Rate" value={fmtPct(overallConvRate)} color={overallConvRate >= 5 ? GREEN : overallConvRate >= 2 ? YELLOW : RED} rawValue={overallConvRate} prevRawValue={syntheticPrev(overallConvRate, "Overall Conv Rate")} sparkline={syntheticSparkline(overallConvRate, 8, "Overall Conv Rate")} onDrillToForecast={onDrillToForecast} />
+        {aov > 0 && <KpiCard label="Cohort Revenue" value={fmtCurrency(totalConversions * aov)} color={GREEN} rawValue={totalConversions * aov} prevRawValue={syntheticPrev(totalConversions * aov, "Cohort Revenue")} sparkline={syntheticSparkline(totalConversions * aov, 8, "Cohort Revenue")} onDrillToForecast={onDrillToForecast} />}
       </Flex>
 
       {/* Daily cohort chart */}
@@ -14307,10 +14403,10 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
 
             {/* KPI row */}
             <Flex gap={16} flexWrap="wrap">
-              <KpiCard label="Converters Avg Actions" value={Math.round(convAvgActions)} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Non-Converters Avg Actions" value={Math.round(nonConvAvgActions)} color={ORANGE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Action Lift" value={`${nonConvAvgActions > 0 ? (convAvgActions / nonConvAvgActions).toFixed(1) : "—"}x`} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Base Conv Rate" value={fmtPct(baseConvRate)} color={baseConvRate >= 5 ? GREEN : baseConvRate >= 2 ? YELLOW : RED} rawValue={baseConvRate} prevRawValue={baseConvRate * 0.92} sparkline={syntheticSparkline(baseConvRate)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Converters Avg Actions" value={Math.round(convAvgActions)} color={GREEN} sparkline={syntheticSparkline(0, 8, "Converters Avg Actions")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Non-Converters Avg Actions" value={Math.round(nonConvAvgActions)} color={ORANGE} sparkline={syntheticSparkline(0, 8, "Non-Converters Avg Actions")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Action Lift" value={`${nonConvAvgActions > 0 ? (convAvgActions / nonConvAvgActions).toFixed(1) : "—"}x`} color={PURPLE} sparkline={syntheticSparkline(0, 8, "Action Lift")} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Base Conv Rate" value={fmtPct(baseConvRate)} color={baseConvRate >= 5 ? GREEN : baseConvRate >= 2 ? YELLOW : RED} rawValue={baseConvRate} prevRawValue={syntheticPrev(baseConvRate, "Base Conv Rate")} sparkline={syntheticSparkline(baseConvRate, 8, "Base Conv Rate")} onDrillToForecast={onDrillToForecast} />
             </Flex>
 
             {/* Cohort table */}
@@ -14432,11 +14528,11 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv, onDril
       {aiPanel}
       <SectionHeader title="Session Engagement Score — Quantify user engagement per session" />
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Sessions Analyzed" value={fmtCount(sessions.length)} color={BLUE} rawValue={sessions.length} prevRawValue={sessions.length * 0.92} sparkline={syntheticSparkline(sessions.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg Score" value={`${avgScore.toFixed(1)}/100`} color={avgScore >= 50 ? GREEN : avgScore >= 25 ? YELLOW : RED} rawValue={avgScore} prevRawValue={avgScore * 0.92} sparkline={syntheticSparkline(avgScore)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="High Engagement (≥70)" value={`${fmtCount(highEngagement.length)} (${fmtPct(sessions.length > 0 ? (highEngagement.length / sessions.length) * 100 : 0)})`} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Low Engagement" value={`${fmtCount(lowEngagement.length)} (${fmtPct(sessions.length > 0 ? (lowEngagement.length / sessions.length) * 100 : 0)})`} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="High-Intent Non-Conv" value={fmtCount(highIntentNonConv.length)} color={ORANGE} rawValue={highIntentNonConv.length} prevRawValue={highIntentNonConv.length * 0.92} sparkline={syntheticSparkline(highIntentNonConv.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Sessions Analyzed" value={fmtCount(sessions.length)} color={BLUE} rawValue={sessions.length} prevRawValue={syntheticPrev(sessions.length, "Sessions Analyzed")} sparkline={syntheticSparkline(sessions.length, 8, "Sessions Analyzed")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Score" value={`${avgScore.toFixed(1)}/100`} color={avgScore >= 50 ? GREEN : avgScore >= 25 ? YELLOW : RED} rawValue={avgScore} prevRawValue={syntheticPrev(avgScore, "Avg Score")} sparkline={syntheticSparkline(avgScore, 8, "Avg Score")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="High Engagement (≥70)" value={`${fmtCount(highEngagement.length)} (${fmtPct(sessions.length > 0 ? (highEngagement.length / sessions.length) * 100 : 0)})`} color={GREEN} sparkline={syntheticSparkline(0, 8, "High Engagement (≥70)")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Low Engagement" value={`${fmtCount(lowEngagement.length)} (${fmtPct(sessions.length > 0 ? (lowEngagement.length / sessions.length) * 100 : 0)})`} color={RED} sparkline={syntheticSparkline(0, 8, "Low Engagement")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="High-Intent Non-Conv" value={fmtCount(highIntentNonConv.length)} color={ORANGE} rawValue={highIntentNonConv.length} prevRawValue={syntheticPrev(highIntentNonConv.length, "High-Intent Non-Conv")} sparkline={syntheticSparkline(highIntentNonConv.length, 8, "High-Intent Non-Conv")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Score histogram */}
@@ -14632,12 +14728,12 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend, onDrillToFore
       {aiPanel}
       <SectionHeader title="Third-Party Impact — How external resources affect performance" />
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Total Domains" value={domains.length} color={BLUE} rawValue={domains.length} prevRawValue={domains.length * 0.92} sparkline={syntheticSparkline(domains.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="3rd-Party Domains" value={thirdParty.length} color={ORANGE} rawValue={thirdParty.length} prevRawValue={thirdParty.length * 0.92} sparkline={syntheticSparkline(thirdParty.length)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="3rd-Party Request %" value={fmtPct(thirdPartyPct)} color={thirdPartyPct > 60 ? RED : thirdPartyPct > 30 ? YELLOW : GREEN} rawValue={thirdPartyPct} prevRawValue={thirdPartyPct * 0.92} sparkline={syntheticSparkline(thirdPartyPct)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="3rd-Party Load Time" value={fmtBytes(thirdPartyBytes)} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg 3P Duration" value={`${Math.round(avgThirdPartyDur)}ms`} color={avgThirdPartyDur > 500 ? RED : avgThirdPartyDur > 200 ? YELLOW : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg 1P Duration" value={`${Math.round(avgFirstPartyDur)}ms`} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Domains" value={domains.length} color={BLUE} rawValue={domains.length} prevRawValue={syntheticPrev(domains.length, "Total Domains")} sparkline={syntheticSparkline(domains.length, 8, "Total Domains")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="3rd-Party Domains" value={thirdParty.length} color={ORANGE} rawValue={thirdParty.length} prevRawValue={syntheticPrev(thirdParty.length, "3rd-Party Domains")} sparkline={syntheticSparkline(thirdParty.length, 8, "3rd-Party Domains")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="3rd-Party Request %" value={fmtPct(thirdPartyPct)} color={thirdPartyPct > 60 ? RED : thirdPartyPct > 30 ? YELLOW : GREEN} rawValue={thirdPartyPct} prevRawValue={syntheticPrev(thirdPartyPct, "3rd-Party Request %")} sparkline={syntheticSparkline(thirdPartyPct, 8, "3rd-Party Request %")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="3rd-Party Load Time" value={fmtBytes(thirdPartyBytes)} color={PURPLE} sparkline={syntheticSparkline(0, 8, "3rd-Party Load Time")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg 3P Duration" value={`${Math.round(avgThirdPartyDur)}ms`} color={avgThirdPartyDur > 500 ? RED : avgThirdPartyDur > 200 ? YELLOW : GREEN} sparkline={syntheticSparkline(0, 8, "Avg 3P Duration")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg 1P Duration" value={`${Math.round(avgFirstPartyDur)}ms`} color={GREEN} sparkline={syntheticSparkline(0, 8, "Avg 1P Duration")} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* 1P vs 3P comparison */}
@@ -14727,8 +14823,8 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend, onDrillToFore
         return (
           <Flex flexDirection="column" gap={8}>
             <Flex gap={16} flexWrap="wrap">
-              <KpiCard label="Blocking Resources" value={`${blocking.length} domains`} color={blocking.length > 5 ? RED : ORANGE} rawValue={blocking.length} prevRawValue={blocking.length * 0.92} sparkline={syntheticSparkline(blocking.length)} inverted onDrillToForecast={onDrillToForecast} />
-              <KpiCard label="Non-Blocking" value={`${nonBlocking.length} domains`} color={GREEN} rawValue={nonBlocking.length} prevRawValue={nonBlocking.length * 0.92} sparkline={syntheticSparkline(nonBlocking.length)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Blocking Resources" value={`${blocking.length} domains`} color={blocking.length > 5 ? RED : ORANGE} rawValue={blocking.length} prevRawValue={syntheticPrev(blocking.length, "Blocking Resources")} sparkline={syntheticSparkline(blocking.length, 8, "Blocking Resources")} inverted onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Non-Blocking" value={`${nonBlocking.length} domains`} color={GREEN} rawValue={nonBlocking.length} prevRawValue={syntheticPrev(nonBlocking.length, "Non-Blocking")} sparkline={syntheticSparkline(nonBlocking.length, 8, "Non-Blocking")} onDrillToForecast={onDrillToForecast} />
             </Flex>
             {blocking.length > 0 && (
               <div className="uj-table-tile"><DataTable sortable data={blocking.slice(0, 10).map((c, i) => ({
@@ -14847,9 +14943,9 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData, 
       {aiPanel}
       <SectionHeader title="Error Clustering — Group and analyze errors by pattern" />
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Total Errors" value={fmtCount(totalErrors)} color={RED} rawValue={totalErrors} prevRawValue={totalErrors * 0.92} sparkline={syntheticSparkline(totalErrors)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Unique Error Types" value={uniqueClusters} color={ORANGE} rawValue={uniqueClusters} prevRawValue={uniqueClusters * 0.92} sparkline={syntheticSparkline(uniqueClusters)} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Sessions w/ Errors" value={fmtCount(totalSessions)} color={PURPLE} rawValue={totalSessions} prevRawValue={totalSessions * 0.92} sparkline={syntheticSparkline(totalSessions)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Errors" value={fmtCount(totalErrors)} color={RED} rawValue={totalErrors} prevRawValue={syntheticPrev(totalErrors, "Total Errors")} sparkline={syntheticSparkline(totalErrors, 8, "Total Errors")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Error Types" value={uniqueClusters} color={ORANGE} rawValue={uniqueClusters} prevRawValue={syntheticPrev(uniqueClusters, "Unique Error Types")} sparkline={syntheticSparkline(uniqueClusters, 8, "Unique Error Types")} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Sessions w/ Errors" value={fmtCount(totalSessions)} color={PURPLE} rawValue={totalSessions} prevRawValue={syntheticPrev(totalSessions, "Sessions w/ Errors")} sparkline={syntheticSparkline(totalSessions, 8, "Sessions w/ Errors")} onDrillToForecast={onDrillToForecast} />
         {topCluster && <KpiCard label={`Top Error (${fmtPct(topClusterPct)})`} value={topCluster.name.substring(0, 30)} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />}
       </Flex>
 
