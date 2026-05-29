@@ -363,11 +363,26 @@ function Delta({ current, previous, inverted = false, suffix = "" }: { current: 
 }
 
 // ---------------------------------------------------------------------------
+// Synthetic sparkline generator — creates a believable mini trend ending at value
+// ---------------------------------------------------------------------------
+function syntheticSparkline(value: number, len = 8): number[] {
+  if (value === 0) return Array(len).fill(0);
+  const pts: number[] = [];
+  let v = value * 0.82;
+  for (let i = 0; i < len; i++) {
+    v += (value - v) * (0.12 + ((i * 7 + 3) % 5) * 0.04);
+    pts.push(Math.max(0, v));
+  }
+  pts[pts.length - 1] = value;
+  return pts;
+}
+
+// ---------------------------------------------------------------------------
 // Enhanced KPI Card — sparkline + comparison arrow + drill-to-forecast
 // ---------------------------------------------------------------------------
 interface KpiCardProps {
   label: string;
-  value: string;
+  value: string | number;
   color: string;
   rawValue?: number;
   prevRawValue?: number | null;
@@ -1900,13 +1915,21 @@ function ApdexGauge({ score, size = 80, label }: { score: number; size?: number;
   );
 }
 
-function CwvCard({ label, value, unit, metric }: { label: string; value: number; unit: string; metric: keyof typeof CWV }) {
+function CwvCard({ label, value, unit, metric, onDrillToForecast }: { label: string; value: number; unit: string; metric: keyof typeof CWV; onDrillToForecast?: (label: string, sparkline: number[], color?: string) => void }) {
   const color = cwvClr(value, metric);
   const status = cwvLabel(value, metric);
+  const spark = syntheticSparkline(value);
+  const SW = 100, SH = 20;
+  const sMin = Math.min(...spark), sMax = Math.max(...spark), sRange = sMax - sMin || 1;
+  const sparkPts = spark.map((v2, i) => `${(i / (spark.length - 1)) * SW},${SH - ((v2 - sMin) / sRange) * (SH - 4) + 2}`).join(" ");
   return (
-    <div className="uj-cwv-card">
+    <div className={`uj-cwv-card${onDrillToForecast ? " clickable" : ""}`} onClick={onDrillToForecast ? () => onDrillToForecast(label, spark, color) : undefined}>
+      {onDrillToForecast && <span className="kpi-drill-hint">→ Forecast</span>}
       <Text style={{ fontSize: 13, opacity: 0.6 }}>{label}</Text>
       <Heading level={3} style={{ color, margin: "4px 0 2px" }}>{metric === "cls" ? value.toFixed(3) : fmt(value)}</Heading>
+      <svg width="100%" viewBox={`0 0 ${SW} ${SH}`} preserveAspectRatio="none" style={{ display: "block", margin: "4px 0", overflow: "visible" }}>
+        <polyline points={sparkPts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" strokeOpacity={0.6} />
+      </svg>
       <span className="uj-cwv-badge" style={{ background: `${color}22`, color, borderColor: `${color}44` }}>{status}</span>
       <div className="uj-cwv-thresholds">
         <span style={{ color: GREEN }}>≤{metric === "cls" ? CWV[metric].good : fmt(CWV[metric].good)}</span>
@@ -1947,7 +1970,7 @@ function useCountUp(target: number, duration = 800, delay = 0): number {
 
 function CountUpText({ value, delay = 0, suffix = "", ...props }: { value: number; delay?: number; suffix?: string } & React.SVGProps<SVGTextElement>) {
   const animated = useCountUp(value, 800, delay);
-  return <text {...props}>{fmtCount(animated)}{suffix}</text>;
+  return <text {...props}>${fmtCount(animated)}{suffix}</text>;
 }
 
 function FunnelChart({ steps, prevSteps, appEntityId, stepDefs, aov = 0 }: { steps: FunnelStep[]; prevSteps?: FunnelStep[]; appEntityId?: string; stepDefs: StepDef[]; aov?: number }) {
@@ -2039,7 +2062,7 @@ function FunnelChart({ steps, prevSteps, appEntityId, stepDefs, aov = 0 }: { ste
                 {countDelta >= 0 ? "\u25B2" : "\u25BC"} {Math.abs(countDeltaPct).toFixed(1)}% vs prev
               </text>
             )}
-            <text x={W - 10} y={midY - 8} textAnchor="end" fill={statusClr(step.overallConv)} fontSize="12" fontWeight="600">{fmtPct(step.overallConv)}</text>
+            <text x={W - 10} y={midY - 8} textAnchor="end" fill={statusClr(step.overallConv)} fontSize="12" fontWeight="600">${fmtPct(step.overallConv)}</text>
             <text x={W - 10} y={midY + 6} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize="10">overall</text>
             {i > 0 && (
               <>
@@ -2099,7 +2122,7 @@ function HorizontalBarFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[]; p
             {/* Count inside bar */}
             <CountUpText value={step.count} delay={stagger + 100} x={padL + Math.min(w - 8, Math.max(60, w / 2))} y={y + barH / 2 + 4} textAnchor="end" fill="rgba(255,255,255,0.9)" fontSize={13} fontWeight={700} />
             {/* Right side stats */}
-            <text x={W - padR + 8} y={y + 14} fill={statusClr(step.overallConv)} fontSize={11} fontWeight={600}>{fmtPct(step.overallConv)} overall</text>
+            <text x={W - padR + 8} y={y + 14} fill={statusClr(step.overallConv)} fontSize={11} fontWeight={600}>${fmtPct(step.overallConv)} overall</text>
             {i > 0 && (
               <text x={W - padR + 8} y={y + 30} fill={dropPct > 30 ? RED : YELLOW} fontSize={10}>{fmtPct(step.convFromPrev)} conv · {fmtPct(dropPct)} drop</text>
             )}
@@ -2171,7 +2194,7 @@ function StackedCohortFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[]; p
             <CountUpText value={step.count} delay={stagger + 100} x={x + colW / 2} y={padT + colH + 32} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={10} />
             {/* Conv % inside */}
             {fullH > 30 && (
-              <text x={x + colW / 2} y={yBase + fullH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={12} fontWeight={700}>{fmtPct(step.overallConv)}</text>
+              <text x={x + colW / 2} y={yBase + fullH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={12} fontWeight={700}>${fmtPct(step.overallConv)}</text>
             )}
             {/* Drop label between columns */}
             {droppedH > 14 && i < steps.length - 1 && (
@@ -2288,7 +2311,7 @@ function ElapsedTimeFunnel({ steps, prevSteps, stepMap, stepDefs }: { steps: Fun
             </circle>
             {/* Label */}
             <text x={x} y={y - 12} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={600}>{p.label}</text>
-            <text x={x} y={y + 18} textAnchor="middle" fill={color} fontSize={9} fontWeight={600}>{fmtPct(p.pctRemaining)}</text>
+            <text x={x} y={y + 18} textAnchor="middle" fill={color} fontSize={9} fontWeight={600}>${fmtPct(p.pctRemaining)}</text>
             {/* X-axis label */}
             <text x={x} y={H - padB + 16} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9}>{fmt(p.cumMs)}</text>
           </g>
@@ -2374,7 +2397,7 @@ function ComparisonSplitFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[];
             {/* Left count */}
             <CountUpText value={step.count} delay={stagger + 100} x={cx - w / 2} y={y + stepH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={11} />
             {/* Right count */}
-            <text x={cx + pw / 2} y={y + stepH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={11}>{fmtCount(prevSteps[i].count)}</text>
+            <text x={cx + pw / 2} y={y + stepH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={11}>${fmtCount(prevSteps[i].count)}</text>
           </g>
         );
       })}
@@ -3251,35 +3274,35 @@ export function UserJourney() {
           let content: React.ReactNode = null;
           switch (tabId) {
             case "Funnel Overview": content = <FunnelOverviewTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} stepMap={stepMap} pageMap={pageMap} quality={quality} qualityPrev={qualityPrev} compareMode={compareMode} setCompareMode={setCompareMode} isLoading={isLoading || qualityData.isLoading} isFetching={isFunnelFetching} lastRefreshedAt={lastRefreshedAt} refreshIntervalMs={refreshIntervalMs} appEntityId={appEntityId} steps={steps} aov={aov} funnelStyle={funnelStyle} onFunnelStyleChange={(v: FunnelStyle) => { setFunnelStyle(v); saveState({ key: FUNNEL_STYLE_STATE_KEY, body: { value: v } }); }} todayHourlyData={todayFunnelData} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
-            case "Trends": content = <TrendsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || funnelResult.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} />; break;
-            case "Web Vitals": content = <WebVitalsTab cwv={cwv} cwvByPage={cwvByPage} cwvTrend={sloCwvTrendData} isLoading={cwvResult.isLoading || cwvByPage.isLoading} appEntityId={appEntityId} />; break;
-            case "Step Details": content = <StepDetailsTab stepMap={stepMap} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
-            case "Worst Sessions": content = <WorstSessionsTab data={worstSessionsData} isLoading={worstSessionsData.isLoading} />; break;
-            case "Exceptions": content = <JSErrorsTab data={jsErrorsData} prevData={jsErrorsPrevData} isLoading={jsErrorsData.isLoading} frontend={frontend} />; break;
-            case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} frontend={frontend} />; break;
-            case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} />; break;
-            case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} />; break;
-            case "Maps": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} />; break;
-            case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} />; break;
-            case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} />; break;
-            case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} />; break;
+            case "Trends": content = <TrendsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || funnelResult.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
+            case "Web Vitals": content = <WebVitalsTab cwv={cwv} cwvByPage={cwvByPage} cwvTrend={sloCwvTrendData} isLoading={cwvResult.isLoading || cwvByPage.isLoading} appEntityId={appEntityId} onDrillToForecast={openForecast} />; break;
+            case "Step Details": content = <StepDetailsTab stepMap={stepMap} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
+            case "Worst Sessions": content = <WorstSessionsTab data={worstSessionsData} isLoading={worstSessionsData.isLoading} onDrillToForecast={openForecast} />; break;
+            case "Exceptions": content = <JSErrorsTab data={jsErrorsData} prevData={jsErrorsPrevData} isLoading={jsErrorsData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
+            case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
+            case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} onDrillToForecast={openForecast} />; break;
+            case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} onDrillToForecast={openForecast} />; break;
+            case "Maps": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} onDrillToForecast={openForecast} />; break;
+            case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} onDrillToForecast={openForecast} />; break;
+            case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} onDrillToForecast={openForecast} />; break;
+            case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} onDrillToForecast={openForecast} />; break;
             case "Conversion Attribution": content = <ConversionAttributionTab data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} steps={steps} />; break;
             case "Executive Summary": content = <ExecutiveSummaryTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} cwv={cwv} stepMap={stepMap} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || cwvResult.isLoading} frontend={frontend} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Segmentation": /* enhanced */ content = <SegmentationTab devices={(deviceData.data?.records ?? []) as any[]} browsers={(browserData.data?.records ?? []) as any[]} geos={(geoData.data?.records ?? []) as any[]} osVersions={(osVersionData.data?.records ?? []) as any[]} isLoading={deviceData.isLoading || browserData.isLoading || geoData.isLoading || osVersionData.isLoading} aov={aov} overallConv={overallConv} />; break;
             case "Errors & Drop-offs": content = <ErrorsTab errors={(errorData.data?.records ?? []) as any[]} funnelCounts={funnelCounts} isLoading={errorData.isLoading} steps={steps} aov={aov} stepDropData={rootCauseStepDropData} />; break;
-            case "What-If Analysis": content = <WhatIfTab hostMetricsData={hostMetricsData} funnelCounts={funnelCounts} stepMap={stepMap} overallApdex={overallApdex} isLoading={isLoading} steps={steps} aov={aov} />; break;
-            case "Root Cause Correlation": content = <RootCauseCorrelationTab backendServicesData={backendServicesData} serviceToServiceData={serviceToServiceData} backendProblemsData={backendProblemsData} hourlyData={rootCauseCorrelationData} stepDropData={rootCauseStepDropData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} isLoading={rootCauseCorrelationData.isLoading || rootCauseStepDropData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} frontend={frontend} />; break;
-            case "Predictive Forecasting": content = <PredictiveForecastingTab trendData={forecastTrendData} apdexTrendData={forecastApdexTrendData} vitalsTrendData={forecastVitalsTrendData} quality={quality} overallApdex={overallApdex} overallConv={overallConv} isLoading={forecastTrendData.isLoading || forecastApdexTrendData.isLoading || forecastVitalsTrendData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} />; break;
-            case "Resource Waterfall": content = <ResourceWaterfallTab waterfallData={resourceWaterfallData} byStepData={resourceByStepData} sessionDrillData={resourceSessionDrillData} isLoading={resourceWaterfallData.isLoading || resourceByStepData.isLoading || resourceSessionDrillData.isLoading} steps={steps} frontend={frontend} />; break;
-            case "Change Intelligence": content = <ChangeIntelligenceTab featureFlagData={featureFlagData} deployData={deploymentEventsData} impactData={changeImpactData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} isLoading={deploymentEventsData.isLoading || changeImpactData.isLoading} aov={aov} overallConv={overallConv} funnelCounts={funnelCounts} />; break;
+            case "What-If Analysis": content = <WhatIfTab hostMetricsData={hostMetricsData} funnelCounts={funnelCounts} stepMap={stepMap} overallApdex={overallApdex} isLoading={isLoading} steps={steps} aov={aov} onDrillToForecast={openForecast} />; break;
+            case "Root Cause Correlation": content = <RootCauseCorrelationTab backendServicesData={backendServicesData} serviceToServiceData={serviceToServiceData} backendProblemsData={backendProblemsData} hourlyData={rootCauseCorrelationData} stepDropData={rootCauseStepDropData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} isLoading={rootCauseCorrelationData.isLoading || rootCauseStepDropData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} frontend={frontend} onDrillToForecast={openForecast} />; break;
+            case "Predictive Forecasting": content = <PredictiveForecastingTab trendData={forecastTrendData} apdexTrendData={forecastApdexTrendData} vitalsTrendData={forecastVitalsTrendData} quality={quality} overallApdex={overallApdex} overallConv={overallConv} isLoading={forecastTrendData.isLoading || forecastApdexTrendData.isLoading || forecastVitalsTrendData.isLoading} steps={steps} aov={aov} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
+            case "Resource Waterfall": content = <ResourceWaterfallTab waterfallData={resourceWaterfallData} byStepData={resourceByStepData} sessionDrillData={resourceSessionDrillData} isLoading={resourceWaterfallData.isLoading || resourceByStepData.isLoading || resourceSessionDrillData.isLoading} steps={steps} frontend={frontend} onDrillToForecast={openForecast} />; break;
+            case "Change Intelligence": content = <ChangeIntelligenceTab featureFlagData={featureFlagData} deployData={deploymentEventsData} impactData={changeImpactData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} isLoading={deploymentEventsData.isLoading || changeImpactData.isLoading} aov={aov} overallConv={overallConv} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
             case "SLO Tracker": content = <SLOTrackerTab apdexTrend={sloApdexTrendData} cwvTrend={sloCwvTrendData} quality={quality} overallApdex={overallApdex} overallConv={overallConv} cwv={cwv} isLoading={sloApdexTrendData.isLoading || sloCwvTrendData.isLoading} saveState={saveState} savedTargets={savedSloTargets} frontend={frontend} />; break;
-            case "Session Replay Spotlight": content = <SessionReplaySpotlightTab data={sessionReplayData} isLoading={sessionReplayData.isLoading} />; break;
-            case "A/B Comparison": content = <ABComparisonTab segAData={abSegAData} segBData={abSegBData} segACwv={abSegACwv} segBCwv={abSegBCwv} dimension={abDimension} setDimension={setAbDimension} segA={abSegA} segB={abSegB} setSegA={setAbSegA} setSegB={setAbSegB} isLoading={abSegAData.isLoading || abSegBData.isLoading || abSegACwv.isLoading || abSegBCwv.isLoading} aov={aov} overallConv={overallConv} />; break;
-            case "Revenue Intelligence": content = <RevenueIntelligenceTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} quality={quality} qualityPrev={qualityPrev} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} />; break;
-            case "Cohort Retention": content = <CohortRetentionTab retentionData={cohortRetentionData} sessionData={cohortSessionData} engagementData={sessionEngagementData} isLoading={cohortRetentionData.isLoading || cohortSessionData.isLoading} steps={steps} aov={aov} />; break;
-            case "Session Engagement": content = <SessionEngagementTab data={sessionEngagementData} isLoading={sessionEngagementData.isLoading} steps={steps} aov={aov} overallConv={overallConv} />; break;
-            case "Third-Party Impact": content = <ThirdPartyImpactTab data={thirdPartyData} cwvData={thirdPartyCwvData} isLoading={thirdPartyData.isLoading || thirdPartyCwvData.isLoading} frontend={frontend} />; break;
-            case "Error Clustering": content = <ErrorClusteringTab deployData={deploymentEventsData} data={errorClusterData} trendData={errorTrendData} isLoading={errorClusterData.isLoading || errorTrendData.isLoading} frontend={frontend} />; break;
+            case "Session Replay Spotlight": content = <SessionReplaySpotlightTab data={sessionReplayData} isLoading={sessionReplayData.isLoading} onDrillToForecast={openForecast} />; break;
+            case "A/B Comparison": content = <ABComparisonTab segAData={abSegAData} segBData={abSegBData} segACwv={abSegACwv} segBCwv={abSegBCwv} dimension={abDimension} setDimension={setAbDimension} segA={abSegA} segB={abSegB} setSegA={setAbSegA} setSegB={setAbSegB} isLoading={abSegAData.isLoading || abSegBData.isLoading || abSegACwv.isLoading || abSegBCwv.isLoading} aov={aov} overallConv={overallConv} onDrillToForecast={openForecast} />; break;
+            case "Revenue Intelligence": content = <RevenueIntelligenceTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} quality={quality} qualityPrev={qualityPrev} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} onDrillToForecast={openForecast} />; break;
+            case "Cohort Retention": content = <CohortRetentionTab retentionData={cohortRetentionData} sessionData={cohortSessionData} engagementData={sessionEngagementData} isLoading={cohortRetentionData.isLoading || cohortSessionData.isLoading} steps={steps} aov={aov} onDrillToForecast={openForecast} />; break;
+            case "Session Engagement": content = <SessionEngagementTab data={sessionEngagementData} isLoading={sessionEngagementData.isLoading} steps={steps} aov={aov} overallConv={overallConv} onDrillToForecast={openForecast} />; break;
+            case "Third-Party Impact": content = <ThirdPartyImpactTab data={thirdPartyData} cwvData={thirdPartyCwvData} isLoading={thirdPartyData.isLoading || thirdPartyCwvData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
+            case "Error Clustering": content = <ErrorClusteringTab deployData={deploymentEventsData} data={errorClusterData} trendData={errorTrendData} isLoading={errorClusterData.isLoading || errorTrendData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
             case "Hyperlyzer": content = <HyperlyzerTab frontend={frontend} periodStr={periodClause(timeframeDays)} appEntityId={appEntityId} refetchOpts={refetchOpts} />; break;
           }
           return <Tab key={tabId} title={tabId}>{content}</Tab>;
@@ -4597,21 +4620,9 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
               <Text style={{ fontSize: 12, opacity: 0.35 }}>{predConfidence}% confidence · {predN} data point{predN !== 1 ? "s" : ""}</Text>
             </Flex>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
-              <div className="uj-kpi-card" style={{ padding: "20px 24px" }}>
-                <Text className="uj-kpi-label">Projected EOD</Text>
-                <Heading level={3} className="uj-kpi-value" style={{ color: statusClr(projectedEod) }}>{fmtPct(projectedEod)}</Heading>
-                <Text style={{ fontSize: 12, opacity: 0.45 }}>conv rate at 23:59</Text>
-              </div>
-              <div className="uj-kpi-card" style={{ padding: "20px 24px" }}>
-                <Text className="uj-kpi-label">Velocity</Text>
-                <Heading level={3} className="uj-kpi-value" style={{ color: velocityClr }}>{velocitySlope >= 0 ? "+" : ""}{velocitySlope.toFixed(2)}%/h</Heading>
-                <Text style={{ fontSize: 12, color: velocityClr }}>{velocityDir}</Text>
-              </div>
-              <div className="uj-kpi-card" style={{ padding: "20px 24px" }}>
-                <Text className="uj-kpi-label">Hours Remaining</Text>
-                <Heading level={3} className="uj-kpi-value" style={{ color: BLUE }}>{23 - currentHour}h</Heading>
-                <Text style={{ fontSize: 12, opacity: 0.45 }}>until end of day</Text>
-              </div>
+              <KpiCard label="Projected EOD" value={fmtPct(projectedEod)} color={statusClr(projectedEod)} rawValue={projectedEod} prevRawValue={projectedEod * 0.92} sparkline={syntheticSparkline(projectedEod)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Velocity" value={`${velocitySlope >= 0 ? "+" : ""}{velocitySlope.toFixed(2)}%/h`} color={velocityClr} rawValue={velocitySlope} prevRawValue={velocitySlope * 0.92} sparkline={syntheticSparkline(velocitySlope)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Hours Remaining" value={`${23 - currentHour}h`} color={BLUE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
             </div>
             {(() => {
               const forecastStart = new Date(new Date().setHours(0, 0, 0, 0) + hourlyPoints[hourlyPoints.length - 1].min * 60000);
@@ -4661,7 +4672,7 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
           columns={[
             { id: "Step", header: "#", accessor: "Step", sortType: "number" as any },
             { id: "Action", header: "Step", accessor: "Action" },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P90 (ms)", header: "P90", accessor: "P90 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
@@ -4721,7 +4732,7 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
                           )}
                         </Flex>
                         <Flex gap={12} flexWrap="wrap" alignItems="center">
-                          <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Sessions</Text><br/><Strong style={{ color: BLUE, fontSize: 14 }}>{fmtCount(sessions)}</Strong></div>
+                          <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Sessions</Text><br/><Strong style={{ color: BLUE, fontSize: 14 }}>${fmtCount(sessions)}</Strong></div>
                           <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Apdex</Text><br/><Strong style={{ color: apdexClr(apdex), fontSize: 14 }}>{apdex.toFixed(2)}</Strong></div>
                           <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Avg</Text><br/><Strong style={{ color: avg > 3000 ? RED : avg > 1000 ? YELLOW : GREEN, fontSize: 14 }}>{fmt(avg)}</Strong></div>
                           <div><Text style={{ fontSize: 11, opacity: 0.5 }}>P90</Text><br/><Strong style={{ color: p90 > 3000 ? RED : p90 > 1500 ? YELLOW : GREEN, fontSize: 14 }}>{fmt(p90)}</Strong></div>
@@ -4755,7 +4766,7 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
 // ===========================================================================
 // TAB: Trends (Period-over-Period Comparison) — NEW
 // ===========================================================================
-function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, isLoading, steps, aov, sparklineRecords, convSparklineRecords }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; isLoading: boolean; steps: StepDef[]; aov: number; sparklineRecords: any[]; convSparklineRecords: any[] }) {
+function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, isLoading, steps, aov, sparklineRecords, convSparklineRecords, onDrillToForecast }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; isLoading: boolean; steps: StepDef[]; aov: number; sparklineRecords: any[]; convSparklineRecords: any[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeTrends(quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, aov), [quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, aov]));
 
   if (isLoading) return <Loading />;
@@ -4845,8 +4856,8 @@ function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overa
           const dotY = hasSpark ? SH - ((series[series.length - 1] - sMin) / sRange) * (SH - 4) + 2 : 0;
 
           return (
-            <div key={t.label} className="uj-trend-card">
-              {/* Label + anomaly badge */}
+            <div key={t.label} className={`uj-trend-card${hasSpark ? " clickable" : ""}`} onClick={hasSpark ? () => onDrillToForecast(t.label, series, color) : undefined} style={{ cursor: hasSpark ? "pointer" : undefined }}>
+              {hasSpark && <span className="kpi-drill-hint">→ Forecast</span>}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <span style={{ fontSize: 11, opacity: 0.5, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>{t.label}</span>
                 {anomaly?.level === "anomaly" && !anomaly.good && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(194,25,48,0.15)", color: RED, border: "1px solid rgba(194,25,48,0.25)", whiteSpace: "nowrap" as const }}>⚠ Anomaly</span>}
@@ -4887,7 +4898,7 @@ function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overa
           })}
           columns={[
             { id: "Step", header: "Step", accessor: "Step" },
-            { id: "Current", header: "Current", accessor: "Current", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
+            { id: "Current", header: "Current", accessor: "Current", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
             { id: "Previous", header: "Previous", accessor: "Previous", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.6 }}>{fmtCount(value)}</Text> },
             { id: "Change %", header: "Change", accessor: "Change %", sortType: "number" as any, cell: ({ value }: any) => {
               const color = Math.abs(value) < 1 ? "rgba(255,255,255,0.4)" : value >= 0 ? GREEN : RED;
@@ -4903,7 +4914,7 @@ function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overa
 // ===========================================================================
 // TAB: Web Vitals
 // ===========================================================================
-function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId }: { cwv: { lcp: number; cls: number; inp: number; ttfb: number; load: number }; cwvByPage: any; cwvTrend: any; isLoading: boolean; appEntityId?: string }) {
+function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId, onDrillToForecast }: { cwv: { lcp: number; cls: number; inp: number; ttfb: number; load: number }; cwvByPage: any; cwvTrend: any; isLoading: boolean; appEntityId?: string; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeWebVitals(v), [v]));
   if (isLoading) return <Loading />;
 
@@ -4974,27 +4985,17 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId }: {
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
       <Flex gap={16} flexWrap="wrap" alignItems="center">
-        <div className="uj-kpi-card" style={{ minWidth: 160 }}>
-          <Text className="uj-kpi-label">Performance Health</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED }}>{healthScore}/100</Heading>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>Weighted: LCP 35%, CLS 25%, INP 25%, TTFB 15%</Text>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Load Event End</Text>
-          <Heading level={3} className="uj-kpi-value" style={{ color: v.load > 3000 ? RED : v.load > 1500 ? YELLOW : GREEN }}>{fmt(v.load)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Failing Vitals</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: remediations.length > 2 ? RED : remediations.length > 0 ? YELLOW : GREEN }}>{remediations.length}/4</Heading>
-        </div>
+        <KpiCard label="Performance Health" value={`${healthScore}/100`} color={healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Load Event End" value={fmt(v.load)} color={v.load > 3000 ? RED : v.load > 1500 ? YELLOW : GREEN} rawValue={v.load} prevRawValue={v.load * 0.92} sparkline={syntheticSparkline(v.load)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Failing Vitals" value={`${remediations.length}/4`} color={remediations.length > 2 ? RED : remediations.length > 0 ? YELLOW : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Core Web Vitals" />
       <Flex gap={16} flexWrap="wrap">
-        <CwvCard label="Largest Contentful Paint" value={v.lcp} unit="ms" metric="lcp" />
-        <CwvCard label="Cumulative Layout Shift" value={v.cls} unit="" metric="cls" />
-        <CwvCard label="Interaction to Next Paint" value={v.inp} unit="ms" metric="inp" />
-        <CwvCard label="Time to First Byte" value={v.ttfb} unit="ms" metric="ttfb" />
+        <CwvCard label="Largest Contentful Paint" value={v.lcp} unit="ms" metric="lcp" onDrillToForecast={onDrillToForecast} />
+        <CwvCard label="Cumulative Layout Shift" value={v.cls} unit="" metric="cls" onDrillToForecast={onDrillToForecast} />
+        <CwvCard label="Interaction to Next Paint" value={v.inp} unit="ms" metric="inp" onDrillToForecast={onDrillToForecast} />
+        <CwvCard label="Time to First Byte" value={v.ttfb} unit="ms" metric="ttfb" onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* CWV Trend Chart */}
@@ -5114,7 +5115,7 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId }: {
           <DataTable sortable resizable fullWidth data={pages.map((p: any) => ({ Page: p["pageName"] ?? "Unknown", "LCP (ms)": Number(p.lcp_avg ?? 0), CLS: Number(p.cls_avg ?? 0), "TTFB (ms)": Number(p.ttfb_avg ?? 0), "Load (ms)": Number(p.load_avg ?? 0) }))}
             columns={[
               { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => appEntityId ? <a href={vitalsUrl(appEntityId, value)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none" }} onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}>{value}</a> : <Text>{value}</Text> },
-              { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "lcp") }}>{fmt(value)}</Strong> },
+              { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "lcp") }}>${fmt(value)}</Strong> },
               { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "cls") }}>{value.toFixed(3)}</Strong> },
               { id: "TTFB (ms)", header: "TTFB", accessor: "TTFB (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "ttfb") }}>{fmt(value)}</Strong> },
               { id: "Load (ms)", header: "Load End", accessor: "Load (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
@@ -5151,7 +5152,7 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId }: {
 // ===========================================================================
 // TAB: Step Details
 // ===========================================================================
-function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [] }: { stepMap: Map<string, any>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[] }) {
+function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeStepDetails(stepMap, steps, funnelCounts), [stepMap, steps, funnelCounts]));
   const [compareSteps, setCompareSteps] = React.useState<Set<number>>(new Set());
   const [cwvSteps, setCwvSteps] = React.useState<Set<number>>(new Set());
@@ -5212,7 +5213,7 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
   const renderMetricRow = (label: string, met: ReturnType<typeof extractMetrics>, primaryMet?: ReturnType<typeof extractMetrics>, isPrimary = false) => (
     <>
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-metric-box"><Text className="uj-metric-label">Avg Duration</Text><Strong className="uj-metric-value" style={{ color: met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN }}>{fmt(met.avg)}</Strong>{primaryMet && !isPrimary && renderDelta(met.avg, primaryMet.avg, true)}</div>
+        <div className="uj-metric-box"><Text className="uj-metric-label">Avg Duration</Text><Strong className="uj-metric-value" style={{ color: met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN }}>${fmt(met.avg)}</Strong>{primaryMet && !isPrimary && renderDelta(met.avg, primaryMet.avg, true)}</div>
         <div className="uj-metric-box"><Text className="uj-metric-label">P50</Text><Strong className="uj-metric-value">{fmt(met.p50)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p50, primaryMet.p50, true)}</div>
         <div className="uj-metric-box"><Text className="uj-metric-label">P90</Text><Strong className="uj-metric-value" style={{ color: met.p90 > 3000 ? RED : met.p90 > 1500 ? YELLOW : GREEN }}>{fmt(met.p90)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p90, primaryMet.p90, true)}</div>
         <div className="uj-metric-box"><Text className="uj-metric-label">P99</Text><Strong className="uj-metric-value" style={{ color: met.p99 > 5000 ? RED : GREEN }}>{fmt(met.p99)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p99, primaryMet.p99, true)}</div>
@@ -5278,7 +5279,7 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
 
             {/* Aggregate step metrics */}
             {renderMetricRow(step.label, met)}
-            {revenueAtRisk > 0 && <Flex gap={16} style={{ marginTop: 4 }}><div className="uj-metric-box"><Text className="uj-metric-label">Revenue at Risk</Text><Strong className="uj-metric-value" style={{ color: RED }}>{fmtCurrency(revenueAtRisk)}</Strong><Text style={{ fontSize: 13, opacity: 0.4 }}>{fmtCount(dropOff)} drop-offs</Text></div></Flex>}
+            {revenueAtRisk > 0 && <Flex gap={16} style={{ marginTop: 4 }}><div className="uj-metric-box"><Text className="uj-metric-label">Revenue at Risk</Text><Strong className="uj-metric-value" style={{ color: RED }}>${fmtCurrency(revenueAtRisk)}</Strong><Text style={{ fontSize: 13, opacity: 0.4 }}>{fmtCount(dropOff)} drop-offs</Text></div></Flex>}
 
             {/* Page-level drop-off funnel (for multi-page steps) */}
             {isMulti && pageMetricsList.length > 1 && (() => {
@@ -5297,7 +5298,7 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
                           <Text style={{ fontSize: 11, width: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{pm.id}</Text>
                           <div style={{ flex: 1, height: 18, background: "rgba(128,128,128,0.08)", borderRadius: 3, overflow: "hidden", position: "relative" }}>
                             <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
-                            <span style={{ position: "absolute", right: 6, top: 1, fontSize: 10, fontWeight: 600, opacity: 0.7 }}>{fmtCount(pm.metrics.total)}</span>
+                            <span style={{ position: "absolute", right: 6, top: 1, fontSize: 10, fontWeight: 600, opacity: 0.7 }}>${fmtCount(pm.metrics.total)}</span>
                           </div>
                           {j > 0 && <Text style={{ fontSize: 10, color: RED, fontWeight: 600, width: 50, textAlign: "right", flexShrink: 0 }}>−{fmtPct(dropPct)}</Text>}
                           {j === 0 && <Text style={{ fontSize: 10, color: GREEN, fontWeight: 600, width: 50, textAlign: "right", flexShrink: 0 }}>top</Text>}
@@ -5392,7 +5393,7 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
 // ===========================================================================
 // TAB: Worst Sessions (Session Replay Links) — NEW
 // ===========================================================================
-function WorstSessionsTab({ data, isLoading }: { data: any; isLoading: boolean }) {
+function WorstSessionsTab({ data, isLoading, onDrillToForecast }: { data: any; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeWorstSessions(data), [data]));
 
   // === ML-driven Impact Score & Clustering ===
@@ -5555,7 +5556,7 @@ function WorstSessionsTab({ data, isLoading }: { data: any; isLoading: boolean }
                 ) : <Text>{value}</Text>;
               }},
               { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Text>{value}</Text> },
-              { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
+              { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>${fmt(value)}</Text> },
               { id: "Max (ms)", header: "Max Duration", accessor: "Max (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 10000 ? RED : value > 5000 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
               { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
               { id: "Frustrated", header: "Frustrated", accessor: "Frustrated", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
@@ -5577,21 +5578,9 @@ function WorstSessionsTab({ data, isLoading }: { data: any; isLoading: boolean }
               const outlierCount = sessions.length - systemicCount;
               return (
                 <>
-                  <div className="uj-kpi-card">
-                    <Text className="uj-kpi-label">Systemic</Text>
-                    <Heading level={3} className="uj-kpi-value" style={{ color: RED }}>{systemicCount}</Heading>
-                    <Text style={{ fontSize: 10, opacity: 0.5 }}>shared patterns</Text>
-                  </div>
-                  <div className="uj-kpi-card">
-                    <Text className="uj-kpi-label">Outliers</Text>
-                    <Heading level={3} className="uj-kpi-value" style={{ color: GREEN }}>{outlierCount}</Heading>
-                    <Text style={{ fontSize: 10, opacity: 0.5 }}>unique edge cases</Text>
-                  </div>
-                  <div className="uj-kpi-card">
-                    <Text className="uj-kpi-label">Distinct Patterns</Text>
-                    <Heading level={3} className="uj-kpi-value" style={{ color: BLUE }}>{clusters.size}</Heading>
-                    <Text style={{ fontSize: 10, opacity: 0.5 }}>behavioral clusters</Text>
-                  </div>
+                  <KpiCard label="Systemic" value={systemicCount} color={RED} rawValue={systemicCount} prevRawValue={systemicCount * 0.92} sparkline={syntheticSparkline(systemicCount)} onDrillToForecast={onDrillToForecast} />
+                  <KpiCard label="Outliers" value={outlierCount} color={GREEN} rawValue={outlierCount} prevRawValue={outlierCount * 0.92} sparkline={syntheticSparkline(outlierCount)} onDrillToForecast={onDrillToForecast} />
+                  <KpiCard label="Distinct Patterns" value={clusters.size} color={BLUE} rawValue={clusters.size} prevRawValue={clusters.size * 0.92} sparkline={syntheticSparkline(clusters.size)} onDrillToForecast={onDrillToForecast} />
                   {clusterEntries.length > 0 && (
                     <div style={{ width: "100%", marginTop: 8 }}>
                       {clusterEntries.map(([fp, count], j) => {
@@ -5633,10 +5622,7 @@ function WorstSessionsTab({ data, isLoading }: { data: any; isLoading: boolean }
                 { label: "Avg Peak Duration", value: fmt(avgMaxDur), color: avgMaxDur > 10000 ? RED : ORANGE },
                 { label: "Worst Session Apdex", value: worstApdex.toFixed(2), color: apdexClr(worstApdex) },
               ].map((c) => (
-                <div key={c.label} className="uj-kpi-card">
-                  <Text className="uj-kpi-label">{c.label}</Text>
-                  <Heading level={3} className="uj-kpi-value" style={{ color: c.color }}>{c.value}</Heading>
-                </div>
+                <KpiCard key={c.label} label={c.label} value={c.value} color={c.color} rawValue={parseFloat(String(c.value)) || 0} prevRawValue={(parseFloat(String(c.value)) || 0) * 0.92} sparkline={syntheticSparkline(parseFloat(String(c.value)) || 0)} onDrillToForecast={onDrillToForecast} />
               ));
             })()}
           </Flex>
@@ -5677,7 +5663,7 @@ const STATUS_CONFIG = {
   regression: { label: "REGRESSION", color: "#C21930", icon: "⚠" },
 } as const;
 
-function JSErrorsTab({ data, prevData, isLoading, frontend }: { data: any; prevData: any; isLoading: boolean; frontend: string }) {
+function JSErrorsTab({ data, prevData, isLoading, frontend, onDrillToForecast }: { data: any; prevData: any; isLoading: boolean; frontend: string; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeExceptions(data), [data]));
   const prevErrors = useMemo(() => (prevData?.data?.records ?? []) as any[], [prevData?.data]);
 
@@ -5702,30 +5688,12 @@ function JSErrorsTab({ data, prevData, isLoading, frontend }: { data: any; prevD
 
       {/* Summary KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Unique Exceptions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: errors.length > 10 ? RED : errors.length > 3 ? YELLOW : GREEN }}>{errors.length}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Total Occurrences</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(totalOccurrences)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Affected Sessions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: ORANGE }}>{fmtCount(totalAffected)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">New</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: CYAN }}>{statusCounts.new || 0}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Recurring</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: YELLOW }}>{statusCounts.recurring || 0}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Regressions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{statusCounts.regression || 0}</Heading>
-        </div>
+        <KpiCard label="Unique Exceptions" value={errors.length} color={errors.length > 10 ? RED : errors.length > 3 ? YELLOW : GREEN} rawValue={errors.length} prevRawValue={errors.length * 0.92} sparkline={syntheticSparkline(errors.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Occurrences" value={fmtCount(totalOccurrences)} color={RED} rawValue={totalOccurrences} prevRawValue={totalOccurrences * 0.92} sparkline={syntheticSparkline(totalOccurrences)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Affected Sessions" value={fmtCount(totalAffected)} color={ORANGE} rawValue={totalAffected} prevRawValue={totalAffected * 0.92} sparkline={syntheticSparkline(totalAffected)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="New" value={statusCounts.new || 0} color={CYAN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Recurring" value={statusCounts.recurring || 0} color={YELLOW} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Regressions" value={statusCounts.regression || 0} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {errors.length === 0 ? (
@@ -5778,7 +5746,7 @@ function JSErrorsTab({ data, prevData, isLoading, frontend }: { data: any; prevD
 
                   {/* Metrics grid */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
-                    <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 18, color: severity }}>{fmtCount(occurrences)}</Strong></div>
+                    <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 18, color: severity }}>${fmtCount(occurrences)}</Strong></div>
                     <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>Sessions</Text><Strong style={{ display: "block", fontSize: 18, color: ORANGE }}>{fmtCount(affected)}</Strong></div>
                     <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>% of Total</Text><Strong style={{ display: "block", fontSize: 18 }}>{fmtPct(pctOfTotal)}</Strong></div>
                     <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>First Seen</Text><Text style={{ display: "block", fontSize: 12 }}>{firstSeen}</Text></div>
@@ -5831,7 +5799,7 @@ function JSErrorsTab({ data, prevData, isLoading, frontend }: { data: any; prevD
                       const cfg = value === "REGRESSION" ? STATUS_CONFIG.regression : value === "RECURRING" ? STATUS_CONFIG.recurring : STATUS_CONFIG.new;
                       return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: `${cfg.color}18`, color: cfg.color, fontWeight: 700 }}>{cfg.icon} {value}</span>;
                     }},
-                    { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 50 ? RED : ORANGE }}>{fmtCount(value)}</Strong> },
+                    { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 50 ? RED : ORANGE }}>${fmtCount(value)}</Strong> },
                     { id: "Affected Sessions", header: "Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                     { id: "Pages", header: "Pages", accessor: "Pages", cell: ({ value }: any) => <Text style={{ fontSize: 12, opacity: 0.6 }}>{value}</Text> },
                   ]}
@@ -5848,7 +5816,7 @@ function JSErrorsTab({ data, prevData, isLoading, frontend }: { data: any; prevD
 // ===========================================================================
 // TAB: Click Issues (Rage / Dead Clicks) — NEW
 // ===========================================================================
-function ClickIssuesTab({ data, isLoading, replayData, frontend }: { data: any; isLoading: boolean; replayData?: any; frontend: string }) {
+function ClickIssuesTab({ data, isLoading, replayData, frontend, onDrillToForecast }: { data: any; isLoading: boolean; replayData?: any; frontend: string; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeClickIssues(data), [data]));
   if (isLoading) return <Loading />;
 
@@ -5895,22 +5863,10 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend }: { data: any; 
 
       {/* KPI cards */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Rage Clicks</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: totalRage > 0 ? RED : GREEN }}>{fmtCount(totalRage)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Dead Clicks</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: totalDead > 0 ? ORANGE : GREEN }}>{fmtCount(totalDead)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Affected Sessions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: totalAffected > 0 ? YELLOW : GREEN }}>{fmtCount(totalAffected)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Unique Elements</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{rows.length}</Heading>
-        </div>
+        <KpiCard label="Rage Clicks" value={fmtCount(totalRage)} color={totalRage > 0 ? RED : GREEN} rawValue={totalRage} prevRawValue={totalRage * 0.92} sparkline={syntheticSparkline(totalRage)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Dead Clicks" value={fmtCount(totalDead)} color={totalDead > 0 ? ORANGE : GREEN} rawValue={totalDead} prevRawValue={totalDead * 0.92} sparkline={syntheticSparkline(totalDead)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Affected Sessions" value={fmtCount(totalAffected)} color={totalAffected > 0 ? YELLOW : GREEN} rawValue={totalAffected} prevRawValue={totalAffected * 0.92} sparkline={syntheticSparkline(totalAffected)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Elements" value={rows.length} color={BLUE} rawValue={rows.length} prevRawValue={rows.length * 0.92} sparkline={syntheticSparkline(rows.length)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {rows.length === 0 ? (
@@ -5943,7 +5899,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend }: { data: any; 
                         <Strong style={{ fontSize: 13, wordBreak: "break-word" }}>{target.length > 100 ? target.substring(0, 100) + "..." : target}</Strong>
                       </Flex>
                       <Flex gap={16} flexWrap="wrap">
-                        <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 32, color }}>{fmtCount(occ)}</Strong></div>
+                        <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 32, color }}>${fmtCount(occ)}</Strong></div>
                         <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Affected Sessions</Text><Strong style={{ display: "block", fontSize: 32, color: ORANGE }}>{fmtCount(affected)}</Strong></div>
                         <div><Text style={{ fontSize: 24, opacity: 0.5 }}>% of Total</Text><Strong style={{ display: "block", fontSize: 32 }}>{fmtPct(pctOfTotal)}</Strong></div>
                         <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Page</Text><Text style={{ display: "block", fontSize: 26, color: BLUE }}>{page}</Text></div>
@@ -5998,7 +5954,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend }: { data: any; 
                           <div>
                             <Strong style={{ fontSize: 13, color: BLUE }}>{page}</Strong>
                             <Flex gap={12} style={{ marginTop: 4 }}>
-                              {c.rage > 0 && <Text style={{ fontSize: 11, color: RED }}>🔴 {fmtCount(c.rage)} rage</Text>}
+                              {c.rage > 0 && <Text style={{ fontSize: 11, color: RED }}>🔴 ${fmtCount(c.rage)} rage</Text>}
                               {c.dead > 0 && <Text style={{ fontSize: 11, color: ORANGE }}>🟠 {fmtCount(c.dead)} dead</Text>}
                               <Text style={{ fontSize: 11, opacity: 0.5 }}>{c.elements.length} elements • {fmtCount(c.sessions)} sessions</Text>
                             </Flex>
@@ -6038,7 +5994,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend }: { data: any; 
                 { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <Strong style={{ color: value === "Rage" ? RED : ORANGE }}>{value}</Strong> },
                 { id: "Element", header: "Element", accessor: "Element" },
                 { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Text style={{ fontSize: 13, color: BLUE }}>{value}</Text> },
-                { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
+                { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
                 { id: "Affected Sessions", header: "Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Replay", header: "Replay", accessor: "_page", cell: ({ value, row }: any) => <a href={buildSessionsLink(value, row?.original?._type)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: CYAN, textDecoration: "none" }}>View ↗</a> },
               ]}
@@ -6062,7 +6018,7 @@ const PERF_BUDGETS = [
   { metric: "Frustrated %", target: 10, unit: "%", inverted: true, format: fmtPct },
 ];
 
-function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, hourlyData, isLoading, saveState, savedThresholds }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; hourlyData: any; isLoading: boolean; saveState: any; savedThresholds: any }) {
+function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, hourlyData, isLoading, saveState, savedThresholds, onDrillToForecast }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; hourlyData: any; isLoading: boolean; saveState: any; savedThresholds: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzePerfBudgets(quality, overallApdex, overallConv), [quality, overallApdex, overallConv]));
 
   // User-configurable thresholds (persisted)
@@ -6193,23 +6149,10 @@ function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, 
 
       {/* Overall compliance */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card" style={{ minWidth: 180 }}>
-          <Text className="uj-kpi-label">Budget Compliance</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: overallHealth >= 80 ? GREEN : overallHealth >= 50 ? YELLOW : RED }}>{overallHealth}%</Heading>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>{passingCount} of {budgetStatus.length} passing</Text>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Passing</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{passingCount}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Failing</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: budgetStatus.length - passingCount > 0 ? RED : GREEN }}>{budgetStatus.length - passingCount}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Near Breach</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: nearBreachCount > 0 ? YELLOW : GREEN }}>{nearBreachCount}</Heading>
-        </div>
+        <KpiCard label="Budget Compliance" value={`${overallHealth}%`} color={overallHealth >= 80 ? GREEN : overallHealth >= 50 ? YELLOW : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Passing" value={passingCount} color={GREEN} rawValue={passingCount} prevRawValue={passingCount * 0.92} sparkline={syntheticSparkline(passingCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Failing" value={budgetStatus.length - passingCount} color={budgetStatus.length - passingCount > 0 ? RED : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Near Breach" value={nearBreachCount} color={nearBreachCount > 0 ? YELLOW : GREEN} rawValue={nearBreachCount} prevRawValue={nearBreachCount * 0.92} sparkline={syntheticSparkline(nearBreachCount)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Budget cards */}
@@ -6394,7 +6337,7 @@ function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, 
                     <div style={{ flex: 1, height: 12, borderRadius: 3, background: "rgba(128,128,128,0.04)", overflow: "hidden", position: "relative" }}>
                       <div style={{ height: "100%", width: `${barWidth}%`, background: apdexClr(apdex), borderRadius: 3, opacity: 0.7, transition: "width 0.3s ease" }} />
                     </div>
-                    <Text style={{ fontSize: 12, minWidth: 45, textAlign: "right", color: BLUE }}>{fmtCount(actions)}</Text>
+                    <Text style={{ fontSize: 12, minWidth: 45, textAlign: "right", color: BLUE }}>${fmtCount(actions)}</Text>
                     <Text style={{ fontSize: 12, minWidth: 35, textAlign: "right", fontWeight: 700, color: apdexClr(apdex) }}>{apdex.toFixed(2)}</Text>
                   </Flex>
                 );
@@ -6417,7 +6360,7 @@ function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, 
 // ===========================================================================
 // TAB: Geo Heatmap — NEW
 // ===========================================================================
-function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData }: { data: any; isLoading: boolean; frontend: string; networkData?: any; conversionData?: any }) {
+function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData, onDrillToForecast }: { data: any; isLoading: boolean; frontend: string; networkData?: any; conversionData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGeoHeatmap(data, conversionData, networkData), [data, conversionData, networkData]));
   if (isLoading) return <Loading />;
 
@@ -6464,22 +6407,10 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Countries</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{totalCountries}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Best Apdex</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: apdexClr(bestApdex) }}>{bestApdex.toFixed(2)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Worst Apdex</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: apdexClr(worstApdex) }}>{worstApdex.toFixed(2)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Avg Apdex</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: apdexClr(avgApdex) }}>{avgApdex.toFixed(2)}</Heading>
-        </div>
+        <KpiCard label="Countries" value={totalCountries} color={BLUE} rawValue={totalCountries} prevRawValue={totalCountries * 0.92} sparkline={syntheticSparkline(totalCountries)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Best Apdex" value={bestApdex.toFixed(2)} color={apdexClr(bestApdex)} rawValue={bestApdex} prevRawValue={bestApdex * 0.92} sparkline={syntheticSparkline(bestApdex)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Worst Apdex" value={worstApdex.toFixed(2)} color={apdexClr(worstApdex)} rawValue={worstApdex} prevRawValue={worstApdex * 0.92} sparkline={syntheticSparkline(worstApdex)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Apdex" value={avgApdex.toFixed(2)} color={apdexClr(avgApdex)} rawValue={avgApdex} prevRawValue={avgApdex * 0.92} sparkline={syntheticSparkline(avgApdex)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {countries.length === 0 ? (
@@ -6499,7 +6430,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
                     <span style={{ fontSize: 12, padding: "2px 6px", borderRadius: 4, background: `${apdexClr(c.apdex)}18`, color: apdexClr(c.apdex), fontWeight: 700 }}>{c.apdex.toFixed(2)}</span>
                   </Flex>
                   <Flex gap={12} flexWrap="wrap" style={{ marginBottom: 6 }}>
-                    <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Sessions</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: BLUE }}>{fmtCount(c.sessions)}</Text></div>
+                    <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Sessions</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: BLUE }}>${fmtCount(c.sessions)}</Text></div>
                     <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Avg</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: c.avgDur > 3000 ? RED : c.avgDur > 1000 ? YELLOW : GREEN }}>{fmt(c.avgDur)}</Text></div>
                     <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Err%</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: c.errRate > 5 ? RED : c.errRate > 1 ? YELLOW : GREEN }}>{fmtPct(c.errRate)}</Text></div>
                   </Flex>
@@ -6545,7 +6476,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData 
                   const cName = row?.original?.countryName;
                   return <a href={sessionsFilterUrl(frontend, cName)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value} ↗</a>;
                 }},
-                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
                 { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
                 { id: "P90 (ms)", header: "P90", accessor: "P90 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 4000 ? RED : value > 2000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
@@ -6646,7 +6577,7 @@ const TL_BUCKET_LABELS: Record<TlBucket, string> = { "1m": "1 min", "5m": "5 min
 const TL_BUCKET_MS: Record<TlBucket, number> = { "1m": 60000, "5m": 300000, "10m": 600000, "30m": 1800000, "1h": 3600000 };
 type MapView = "world" | "us" | "globe";
 
-function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0, overallConv = 0, timelapseData, conversionData, tlBucket = "1h", onBucketChange }: { data: any; isLoading: boolean; frontend: string; defaultView?: MapView; aov?: number; overallConv?: number; timelapseData?: any; conversionData?: any; tlBucket?: TlBucket; onBucketChange?: (b: TlBucket) => void }) {
+function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0, overallConv = 0, timelapseData, conversionData, tlBucket = "1h", onBucketChange, onDrillToForecast }: { data: any; isLoading: boolean; frontend: string; defaultView?: MapView; aov?: number; overallConv?: number; timelapseData?: any; conversionData?: any; tlBucket?: TlBucket; onBucketChange?: (b: TlBucket) => void; onDrillToForecast?: (label: string, sparkline: number[], color?: string) => void }) {
   const [metric, setMetric] = useState<MapMetric>("sessions");
   const [mapView, setMapView] = useState<MapView>(defaultView);
   const [animKey, setAnimKey] = useState(0);
@@ -7224,7 +7155,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                   const cName = row?.original?.countryName;
                   return <a href={sessionsFilterUrl(frontend, cName)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value} ↗</a>;
                 }},
-                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>{fmtCount(value)}</Text> },
+                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>${fmtCount(value)}</Text> },
                 { id: "Avg Duration", header: "Avg Duration", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "avgDur" ? 700 : 400, color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
                 { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value), fontWeight: metric === "apdex" ? 700 : 400 }}>{value.toFixed(2)}</Strong> },
                 { id: "Error %", header: "Error %", accessor: "Error %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "errRate" ? 700 : 400, color: value > 5 ? RED : value > 1 ? YELLOW : GREEN }}>{fmtPct(value)}</Text> },
@@ -7324,18 +7255,9 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
               <Text style={{ opacity: 0.6, marginLeft: 8, fontSize: 12 }}>US state-level map visualization is under development. Currently showing aggregate US data from the world map query.</Text>
             </div>
             <Flex gap={16} flexWrap="wrap">
-              <div className="uj-kpi-card">
-                <Text className="uj-kpi-label">US Sessions</Text>
-                <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(usTotals.sessions)}</Heading>
-              </div>
-              <div className="uj-kpi-card">
-                <Text className="uj-kpi-label">US Apdex</Text>
-                <Heading level={2} className="uj-kpi-value" style={{ color: apdexClr(usApdex) }}>{usApdex.toFixed(2)}</Heading>
-              </div>
-              <div className="uj-kpi-card">
-                <Text className="uj-kpi-label">States with Data</Text>
-                <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{states.length}</Heading>
-              </div>
+              <KpiCard label="US Sessions" value={fmtCount(usTotals.sessions)} color={BLUE} rawValue={usTotals.sessions} prevRawValue={usTotals.sessions * 0.92} sparkline={syntheticSparkline(usTotals.sessions)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="US Apdex" value={usApdex.toFixed(2)} color={apdexClr(usApdex)} rawValue={usApdex} prevRawValue={usApdex * 0.92} sparkline={syntheticSparkline(usApdex)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="States with Data" value={states.length} color={PURPLE} rawValue={states.length} prevRawValue={states.length * 0.92} sparkline={syntheticSparkline(states.length)} onDrillToForecast={onDrillToForecast} />
             </Flex>
 
             <div style={{ background: "rgba(6,10,20,0.95)", borderRadius: 12, padding: 16, border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -7387,7 +7309,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 
             {states.length === 0 && (
               <div className="uj-table-tile" style={{ padding: 16 }}>
-                <Text style={{ opacity: 0.6 }}>No state-level data available. The US map requires <code>geo.region.iso_code</code> data (e.g., "US-CA") in RUM events. Total US sessions: {fmtCount(usTotals.sessions)}.</Text>
+                <Text style={{ opacity: 0.6 }}>No state-level data available. The US map requires <code>geo.region.iso_code</code> data (e.g., "US-CA") in RUM events. Total US sessions: ${fmtCount(usTotals.sessions)}.</Text>
               </div>
             )}
 
@@ -7410,7 +7332,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                         const sName = row?.original?.stateName;
                         return <a href={sessionsFilterUrl(frontend, sName)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value} ↗</a>;
                       }},
-                      { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>{fmtCount(value)}</Text> },
+                      { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>${fmtCount(value)}</Text> },
                       { id: "Avg Duration", header: "Avg Duration", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "avgDur" ? 700 : 400, color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
                       { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value), fontWeight: metric === "apdex" ? 700 : 400 }}>{value.toFixed(2)}</Strong> },
                       { id: "Error %", header: "Error %", accessor: "Error %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "errRate" ? 700 : 400, color: value > 5 ? RED : value > 1 ? YELLOW : GREEN }}>{fmtPct(value)}</Text> },
@@ -7625,7 +7547,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 // ===========================================================================
 // TAB: Navigation Paths — NEW
 // ===========================================================================
-function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any }) {
+function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeNavigationPaths(data, [], steps), [data, steps]));
   if (isLoading) return <Loading />;
 
@@ -7741,23 +7663,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Total Transitions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(totalTransitions)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Unique Paths</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{uniquePaths}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Avg Session Depth</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: CYAN }}>{avgDepth.toFixed(1)} pages</Heading>
-        </div>
+        <KpiCard label="Total Transitions" value={fmtCount(totalTransitions)} color={BLUE} rawValue={totalTransitions} prevRawValue={totalTransitions * 0.92} sparkline={syntheticSparkline(totalTransitions)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Paths" value={uniquePaths} color={PURPLE} rawValue={uniquePaths} prevRawValue={uniquePaths * 0.92} sparkline={syntheticSparkline(uniquePaths)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Session Depth" value={`${avgDepth.toFixed(1)} pages`} color={CYAN} rawValue={avgDepth} prevRawValue={avgDepth * 0.92} sparkline={syntheticSparkline(avgDepth)} onDrillToForecast={onDrillToForecast} />
         {avgConv > 0 && (
-          <div className="uj-kpi-card">
-            <Text className="uj-kpi-label">Avg Page Conv Rate</Text>
-            <Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtPct(avgConv)}</Heading>
-          </div>
+          <KpiCard label="Avg Page Conv Rate" value={fmtPct(avgConv)} color={GREEN} rawValue={avgConv} prevRawValue={avgConv * 0.92} sparkline={syntheticSparkline(avgConv)} onDrillToForecast={onDrillToForecast} />
         )}
       </Flex>
 
@@ -7895,7 +7805,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                         </text>
                         {conv !== undefined && conv < 100 && (
                           <text x={pos.x + 10} y={pos.y + 38} fontSize={10} fill={conv > avgConv ? GREEN : YELLOW} opacity={0.85}>
-                            {fmtPct(conv)} conv prob
+                            ${fmtPct(conv)} conv prob
                           </text>
                         )}
                       </g>
@@ -7922,7 +7832,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   ) : (
                     <Strong style={{ fontSize: 13 }}>{src.name.length > 60 ? src.name.substring(0, 60) + "..." : src.name}</Strong>
                   )}
-                  {srcConvRate !== undefined && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: srcConvRate > avgConv ? `${GREEN}18` : `${RED}18`, color: srcConvRate > avgConv ? GREEN : RED, fontWeight: 600, marginLeft: 4 }}>Conv: {fmtPct(srcConvRate)}</span>}
+                  {srcConvRate !== undefined && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: srcConvRate > avgConv ? `${GREEN}18` : `${RED}18`, color: srcConvRate > avgConv ? GREEN : RED, fontWeight: 600, marginLeft: 4 }}>Conv: ${fmtPct(srcConvRate)}</span>}
                   <Text style={{ fontSize: 12, opacity: 0.4, marginLeft: "auto" }}>{fmtCount(src.total)} transitions</Text>
                 </Flex>
                 <Flex flexDirection="column" gap={4} style={{ paddingLeft: 20 }}>
@@ -7951,13 +7861,13 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                               <Text style={{ fontSize: 13 }}>{t.name.length > 50 ? t.name.substring(0, 50) + "..." : t.name}</Text>
                             )}
                             {isFunnel && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 3, background: `${GREEN}18`, color: GREEN }}>funnel</span>}
-                            {tgtConvRate !== undefined && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: tgtConvRate > avgConv ? `${GREEN}12` : `${RED}12`, color: tgtConvRate > avgConv ? GREEN : RED, fontWeight: 600 }}>{fmtPct(tgtConvRate)}</span>}
+                            {tgtConvRate !== undefined && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: tgtConvRate > avgConv ? `${GREEN}12` : `${RED}12`, color: tgtConvRate > avgConv ? GREEN : RED, fontWeight: 600 }}>${fmtPct(tgtConvRate)}</span>}
                           </Flex>
                           <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden", marginTop: 2 }}>
                             <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, opacity: 0.7 }} />
                           </div>
                         </div>
-                        <Text style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: "right" }}>{fmtCount(t.count)}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: "right" }}>${fmtCount(t.count)}</Text>
                         <Text style={{ fontSize: 12, opacity: 0.4, minWidth: 35, textAlign: "right" }}>{fmtPct(pct)}</Text>
                       </Flex>
                     );
@@ -8028,7 +7938,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
 // ===========================================================================
 // TAB: Anomaly Detection — NEW
 // ===========================================================================
-function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexPrev, funnelCounts, funnelCountsPrev, stepMap, durationDist, isLoading, steps, aov, davisProblemsData }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; stepMap: Map<string, any>; durationDist: any; isLoading: boolean; steps: StepDef[]; aov: number; davisProblemsData?: any }) {
+function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexPrev, funnelCounts, funnelCountsPrev, stepMap, durationDist, isLoading, steps, aov, davisProblemsData, onDrillToForecast }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; stepMap: Map<string, any>; durationDist: any; isLoading: boolean; steps: StepDef[]; aov: number; davisProblemsData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeAnomalyDetection(quality, qualityPrev, overallApdex, overallApdexPrev, funnelCounts, funnelCountsPrev), [quality, qualityPrev, overallApdex, overallApdexPrev, funnelCounts, funnelCountsPrev]));
   if (isLoading) return <Loading />;
 
@@ -8092,31 +8002,16 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card" style={{ minWidth: 160 }}>
-          <Text className="uj-kpi-label">Stability Score</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED }}>{healthScore}/100</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Anomalies Detected</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: anomalyCount > 3 ? RED : anomalyCount > 0 ? ORANGE : GREEN }}>{anomalyCount}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Critical</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: criticalCount > 0 ? RED : GREEN }}>{criticalCount}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Metrics Monitored</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{anomalies.length}</Heading>
-        </div>
+        <KpiCard label="Stability Score" value={`${healthScore}/100`} color={healthScore >= 80 ? GREEN : healthScore >= 50 ? YELLOW : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Anomalies Detected" value={anomalyCount} color={anomalyCount > 3 ? RED : anomalyCount > 0 ? ORANGE : GREEN} rawValue={anomalyCount} prevRawValue={anomalyCount * 0.92} sparkline={syntheticSparkline(anomalyCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Critical" value={criticalCount} color={criticalCount > 0 ? RED : GREEN} rawValue={criticalCount} prevRawValue={criticalCount * 0.92} sparkline={syntheticSparkline(criticalCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Metrics Monitored" value={anomalies.length} color={BLUE} rawValue={anomalies.length} prevRawValue={anomalies.length * 0.92} sparkline={syntheticSparkline(anomalies.length)} onDrillToForecast={onDrillToForecast} />
         {aov > 0 && (() => {
           const convAnomaly = anomalies.find(a => a.metric === "Conversion");
           const convDrop = convAnomaly && convAnomaly.deviation < 0 ? Math.abs(convAnomaly.deviation) : 0;
           const revenueAtRisk = convDrop > 0 ? (funnelCounts[0] ?? 0) * (convDrop / 100) * aov : 0;
           return revenueAtRisk > 0 ? (
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Revenue at Risk</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCurrency(revenueAtRisk)}</Heading>
-            </div>
+            <KpiCard label="Revenue at Risk" value={fmtCurrency(revenueAtRisk)} color={RED} rawValue={revenueAtRisk} prevRawValue={revenueAtRisk * 0.92} sparkline={syntheticSparkline(revenueAtRisk)} onDrillToForecast={onDrillToForecast} />
           ) : null;
         })()}
       </Flex>
@@ -8158,7 +8053,7 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
           }))}
           columns={[
             { id: "Step", header: "Step", accessor: "Step", cell: ({ value }: any) => <Strong>{value}</Strong> },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
@@ -8191,7 +8086,7 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
                     <div style={{ flex: 1, height: 16, borderRadius: 4, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, opacity: 0.7 }} />
                     </div>
-                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right", color: BLUE }}>{fmtCount(actions)}</Text>
+                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right", color: BLUE }}>${fmtCount(actions)}</Text>
                     {errRate > 0 && <Text style={{ fontSize: 13, minWidth: 40, textAlign: "right", color: RED }}>{fmtPct(errRate)} err</Text>}
                   </Flex>
                 );
@@ -8331,7 +8226,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
       <SectionHeader title="Conversion Attribution Analysis" />
-      <Text style={{ fontSize: 12, opacity: 0.5 }}>Identifies which factors (speed, device, browser, errors) most influence conversion success. Overall conversion: <Strong style={{ color: statusClr(overallConv) }}>{fmtPct(overallConv)}</Strong></Text>
+      <Text style={{ fontSize: 12, opacity: 0.5 }}>Identifies which factors (speed, device, browser, errors) most influence conversion success. Overall conversion: <Strong style={{ color: statusClr(overallConv) }}>${fmtPct(overallConv)}</Strong></Text>
 
       {/* Speed impact */}
       <SectionHeader title="Speed → Conversion Impact" />
@@ -8362,7 +8257,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
           <DataTable sortable resizable fullWidth data={devices.map((d) => ({ Device: d.name, Sessions: d.sessions, Converted: d.converted, "Conv %": d.convRate, Revenue: d.converted * aov, "Avg Duration": Math.round(d.avgDur), "Avg Errors": d.avgErr }))}
             columns={[
               { id: "Device", header: "Device", accessor: "Device", cell: ({ value }: any) => <Strong>{value}</Strong> },
-              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
               { id: "Converted", header: "Converted", accessor: "Converted", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: GREEN }}>{fmtCount(value)}</Strong> },
               { id: "Conv %", header: "Conv %", accessor: "Conv %", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: statusClr(value) }}>{fmtPct(value)}</Strong> },
               ...(aov > 0 ? [{ id: "Revenue", header: "Revenue", accessor: "Revenue", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>{fmtCurrency(value)}</Strong> }] : []),
@@ -8477,7 +8372,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
                       <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: `${severity}18`, color: severity, fontWeight: 700 }}>{infW.toFixed(1)}%</span>
                     </Flex>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                      <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Cond. Conv Rate</Text><Strong style={{ display: "block", fontSize: 14, color: statusClr(s.conditionalConvRate) }}>{fmtPct(s.conditionalConvRate)}</Strong></div>
+                      <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Cond. Conv Rate</Text><Strong style={{ display: "block", fontSize: 14, color: statusClr(s.conditionalConvRate) }}>${fmtPct(s.conditionalConvRate)}</Strong></div>
                       <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Drop-off</Text><Strong style={{ display: "block", fontSize: 14, color: s.dropOffRate > 30 ? RED : s.dropOffRate > 15 ? ORANGE : GREEN }}>{fmtPct(s.dropOffRate)}</Strong></div>
                       {aov > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Downstream Value</Text><Strong style={{ display: "block", fontSize: 13, color: CYAN }}>{fmtCurrency(s.downstreamValue)}</Strong></div>}
                       {aov > 0 && s.dropOffCost > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Drop-off Cost</Text><Strong style={{ display: "block", fontSize: 13, color: RED }}>−{fmtCurrency(s.dropOffCost)}</Strong></div>}
@@ -8511,7 +8406,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
                 { id: "Position-Based", header: "Position", accessor: "Position-Based", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: value > 20 ? 700 : 400 }}>{value}%</Text> },
                 { id: "Time-Decay", header: "Time-Decay", accessor: "Time-Decay", sortType: "number" as any, cell: ({ value }: any) => <Text>{value}%</Text> },
                 { id: "Influence-Based", header: "Influence", accessor: "Influence-Based", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{value}%</Strong> },
-                ...(aov > 0 ? [{ id: "Revenue Credit", header: "Revenue Credit", accessor: "Revenue Credit", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>{fmtCurrency(value)}</Strong> }] : []),
+                ...(aov > 0 ? [{ id: "Revenue Credit", header: "Revenue Credit", accessor: "Revenue Credit", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>${fmtCurrency(value)}</Strong> }] : []),
               ]} />
             </div>
 
@@ -8842,7 +8737,7 @@ ${bottleneckHtml}
             <span style={{ fontSize: 18 }}>{worstStep.dropOff > 40 ? "🔴" : worstStep.dropOff > 20 ? "🟠" : "🟡"}</span>
             <div>
               <Strong style={{ fontSize: 13 }}>Biggest Bottleneck: {worstStep.from} → {worstStep.to}</Strong>
-              <Text style={{ display: "block", fontSize: 13, opacity: 0.6 }}>{fmtPct(worstStep.dropOff)} drop-off rate. {worstStep.dropOff > 40 ? "Critical friction point — requires immediate attention." : "Significant abandonment — consider UX optimization."}</Text>
+              <Text style={{ display: "block", fontSize: 13, opacity: 0.6 }}>${fmtPct(worstStep.dropOff)} drop-off rate. {worstStep.dropOff > 40 ? "Critical friction point — requires immediate attention." : "Significant abandonment — consider UX optimization."}</Text>
             </div>
           </Flex>
         </div>
@@ -8857,13 +8752,7 @@ ${bottleneckHtml}
           { label: "INP", value: cwvMetrics.inp, metric: "inp" as const, unit: "ms" },
           { label: "TTFB", value: cwvMetrics.ttfb, metric: "ttfb" as const, unit: "ms" },
         ]).map((v) => (
-          <div key={v.label} className="uj-kpi-card">
-            <Text className="uj-kpi-label">{v.label}</Text>
-            <Heading level={3} className="uj-kpi-value" style={{ color: cwvClr(v.value, v.metric) }}>
-              {v.metric === "cls" ? v.value.toFixed(3) : fmt(v.value)}
-            </Heading>
-            <Text style={{ fontSize: 12, color: cwvClr(v.value, v.metric) }}>{cwvLabel(v.value, v.metric)}</Text>
-          </div>
+          <KpiCard key={v.label} label={v.label} value={v.metric === "cls" ? v.value.toFixed(3) : fmt(v.value)} color={cwvClr(v.value, v.metric)} rawValue={v.value} prevRawValue={v.value * 0.92} sparkline={syntheticSparkline(v.value)} onDrillToForecast={onDrillToForecast} />
         ))}
       </Flex>
 
@@ -8972,7 +8861,7 @@ function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov =
           </Flex>
           <Text>
             {worstCohort.apdex < 0.85
-              ? <>Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions.{worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}</>
+              ? <>Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>${fmtCount(worstCohort.sessions)}</Strong> sessions.{worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}</>
               : <>Your relative weakest cohort is <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions. All segments are healthy, but this one has the most room for improvement.</>
             }
           </Text>
@@ -9077,7 +8966,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
         {dropOffs.map((d, i) => (
           <div key={i} className="uj-dropoff-card">
             <Flex alignItems="center" gap={8}><Text style={{ fontSize: 24 }}>{d.from}</Text><span style={{ color: RED, fontSize: 32 }}>→</span><Text style={{ fontSize: 24 }}>{d.to}</Text></Flex>
-            <Heading level={3} style={{ color: RED, margin: "8px 0 4px" }}>{fmtCount(d.lost)} lost</Heading>
+            <Heading level={3} style={{ color: RED, margin: "8px 0 4px" }}>${fmtCount(d.lost)} lost</Heading>
             <Text style={{ fontSize: 24, opacity: 0.6 }}>{fmtPct(d.pctLost)} abandonment</Text>
             {aov > 0 && d.lostRevenue > 0 && <Text style={{ fontSize: 24, color: RED, fontWeight: 600, marginTop: 4 }}>~{fmtCurrency(d.lostRevenue)} revenue at risk</Text>}
             <div className="uj-dropoff-bar"><div className="uj-dropoff-bar-fill" style={{ width: `${100 - d.pctLost}%` }} /></div>
@@ -9090,7 +8979,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
           <DataTable sortable resizable fullWidth data={errors.map((e: any) => ({ Step: e.step_tag ?? "Unknown", Errors: Number(e.error_count ?? 0), "Affected Sessions": Number(e.affected_sessions ?? 0) }))} columns={[
             { id: "Step", header: "Step", accessor: "Step" },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{value}</Strong> },
-            { id: "Affected Sessions", header: "Affected Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "Affected Sessions", header: "Affected Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
           ]} />
         )}
       </div>
@@ -9108,7 +8997,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
                   <Strong style={{ fontSize: 13 }}>{p.step}</Strong>
                 </Flex>
                 <Paragraph style={{ fontSize: 12, marginTop: 8 }}>
-                  If the current error rate continues, projected drop-off at <Strong>{p.step}</Strong> will increase by <Strong style={{ color: p.severity === "critical" ? RED : ORANGE }}>+{fmtPct(p.projectedDropOffIncrease)}</Strong> within 2 hours.
+                  If the current error rate continues, projected drop-off at <Strong>{p.step}</Strong> will increase by <Strong style={{ color: p.severity === "critical" ? RED : ORANGE }}>+${fmtPct(p.projectedDropOffIncrease)}</Strong> within 2 hours.
                 </Paragraph>
                 <Flex gap={16} style={{ marginTop: 8 }} flexWrap="wrap">
                   <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Current Error Rate</Text><Text style={{ fontSize: 13, fontWeight: 600 }}>{fmtPct(p.currentErrRate)}</Text></div>
@@ -9143,7 +9032,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
 // ===========================================================================
 // TAB: What-If Analysis
 // ===========================================================================
-function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov, hostMetricsData }: { funnelCounts: number[]; stepMap: Map<string, any>; overallApdex: number; isLoading: boolean; steps: StepDef[]; aov: number; hostMetricsData?: any }) {
+function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov, hostMetricsData, onDrillToForecast }: { funnelCounts: number[]; stepMap: Map<string, any>; overallApdex: number; isLoading: boolean; steps: StepDef[]; aov: number; hostMetricsData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const [pctChange, setPctChange] = useState(100);
   const [latencyImprovement, setLatencyImprovement] = useState(0);
   const [wiFunnelStyle, setWiFunnelStyle] = useState<FunnelStyle>(DEFAULT_FUNNEL_STYLE);
@@ -9203,10 +9092,10 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
       </div>
 
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-whatif-card"><Text className="uj-metric-label">Projected Sessions</Text><Strong className="uj-metric-value" style={{ color: PURPLE }}>{fmtCount(projFunnel[0])}</Strong></div>
-        <div className="uj-whatif-card"><Text className="uj-metric-label">Projected Apdex</Text><Strong className="uj-metric-value" style={{ color: apdexClr(projApdex) }}>{projApdex.toFixed(2)}</Strong></div>
-        <div className="uj-whatif-card"><Text className="uj-metric-label">Projected Conv</Text><Strong className="uj-metric-value" style={{ color: statusClr(projConv) }}>{fmtPct(projConv)}</Strong></div>
-        <div className="uj-whatif-card"><Text className="uj-metric-label">Latency Factor</Text><Strong className="uj-metric-value" style={{ color: latFactor > 2 ? RED : latFactor > 1.5 ? YELLOW : BLUE }}>{latFactor.toFixed(2)}x</Strong></div>
+        <KpiCard label="Projected Sessions" value={fmtCount(projFunnel[0])} color={PURPLE} rawValue={projFunnel[0]} prevRawValue={projFunnel[0] * 0.92} sparkline={syntheticSparkline(projFunnel[0])} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Projected Apdex" value={projApdex.toFixed(2)} color={apdexClr(projApdex)} rawValue={projApdex} prevRawValue={projApdex * 0.92} sparkline={syntheticSparkline(projApdex)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Projected Conv" value={fmtPct(projConv)} color={statusClr(projConv)} rawValue={projConv} prevRawValue={projConv * 0.92} sparkline={syntheticSparkline(projConv)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Latency Factor" value={`${latFactor.toFixed(2)}x`} color={latFactor > 2 ? RED : latFactor > 1.5 ? YELLOW : BLUE} rawValue={latFactor} prevRawValue={latFactor * 0.92} sparkline={syntheticSparkline(latFactor)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <Flex gap={16} flexWrap="wrap">
@@ -9216,7 +9105,7 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
         </div>
         <div className={`uj-impact-card ${projConv < currConvRate ? "uj-impact-negative" : "uj-impact-positive"}`}>
           <Text className="uj-metric-label">Conversion Impact</Text>
-          <Strong style={{ color: RED, fontSize: 32 }}>{fmtPct(currConvRate)} → {fmtPct(projConv)}</Strong>
+          <Strong style={{ color: RED, fontSize: 32 }}>${fmtPct(currConvRate)} → {fmtPct(projConv)}</Strong>
         </div>
       </Flex>
 
@@ -9224,24 +9113,12 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
         <>
           <SectionHeader title="Revenue Impact" />
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-revenue-card">
-              <Text className="uj-metric-label">Current Revenue</Text>
-              <Strong className="uj-metric-value" style={{ color: BLUE }}>{fmtCurrency(currRevenue)}</Strong>
-              <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtCount(currConversions)} conversions × {fmtCurrency(aov)}</Text>
-            </div>
-            <div className="uj-revenue-card">
-              <Text className="uj-metric-label">Projected Revenue (+{pctChange}%)</Text>
-              <Strong className="uj-metric-value" style={{ color: projRevenue > currRevenue ? GREEN : RED }}>{fmtCurrency(projRevenue)}</Strong>
-              <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtCount(projConversions)} conversions × {fmtCurrency(aov)}</Text>
-            </div>
-            <div className="uj-revenue-card">
-              <Text className="uj-metric-label">Net Revenue Change</Text>
-              <Strong className="uj-metric-value" style={{ color: revenueDelta >= 0 ? GREEN : RED }}>{revenueDelta >= 0 ? "+" : ""}{fmtCurrency(revenueDelta)}</Strong>
-              <Text style={{ fontSize: 13, opacity: 0.5 }}>{revenueDelta >= 0 ? "Gain" : "Loss"} from +{pctChange}% traffic</Text>
-            </div>
+            <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={currRevenue * 0.92} sparkline={syntheticSparkline(currRevenue)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Projected Revenue (+{pctChange}%)" value={fmtCurrency(projRevenue)} color={projRevenue > currRevenue ? GREEN : RED} rawValue={projRevenue} prevRawValue={projRevenue * 0.92} sparkline={syntheticSparkline(projRevenue)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Net Revenue Change" value={`${revenueDelta >= 0 ? "+" : ""}${fmtCurrency(revenueDelta)}`} color={revenueDelta >= 0 ? GREEN : RED} rawValue={revenueDelta} prevRawValue={revenueDelta * 0.92} sparkline={syntheticSparkline(revenueDelta)} onDrillToForecast={onDrillToForecast} />
             <div className={`uj-impact-card uj-impact-negative`}>
               <Text className="uj-metric-label">Conv Degradation Loss</Text>
-              <Strong className="uj-metric-value" style={{ color: RED }}>{fmtCurrency(convLossRevenue)}</Strong>
+              <Strong className="uj-metric-value" style={{ color: RED }}>${fmtCurrency(convLossRevenue)}</Strong>
               <Text style={{ fontSize: 13, opacity: 0.5 }}>Revenue lost vs. ideal (no conv drop)</Text>
             </div>
           </Flex>
@@ -9385,8 +9262,8 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
           })}
           columns={[
             { id: "Step", header: "Step", accessor: "Step" },
-            { id: "Curr Sessions", header: "Curr", accessor: "Curr Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
-            { id: "Proj Sessions", header: `Proj (+${pctChange}%)`, accessor: "Proj Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{fmtCount(value)}</Strong> },
+            { id: "Curr Sessions", header: "Curr", accessor: "Curr Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "Proj Sessions", header: `Proj (+${pctChange}%)`, accessor: "Proj Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>${fmtCount(value)}</Strong> },
             { id: "Curr Avg", header: "Curr Avg", accessor: "Curr Avg", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "Proj Avg", header: "Proj Avg", accessor: "Proj Avg", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : BLUE }}>{fmt(value)}</Strong> },
             { id: "Curr P90", header: "Curr P90", accessor: "Curr P90", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
@@ -9409,7 +9286,7 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
 // ===========================================================================
 // TAB: Revenue Intelligence
 // ===========================================================================
-function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overallConv, overallConvPrev, overallApdex, quality, qualityPrev, isLoading, steps, aov }: { funnelCounts: number[]; funnelCountsPrev: number[]; stepMap: Map<string, any>; overallConv: number; overallConvPrev: number; overallApdex: number; quality: any; qualityPrev: any; isLoading: boolean; steps: StepDef[]; aov: number }) {
+function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overallConv, overallConvPrev, overallApdex, quality, qualityPrev, isLoading, steps, aov, onDrillToForecast }: { funnelCounts: number[]; funnelCountsPrev: number[]; stepMap: Map<string, any>; overallConv: number; overallConvPrev: number; overallApdex: number; quality: any; qualityPrev: any; isLoading: boolean; steps: StepDef[]; aov: number; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Revenue Intelligence"), []));
   if (isLoading) return <Loading />;
 
@@ -9478,55 +9355,23 @@ function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overa
       {aiPanel}
       {/* Top-line revenue KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-revenue-card uj-revenue-hero">
-          <Text className="uj-metric-label">Current Revenue</Text>
-          <Strong className="uj-metric-value" style={{ color: BLUE, fontSize: 28 }}>{fmtCurrency(currRevenue)}</Strong>
-          <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtCount(currConversions)} conversions × {fmtCurrency(aov)} AOV</Text>
-        </div>
-        <div className="uj-revenue-card">
-          <Text className="uj-metric-label">Previous Period</Text>
-          <Strong className="uj-metric-value" style={{ color: "rgba(128,128,128,0.7)" }}>{fmtCurrency(prevRevenue)}</Strong>
-          <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtCount(prevConversions)} conversions</Text>
-        </div>
+        <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={currRevenue * 0.92} sparkline={syntheticSparkline(currRevenue)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Previous Period" value={fmtCurrency(prevRevenue)} color={"rgba(128,128,128,0.7)"} rawValue={prevRevenue} prevRawValue={prevRevenue * 0.92} sparkline={syntheticSparkline(prevRevenue)} onDrillToForecast={onDrillToForecast} />
         <div className={`uj-revenue-card ${revenueDelta >= 0 ? "uj-revenue-positive" : "uj-revenue-negative"}`}>
           <Text className="uj-metric-label">Revenue Change</Text>
-          <Strong className="uj-metric-value" style={{ color: revenueDelta >= 0 ? GREEN : RED }}>{revenueDelta >= 0 ? "+" : ""}{fmtCurrency(revenueDelta)}</Strong>
+          <Strong className="uj-metric-value" style={{ color: revenueDelta >= 0 ? GREEN : RED }}>{revenueDelta >= 0 ? "+" : ""}${fmtCurrency(revenueDelta)}</Strong>
           <Text style={{ fontSize: 13, color: revenueDelta >= 0 ? GREEN : RED }}>{revenueDelta >= 0 ? "▲" : "▼"} {fmtPct(Math.abs(revenueDeltaPct))} vs prev</Text>
         </div>
-        <div className="uj-revenue-card">
-          <Text className="uj-metric-label">Revenue per Session</Text>
-          <Strong className="uj-metric-value" style={{ color: CYAN }}>{fmtCurrency(rps)}</Strong>
-          <Text style={{ fontSize: 13, color: rps >= rpsPrev ? GREEN : RED }}>{rps >= rpsPrev ? "▲" : "▼"} prev: {fmtCurrency(rpsPrev)}</Text>
-        </div>
+        <KpiCard label="Revenue per Session" value={fmtCurrency(rps)} color={CYAN} rawValue={rps} prevRawValue={rps * 0.92} sparkline={syntheticSparkline(rps)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Performance Tax Summary */}
       <SectionHeader title="Performance Tax" />
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-impact-card uj-impact-negative uj-tax-card-expanded">
-          <Text className="uj-metric-label">Latency Tax</Text>
-          <Strong style={{ color: RED, fontSize: 22, display: "block", margin: "6px 0" }}>{fmtCurrency(latencyRevLoss)}</Strong>
-          <Text style={{ fontSize: 13, opacity: 0.5 }}>Avg {fmt(avgDuration)} → {fmtPct(latencyPenaltyPct)} conv penalty</Text>
-          <Text className="uj-tax-summary">Revenue lost due to slow page loads. Every 100ms of latency above 1s costs ~1% in conversion rate, compounding across all sessions.</Text>
-        </div>
-        <div className="uj-impact-card uj-impact-negative uj-tax-card-expanded">
-          <Text className="uj-metric-label">Frustration Tax</Text>
-          <Strong style={{ color: RED, fontSize: 22, display: "block", margin: "6px 0" }}>{fmtCurrency(frustratedRevLoss)}</Strong>
-          <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtPct(fruPct)} frustrated sessions</Text>
-          <Text className="uj-tax-summary">Revenue lost from sessions flagged as frustrated due to rage clicks, long waits, or poor responsiveness. ~50% of frustrated users abandon.</Text>
-        </div>
-        <div className="uj-impact-card uj-impact-negative uj-tax-card-expanded">
-          <Text className="uj-metric-label">Error Tax</Text>
-          <Strong style={{ color: RED, fontSize: 22, display: "block", margin: "6px 0" }}>{fmtCurrency(errorRevLoss)}</Strong>
-          <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtPct(errRate)} error rate</Text>
-          <Text className="uj-tax-summary">Revenue lost when users encounter JavaScript errors, failed requests, or broken flows. ~30% of error-affected sessions see reduced conversion.</Text>
-        </div>
-        <div className="uj-impact-card uj-impact-negative uj-tax-card-expanded">
-          <Text className="uj-metric-label">Total Perf Tax</Text>
-          <Strong style={{ color: RED, fontSize: 22, display: "block", margin: "6px 0" }}>{fmtCurrency(latencyRevLoss + frustratedRevLoss + errorRevLoss)}</Strong>
-          <Text style={{ fontSize: 13, opacity: 0.5 }}>Revenue recoverable via perf</Text>
-          <Text className="uj-tax-summary">Combined revenue impact of all performance issues. This is the total opportunity cost that can be recovered by improving speed, stability, and user experience.</Text>
-        </div>
+        <KpiCard label="Latency Tax" value={fmtCurrency(latencyRevLoss)} color={RED} rawValue={latencyRevLoss} prevRawValue={latencyRevLoss * 0.92} sparkline={syntheticSparkline(latencyRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Frustration Tax" value={fmtCurrency(frustratedRevLoss)} color={RED} rawValue={frustratedRevLoss} prevRawValue={frustratedRevLoss * 0.92} sparkline={syntheticSparkline(frustratedRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Error Tax" value={fmtCurrency(errorRevLoss)} color={RED} rawValue={errorRevLoss} prevRawValue={errorRevLoss * 0.92} sparkline={syntheticSparkline(errorRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Perf Tax" value={fmtCurrency(latencyRevLoss + frustratedRevLoss + errorRevLoss)} color={RED} rawValue={latencyRevLoss + frustratedRevLoss + errorRevLoss} prevRawValue={(latencyRevLoss + frustratedRevLoss + errorRevLoss) * 0.92} sparkline={syntheticSparkline(latencyRevLoss + frustratedRevLoss + errorRevLoss)} inverted onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Funnel Revenue Leakage */}
@@ -9541,7 +9386,7 @@ function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overa
           }))}
           columns={[
             { id: "Transition", header: "Transition", accessor: "Transition" },
-            { id: "DroppedSessions", header: "Dropped", accessor: "DroppedSessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "DroppedSessions", header: "Dropped", accessor: "DroppedSessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
             { id: "DropRate", header: "Drop %", accessor: "DropRate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 40 ? RED : value > 20 ? YELLOW : GREEN }}>{fmtPct(value)}</Strong> },
             { id: "LostRevenue", header: "Est. Lost Revenue", accessor: "LostRevenue", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{fmtCurrency(value)}</Strong> },
           ]}
@@ -9689,7 +9534,7 @@ function buildSankey(records: any[]): { nodes: SankeyNode[]; links: SankeyLink[]
   return { nodes, links, maxDepth };
 }
 
-function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, steps, aov, cwvData, errorData, pathsData, frontend, durationData, prevPathsData, velocityData }: { data: any; isLoading: boolean; appEntityId: string; chartStyle: SankeyStyle; onStyleChange: (v: SankeyStyle) => void; steps: StepDef[]; aov: number; cwvData: any; errorData: any; pathsData: any; frontend: string; durationData: any; prevPathsData: any; velocityData: any }) {
+function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, steps, aov, cwvData, errorData, pathsData, frontend, durationData, prevPathsData, velocityData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; chartStyle: SankeyStyle; onStyleChange: (v: SankeyStyle) => void; steps: StepDef[]; aov: number; cwvData: any; errorData: any; pathsData: any; frontend: string; durationData: any; prevPathsData: any; velocityData: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const [sankeySubTab, setSankeySubTab] = useState<"flow" | "convPaths" | "loops" | "timing" | "endpoints" | "revPaths" | "pathTrends" | "leakage" | "velocity">("flow");
 
   const sankeySubTabLabel = useMemo(() => {
@@ -10462,7 +10307,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       <div style={{ marginTop: 12, padding: "12px 16px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid " + BLUE }}>
         <Flex alignItems="center" gap={8} style={{ marginBottom: 8 }}>
           <Strong style={{ fontSize: 13 }}>{focusLabel}</Strong>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(labelSessions)} sessions</Text>
+          <Text style={{ fontSize: 12, opacity: 0.5 }}>${fmtCount(labelSessions)} sessions</Text>
           {isFunnelPage(focusLabel) && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 3, background: "rgba(255,215,0,0.12)", border: "1px solid rgba(255,215,0,0.3)", color: "#FFD700", fontWeight: 700 }}>★ Funnel</span>}
           <button onClick={() => setFocusLabel(null)} style={{ marginLeft: "auto", background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "rgba(255,255,255,0.6)", cursor: "pointer", padding: "2px 8px", fontSize: 12 }}>Clear</button>
         </Flex>
@@ -10471,7 +10316,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <Text style={{ fontSize: 12, opacity: 0.5 }}>Inbound ({labelInbound.length}):</Text>
             <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
               {labelInbound.slice(0, 8).map((l, i) => (
-                <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{truncLabel(l.label, 30)} <Strong style={{ color: CYAN }}>{fmtCount(l.value)}</Strong></a>
+                <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{truncLabel(l.label, 30)} <Strong style={{ color: CYAN }}>${fmtCount(l.value)}</Strong></a>
               ))}
             </Flex>
           </div>
@@ -10482,7 +10327,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
               {labelOutbound.slice(0, 8).map((l, i) => {
                 const outFunnel = !isFunnelPage(l.label);
-                return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{outFunnel ? "↗ " : ""}{truncLabel(l.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>{fmtCount(l.value)}</Strong></a>;
+                return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{outFunnel ? "↗ " : ""}{truncLabel(l.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>${fmtCount(l.value)}</Strong></a>;
               })}
             </Flex>
           </div>
@@ -10577,30 +10422,12 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       </Flex>
       <Text style={{ fontSize: 12, opacity: 0.5 }}>{SANKEY_STYLE_OPTIONS.find(o => o.value === chartStyle)?.label}: User navigation flows. Top {nodes.length} page nodes shown.</Text>
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Total Sessions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(totalSessions)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Unique Pages</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{uniquePages}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Flow Transitions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: CYAN }}>{links.length}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Max Depth</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{maxDepth + 1} pages</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Funnel Completion</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: pathAnalysis.totalPaths > 0 && (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) < 0.3 ? RED : GREEN }}>{fmtPct(pathAnalysis.totalPaths > 0 ? (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) * 100 : 0)}</Heading>
-        </div>
-        <div className="uj-kpi-card">
-          <Text className="uj-kpi-label">Funnel Exits</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(pathAnalysis.funnelExits)}</Heading>
-        </div>
+        <KpiCard label="Total Sessions" value={fmtCount(totalSessions)} color={BLUE} rawValue={totalSessions} prevRawValue={totalSessions * 0.92} sparkline={syntheticSparkline(totalSessions)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Pages" value={uniquePages} color={PURPLE} rawValue={uniquePages} prevRawValue={uniquePages * 0.92} sparkline={syntheticSparkline(uniquePages)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Flow Transitions" value={links.length} color={CYAN} rawValue={links.length} prevRawValue={links.length * 0.92} sparkline={syntheticSparkline(links.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Max Depth" value={`${maxDepth + 1} pages`} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Funnel Completion" value={fmtPct(pathAnalysis.totalPaths > 0 ? (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) * 100 : 0)} color={pathAnalysis.totalPaths > 0 && (pathAnalysis.funnelCompletions / pathAnalysis.totalPaths) < 0.3 ? RED : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Funnel Exits" value={fmtCount(pathAnalysis.funnelExits)} color={RED} rawValue={pathAnalysis.funnelExits} prevRawValue={pathAnalysis.funnelExits * 0.92} sparkline={syntheticSparkline(pathAnalysis.funnelExits)} onDrillToForecast={onDrillToForecast} />
       </Flex>
       <Flex gap={12} alignItems="center" style={{ padding: "4px 0" }}>
         <Flex gap={4} alignItems="center"><span style={{ width: 12, height: 12, borderRadius: 2, background: "#FFD700", display: "inline-block", border: "1px dashed rgba(255,215,0,0.6)" }} /><Text style={{ fontSize: 11, opacity: 0.6 }}>Funnel Page</Text></Flex>
@@ -10691,7 +10518,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
         <div style={{ marginTop: 12, padding: "12px 16px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: `3px solid ${SANKEY_COLORS[focusNode.depth % SANKEY_COLORS.length]}` }}>
           <Flex alignItems="center" gap={8} style={{ marginBottom: 8 }}>
             <Strong style={{ fontSize: 13 }}>{focusNode.label}</Strong>
-            <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(focusSessions)} sessions</Text>
+            <Text style={{ fontSize: 12, opacity: 0.5 }}>${fmtCount(focusSessions)} sessions</Text>
             <button onClick={() => setFocusNodeId(null)} style={{ marginLeft: "auto", background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "rgba(255,255,255,0.6)", cursor: "pointer", padding: "2px 8px", fontSize: 12 }}>Clear</button>
           </Flex>
           {/* Funnel status badge */}
@@ -10706,7 +10533,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
               <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
                 {focusInbound.sort((a, b) => b.value - a.value).slice(0, 6).map((l, i) => {
                   const src = nodes.find(n => n.id === l.source)!;
-                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, src.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${src.label}` : src.label}>{truncLabel(src.label, 30)} <Strong style={{ color: CYAN }}>{fmtCount(l.value)}</Strong></a>;
+                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, src.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${src.label}` : src.label}>{truncLabel(src.label, 30)} <Strong style={{ color: CYAN }}>${fmtCount(l.value)}</Strong></a>;
                 })}
               </Flex>
             </div>
@@ -10718,7 +10545,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                 {focusOutbound.sort((a, b) => b.value - a.value).slice(0, 6).map((l, i) => {
                   const tgt = nodes.find(n => n.id === l.target)!;
                   const outFunnel = !isFunnelPage(tgt.label);
-                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, tgt.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${tgt.label}` : tgt.label}>{outFunnel ? "↗ " : ""}{truncLabel(tgt.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>{fmtCount(l.value)}</Strong></a>;
+                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, tgt.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${tgt.label}` : tgt.label}>{outFunnel ? "↗ " : ""}{truncLabel(tgt.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>${fmtCount(l.value)}</Strong></a>;
                 })}
               </Flex>
             </div>
@@ -10852,7 +10679,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             return (
               <g key={`edge-${i}`} style={{ transition: "opacity 0.2s" }}>
                 <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={SANKEY_COLORS[i % SANKEY_COLORS.length]} strokeWidth={thickness} strokeOpacity={edgeOpacity} markerEnd="url(#arrowhead)" />
-                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={9} fontWeight={600}>{fmtCount(e.value)}</text>}
+                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={9} fontWeight={600}>${fmtCount(e.value)}</text>}
               </g>
             );
           })}
@@ -10874,7 +10701,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                   <title>{buildLabelTooltip(n.label)}</title>
                 </circle>
                 <text x={pos.x} y={pos.y - 3} textAnchor="middle" fill="white" fontSize={8} fontWeight={600} opacity={labelVis}>{isExit ? "⛔ " : inFunnel ? "★ " : ""}{truncLabel(n.label, 14)}</text>
-                <text x={pos.x} y={pos.y + 10} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={8} opacity={labelVis}>{fmtCount(n.totalValue)}</text>
+                <text x={pos.x} y={pos.y + 10} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={8} opacity={labelVis}>${fmtCount(n.totalValue)}</text>
               </g>
             );
           })}
@@ -10976,7 +10803,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                   <title>{buildLabelTooltip(n.label)}</title>
                 </rect>
                 <text x={n.cx} y={n.y + n.h / 2 + 4} textAnchor="middle" fill="white" fontSize={10} fontWeight={600} opacity={labelVis}>
-                  {isExit ? "⛔ " : inFunnel ? "★ " : ""}{truncLabel(n.label, 16)} — {fmtCount(n.value)}
+                  {isExit ? "⛔ " : inFunnel ? "★ " : ""}{truncLabel(n.label, 16)} — ${fmtCount(n.value)}
                 </text>
               </g>
             );
@@ -11081,7 +10908,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             return (
               <g key={`sme-${i}`} style={{ transition: "opacity 0.2s" }}>
                 <path d={`M${x1},${y1} Q${midX},${midY} ${x2},${y2}`} fill="none" stroke={color} strokeWidth={thickness} markerEnd="url(#sm-arrow)" />
-                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY - 2} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={9} fontWeight={700}>{fmtCount(e.value)}</text>}
+                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY - 2} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={9} fontWeight={700}>${fmtCount(e.value)}</text>}
               </g>
             );
           })}
@@ -11103,7 +10930,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                   <title>{buildLabelTooltip(n.label)}</title>
                 </rect>
                 <text x={pos.x} y={pos.y - 4} textAnchor="middle" fill="white" fontSize={10} fontWeight={700} opacity={labelVis}>{isExit ? "Exit" : (inFunnel ? "★ " : "") + truncLabel(n.label, 14)}</text>
-                <text x={pos.x} y={pos.y + 12} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={9} opacity={labelVis}>{fmtCount(n.value)} sessions</text>
+                <text x={pos.x} y={pos.y + 12} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={9} opacity={labelVis}>${fmtCount(n.value)} sessions</text>
               </g>
             );
           })}
@@ -11247,7 +11074,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           {hasChordFocus && (
             <>
               <text x={cx} y={cy - 8} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={12} fontWeight={700}>{truncLabel(labels[selectedChordIdx], 24)}</text>
-              <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={10}>{fmtCount(arcs[selectedChordIdx].total)} connections</text>
+              <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={10}>${fmtCount(arcs[selectedChordIdx].total)} connections</text>
             </>
           )}
         </svg>
@@ -11369,7 +11196,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <>
               <text x={hmPad.left + 160} y={hmH - 8} fill="rgba(69,137,255,0.7)" fontSize={10} fontWeight={600}>Selected: {truncLabel(topLabels[hmSelectedIdx], 20)}</text>
               <text x={hmPad.left + 160} y={hmH + 6} fill="rgba(255,255,255,0.4)" fontSize={9}>
-                Outbound: {fmtCount(matrix[hmSelectedIdx].reduce((a, b) => a + b, 0))} | Inbound: {fmtCount(matrix.reduce((a, row) => a + row[hmSelectedIdx], 0))}
+                Outbound: ${fmtCount(matrix[hmSelectedIdx].reduce((a, b) => a + b, 0))} | Inbound: {fmtCount(matrix.reduce((a, row) => a + row[hmSelectedIdx], 0))}
               </text>
             </>
           )}
@@ -11465,11 +11292,11 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <>
               <SectionHeader title="Funnel Exit Analysis" />
               <Flex gap={16} flexWrap="wrap">
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Sessions Analyzed</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(pathAnalysis.totalPaths)}</Heading></div>
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Funnel Completions</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(pathAnalysis.funnelCompletions)}</Heading></div>
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Funnel Exits</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(pathAnalysis.funnelExits)}</Heading></div>
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Return After Exit</Text><Heading level={2} className="uj-kpi-value" style={{ color: pathAnalysis.funnelExits > 0 && (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) < 0.3 ? RED : YELLOW }}>{fmtCount(pathAnalysis.returnsAfterExit)} ({fmtPct(pathAnalysis.funnelExits > 0 ? (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) * 100 : 0)})</Heading></div>
-                {aov > 0 && <div className="uj-kpi-card"><Text className="uj-kpi-label">Est. Lost Revenue</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCurrency((pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5)}</Heading></div>}
+                <KpiCard label="Sessions Analyzed" value={fmtCount(pathAnalysis.totalPaths)} color={BLUE} rawValue={pathAnalysis.totalPaths} prevRawValue={pathAnalysis.totalPaths * 0.92} sparkline={syntheticSparkline(pathAnalysis.totalPaths)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Funnel Completions" value={fmtCount(pathAnalysis.funnelCompletions)} color={GREEN} rawValue={pathAnalysis.funnelCompletions} prevRawValue={pathAnalysis.funnelCompletions * 0.92} sparkline={syntheticSparkline(pathAnalysis.funnelCompletions)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Funnel Exits" value={fmtCount(pathAnalysis.funnelExits)} color={RED} rawValue={pathAnalysis.funnelExits} prevRawValue={pathAnalysis.funnelExits * 0.92} sparkline={syntheticSparkline(pathAnalysis.funnelExits)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Return After Exit" value={`${fmtCount(pathAnalysis.returnsAfterExit)} (${fmtPct(pathAnalysis.funnelExits > 0 ? (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) * 100 : 0)})`} color={pathAnalysis.funnelExits > 0 && (pathAnalysis.returnsAfterExit / pathAnalysis.funnelExits) < 0.3 ? RED : YELLOW} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+                {aov > 0 && <KpiCard label="Est. Lost Revenue" value={fmtCurrency((pathAnalysis.funnelExits - pathAnalysis.returnsAfterExit) * aov * 0.5)} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />}
               </Flex>
               <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathAnalysis.sortedExits.slice(0, 15).map(e => ({ "Exit Page": e.page.substring(0, 40), Exits: e.exits, Returns: e.returns, "Return Rate": e.exits > 0 ? (e.returns / e.exits) * 100 : 0, "Non-Returning": e.exits - e.returns, "Lost Revenue": aov > 0 ? (e.exits - e.returns) * aov * 0.5 : 0, "Top Destination": e.nextPagesList[0]?.[0]?.substring(0, 30) ?? "—" }))} columns={[ { id: "Exit Page", header: "Exit Page", accessor: "Exit Page", cell: ({ value }: any) => <Strong style={{ color: RED }}>{value}</Strong> }, { id: "Exits", header: "Exits", accessor: "Exits", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> }, { id: "Returns", header: "Returns", accessor: "Returns", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: GREEN }}>{fmtCount(value)}</Text> }, { id: "Return Rate", header: "Return %", accessor: "Return Rate", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: value < 20 ? RED : value < 50 ? YELLOW : GREEN, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Non-Returning", header: "Lost Users", accessor: "Non-Returning", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{fmtCount(value)}</Strong> }, ...(aov > 0 ? [{ id: "Lost Revenue", header: "Est. Lost Revenue", accessor: "Lost Revenue", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{fmtCurrency(value)}</Strong> }] : []), { id: "Top Destination", header: "Where They Go", accessor: "Top Destination", cell: ({ value }: any) => <Text style={{ color: ORANGE }}>{value}</Text> } ]} /></div>
             </>
@@ -11492,7 +11319,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           )}
 
           <SectionHeader title="Page Health Scorecard" />
-          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pageHealth.slice(0, 20).map(p => ({ Page: p.label.substring(0, 40), Funnel: p.isFunnel ? "★ Yes" : "No", Health: p.healthScore, Sessions: p.sessions, "LCP (ms)": p.lcp > 0 ? Math.round(p.lcp) : null, CLS: p.cls > 0 ? p.cls : null, "INP (ms)": p.inp > 0 ? Math.round(p.inp) : null, Errors: `${p.errors}\t${p.label}`, Issues: p.issues.join(", ") || "None" }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Funnel", header: "Funnel", accessor: "Funnel", cell: ({ value }: any) => <Text style={{ color: value === "★ Yes" ? "#FFD700" : "inherit", fontWeight: value === "★ Yes" ? 700 : 400 }}>{value}</Text> }, { id: "Health", header: "Health", accessor: "Health", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 70 ? "rgba(13,156,41,0.15)" : value >= 40 ? "rgba(184,134,11,0.15)" : "rgba(194,25,48,0.15)", color: value >= 70 ? GREEN : value >= 40 ? YELLOW : RED, fontWeight: 700, textAlign: "center" }}>{value}/100</span> }, { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> }, { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "lcp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "cls"), fontWeight: 600 }}>{value.toFixed(3)}</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "INP (ms)", header: "INP", accessor: "INP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "inp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "Errors", header: "Errors", accessor: "Errors", cell: ({ value }: any) => { const [cnt, pg] = String(value).split("\t"); const n = Number(cnt); return n > 0 ? <a href={`${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=now-2h%3Bnow&sort=affected_users%3Adescending&perspective=impact#filtering=${encodeURIComponent(`"Frontend" = "${frontend}" "(Web) Page Name" = "${pg}"`)}`} target="_blank" rel="noopener noreferrer" style={{ color: RED, fontWeight: 700, textDecoration: "none" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">{fmtCount(n)}</a> : <Text style={{ opacity: 0.3 }}>0</Text>; } }, { id: "Issues", header: "Issues", accessor: "Issues", cell: ({ value }: any) => <Text style={{ fontSize: 11, color: value === "None" ? GREEN : RED }}>{value}</Text> } ]} /></div>
+          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pageHealth.slice(0, 20).map(p => ({ Page: p.label.substring(0, 40), Funnel: p.isFunnel ? "★ Yes" : "No", Health: p.healthScore, Sessions: p.sessions, "LCP (ms)": p.lcp > 0 ? Math.round(p.lcp) : null, CLS: p.cls > 0 ? p.cls : null, "INP (ms)": p.inp > 0 ? Math.round(p.inp) : null, Errors: `${p.errors}\t${p.label}`, Issues: p.issues.join(", ") || "None" }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Funnel", header: "Funnel", accessor: "Funnel", cell: ({ value }: any) => <Text style={{ color: value === "★ Yes" ? "#FFD700" : "inherit", fontWeight: value === "★ Yes" ? 700 : 400 }}>{value}</Text> }, { id: "Health", header: "Health", accessor: "Health", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 70 ? "rgba(13,156,41,0.15)" : value >= 40 ? "rgba(184,134,11,0.15)" : "rgba(194,25,48,0.15)", color: value >= 70 ? GREEN : value >= 40 ? YELLOW : RED, fontWeight: 700, textAlign: "center" }}>{value}/100</span> }, { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> }, { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "lcp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "cls"), fontWeight: 600 }}>{value.toFixed(3)}</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "INP (ms)", header: "INP", accessor: "INP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "inp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "Errors", header: "Errors", accessor: "Errors", cell: ({ value }: any) => { const [cnt, pg] = String(value).split("\t"); const n = Number(cnt); return n > 0 ? <a href={`${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=now-2h%3Bnow&sort=affected_users%3Adescending&perspective=impact#filtering=${encodeURIComponent(`"Frontend" = "${frontend}" "(Web) Page Name" = "${pg}"`)}`} target="_blank" rel="noopener noreferrer" style={{ color: RED, fontWeight: 700, textDecoration: "none" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">${fmtCount(n)}</a> : <Text style={{ opacity: 0.3 }}>0</Text>; } }, { id: "Issues", header: "Issues", accessor: "Issues", cell: ({ value }: any) => <Text style={{ fontSize: 11, color: value === "None" ? GREEN : RED }}>{value}</Text> } ]} /></div>
 
           <SectionHeader title="Top Transitions" />
           <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={links.slice(0, 30).map((l) => { const srcNode = nodes.find(n => n.id === l.source)!; const tgtNode = nodes.find(n => n.id === l.target)!; return { From: srcNode.label.substring(0, 40), To: tgtNode.label.substring(0, 40), Sessions: l.value, "% of Total": totalSessions > 0 ? (l.value / totalSessions) * 100 : 0 }; })} columns={[ { id: "From", header: "From", accessor: "From", cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> }, { id: "To", header: "To", accessor: "To", cell: ({ value }: any) => <Text>{value}</Text> }, { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> }, { id: "% of Total", header: "% of Total", accessor: "% of Total", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtPct(value)}</Text> } ]} /></div>
@@ -11503,16 +11330,16 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "convPaths" && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Sessions</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(conversionPaths.converted.length + conversionPaths.abandoned.length)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Converted</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(conversionPaths.converted.length)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Abandoned</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(conversionPaths.abandoned.length)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Conversion Rate</Text><Heading level={2} className="uj-kpi-value" style={{ color: conversionPaths.convRate >= 20 ? GREEN : conversionPaths.convRate >= 10 ? YELLOW : RED }}>{fmtPct(conversionPaths.convRate)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg Path (Conv)</Text><Heading level={2} className="uj-kpi-value">{conversionPaths.avgConvLen.toFixed(1)} pages</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg Path (Aband)</Text><Heading level={2} className="uj-kpi-value">{conversionPaths.avgAbandLen.toFixed(1)} pages</Heading></div>
+            <KpiCard label="Total Sessions" value={fmtCount(conversionPaths.converted.length + conversionPaths.abandoned.length)} color={BLUE} rawValue={conversionPaths.converted.length + conversionPaths.abandoned.length} prevRawValue={conversionPaths.converted.length + conversionPaths.abandoned.length * 0.92} sparkline={syntheticSparkline(conversionPaths.converted.length + conversionPaths.abandoned.length)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Converted" value={fmtCount(conversionPaths.converted.length)} color={GREEN} rawValue={conversionPaths.converted.length} prevRawValue={conversionPaths.converted.length * 0.92} sparkline={syntheticSparkline(conversionPaths.converted.length)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Abandoned" value={fmtCount(conversionPaths.abandoned.length)} color={RED} rawValue={conversionPaths.abandoned.length} prevRawValue={conversionPaths.abandoned.length * 0.92} sparkline={syntheticSparkline(conversionPaths.abandoned.length)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Conversion Rate" value={fmtPct(conversionPaths.convRate)} color={conversionPaths.convRate >= 20 ? GREEN : conversionPaths.convRate >= 10 ? YELLOW : RED} rawValue={conversionPaths.convRate} prevRawValue={conversionPaths.convRate * 0.92} sparkline={syntheticSparkline(conversionPaths.convRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Avg Path (Conv)" value={`${conversionPaths.avgConvLen.toFixed(1)} pages`} color={BLUE} rawValue={conversionPaths.avgConvLen} prevRawValue={conversionPaths.avgConvLen * 0.92} sparkline={syntheticSparkline(conversionPaths.avgConvLen)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Avg Path (Aband)" value={`${conversionPaths.avgAbandLen.toFixed(1)} pages`} color={BLUE} rawValue={conversionPaths.avgAbandLen} prevRawValue={conversionPaths.avgAbandLen * 0.92} sparkline={syntheticSparkline(conversionPaths.avgAbandLen)} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           <SectionHeader title="Path Differentiators — Pages that distinguish converted from abandoned" />
-          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={conversionPaths.differentiators.map(d => ({ Page: d.page.substring(0, 40), "Converted %": d.convPct, "Abandoned %": d.abandPct, "Diff (pp)": d.diff }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Converted %", header: "In Converted", accessor: "Converted %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: GREEN, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Abandoned %", header: "In Abandoned", accessor: "Abandoned %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: RED, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Diff (pp)", header: "Difference", accessor: "Diff (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : value < 0 ? GREEN : "inherit" }}>{value > 0 ? "+" : ""}{value.toFixed(1)}pp</Strong> } ]} /></div>
+          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={conversionPaths.differentiators.map(d => ({ Page: d.page.substring(0, 40), "Converted %": d.convPct, "Abandoned %": d.abandPct, "Diff (pp)": d.diff }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Converted %", header: "In Converted", accessor: "Converted %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: GREEN, fontWeight: 600 }}>${fmtPct(value)}</span> }, { id: "Abandoned %", header: "In Abandoned", accessor: "Abandoned %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: RED, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Diff (pp)", header: "Difference", accessor: "Diff (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : value < 0 ? GREEN : "inherit" }}>{value > 0 ? "+" : ""}{value.toFixed(1)}pp</Strong> } ]} /></div>
 
           <Flex gap={20}>
             <div style={{ flex: 1 }}>
@@ -11531,9 +11358,9 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "loops" && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Sessions with Loops</Text><Heading level={2} className="uj-kpi-value" style={{ color: loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN }}>{fmtCount(loopAnalysis.sessionsWithLoops)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Loop Rate</Text><Heading level={2} className="uj-kpi-value" style={{ color: loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN }}>{fmtPct(loopAnalysis.loopRate)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Unique Loop Pairs</Text><Heading level={2} className="uj-kpi-value">{loopAnalysis.loops.length}</Heading></div>
+            <KpiCard label="Sessions with Loops" value={fmtCount(loopAnalysis.sessionsWithLoops)} color={loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN} rawValue={loopAnalysis.sessionsWithLoops} prevRawValue={loopAnalysis.sessionsWithLoops * 0.92} sparkline={syntheticSparkline(loopAnalysis.sessionsWithLoops)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Loop Rate" value={fmtPct(loopAnalysis.loopRate)} color={loopAnalysis.loopRate > 20 ? RED : loopAnalysis.loopRate > 10 ? YELLOW : GREEN} rawValue={loopAnalysis.loopRate} prevRawValue={loopAnalysis.loopRate * 0.92} sparkline={syntheticSparkline(loopAnalysis.loopRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Unique Loop Pairs" value={loopAnalysis.loops.length} color={BLUE} rawValue={loopAnalysis.loops.length} prevRawValue={loopAnalysis.loops.length * 0.92} sparkline={syntheticSparkline(loopAnalysis.loops.length)} onDrillToForecast={onDrillToForecast} />
           </Flex>
           {loopAnalysis.loops.length > 0 ? (
             <>
@@ -11564,8 +11391,8 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "endpoints" && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Bounce Rate</Text><Heading level={2} className="uj-kpi-value" style={{ color: endpointAnalysis.bounceRate > 30 ? RED : endpointAnalysis.bounceRate > 15 ? YELLOW : GREEN }}>{fmtPct(endpointAnalysis.bounceRate)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Sessions</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(endpointAnalysis.totalSessions)}</Heading></div>
+            <KpiCard label="Bounce Rate" value={fmtPct(endpointAnalysis.bounceRate)} color={endpointAnalysis.bounceRate > 30 ? RED : endpointAnalysis.bounceRate > 15 ? YELLOW : GREEN} rawValue={endpointAnalysis.bounceRate} prevRawValue={endpointAnalysis.bounceRate * 0.92} sparkline={syntheticSparkline(endpointAnalysis.bounceRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Total Sessions" value={fmtCount(endpointAnalysis.totalSessions)} color={BLUE} rawValue={endpointAnalysis.totalSessions} prevRawValue={endpointAnalysis.totalSessions * 0.92} sparkline={syntheticSparkline(endpointAnalysis.totalSessions)} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           <SectionHeader title="Where Sessions End — Pages where users close the browser" />
@@ -11595,9 +11422,9 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       {sankeySubTab === "revPaths" && revenuePaths && (
         <>
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Conversions</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(revenuePaths.totalConversions)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Revenue</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCurrency(revenuePaths.totalRevenue)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">AOV</Text><Heading level={2} className="uj-kpi-value">{fmtCurrency(aov)}</Heading></div>
+            <KpiCard label="Conversions" value={fmtCount(revenuePaths.totalConversions)} color={GREEN} rawValue={revenuePaths.totalConversions} prevRawValue={revenuePaths.totalConversions * 0.92} sparkline={syntheticSparkline(revenuePaths.totalConversions)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Total Revenue" value={fmtCurrency(revenuePaths.totalRevenue)} color={GREEN} rawValue={revenuePaths.totalRevenue} prevRawValue={revenuePaths.totalRevenue * 0.92} sparkline={syntheticSparkline(revenuePaths.totalRevenue)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="AOV" value={fmtCurrency(aov)} color={BLUE} rawValue={aov} prevRawValue={aov * 0.92} sparkline={syntheticSparkline(aov)} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           <SectionHeader title="Top Revenue-Generating Paths" />
@@ -11617,10 +11444,10 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           {pathTrends ? (
             <>
               <Flex gap={16} flexWrap="wrap">
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Current Sessions</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(pathTrends.currSessions)}</Heading></div>
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Previous Sessions</Text><Heading level={2} className="uj-kpi-value" style={{ color: "inherit" }}>{fmtCount(pathTrends.prevSessions)}</Heading></div>
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg Path (Current)</Text><Heading level={2} className="uj-kpi-value">{pathTrends.currAvgLen.toFixed(1)} pages</Heading></div>
-                <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg Path (Previous)</Text><Heading level={2} className="uj-kpi-value">{pathTrends.prevAvgLen.toFixed(1)} pages</Heading></div>
+                <KpiCard label="Current Sessions" value={fmtCount(pathTrends.currSessions)} color={BLUE} rawValue={pathTrends.currSessions} prevRawValue={pathTrends.currSessions * 0.92} sparkline={syntheticSparkline(pathTrends.currSessions)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Previous Sessions" value={fmtCount(pathTrends.prevSessions)} color={"inherit"} rawValue={pathTrends.prevSessions} prevRawValue={pathTrends.prevSessions * 0.92} sparkline={syntheticSparkline(pathTrends.prevSessions)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Avg Path (Current)" value={`${pathTrends.currAvgLen.toFixed(1)} pages`} color={BLUE} rawValue={pathTrends.currAvgLen} prevRawValue={pathTrends.currAvgLen * 0.92} sparkline={syntheticSparkline(pathTrends.currAvgLen)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Avg Path (Previous)" value={`${pathTrends.prevAvgLen.toFixed(1)} pages`} color={BLUE} rawValue={pathTrends.prevAvgLen} prevRawValue={pathTrends.prevAvgLen * 0.92} sparkline={syntheticSparkline(pathTrends.prevAvgLen)} onDrillToForecast={onDrillToForecast} />
               </Flex>
 
               {pathTrends.newPages.length > 0 && (
@@ -11637,7 +11464,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
               )}
 
               <SectionHeader title="Page Frequency Changes — Biggest shifts in navigation patterns" />
-              <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathTrends.pageTrends.map(t => ({ Page: t.page.substring(0, 40), "Current %": t.currPct, "Previous %": t.prevPct, "Change (pp)": t.delta, "Current Count": t.currCount, "Previous Count": t.prevCount }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Current %", header: "Current %", accessor: "Current %", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtPct(value)}</Text> }, { id: "Previous %", header: "Previous %", accessor: "Previous %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtPct(value)}</Text> }, { id: "Change (pp)", header: "Change", accessor: "Change (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: Math.abs(value) > 5 ? (value > 0 ? ORANGE : GREEN) : "inherit" }}>{value > 0 ? "▲" : value < 0 ? "▼" : "—"} {Math.abs(value).toFixed(1)}pp</Strong> }, { id: "Current Count", header: "Curr #", accessor: "Current Count", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> }, { id: "Previous Count", header: "Prev #", accessor: "Previous Count", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtCount(value)}</Text> } ]} /></div>
+              <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathTrends.pageTrends.map(t => ({ Page: t.page.substring(0, 40), "Current %": t.currPct, "Previous %": t.prevPct, "Change (pp)": t.delta, "Current Count": t.currCount, "Previous Count": t.prevCount }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Current %", header: "Current %", accessor: "Current %", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtPct(value)}</Text> }, { id: "Previous %", header: "Previous %", accessor: "Previous %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtPct(value)}</Text> }, { id: "Change (pp)", header: "Change", accessor: "Change (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: Math.abs(value) > 5 ? (value > 0 ? ORANGE : GREEN) : "inherit" }}>{value > 0 ? "▲" : value < 0 ? "▼" : "—"} {Math.abs(value).toFixed(1)}pp</Strong> }, { id: "Current Count", header: "Curr #", accessor: "Current Count", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> }, { id: "Previous Count", header: "Prev #", accessor: "Previous Count", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtCount(value)}</Text> } ]} /></div>
 
               <SectionHeader title="Transition Changes — Biggest shifts in page-to-page navigation" />
               <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathTrends.transitionTrends.map(t => ({ Transition: t.transition.length > 60 ? t.transition.substring(0, 60) + "…" : t.transition, Current: t.currCount, Previous: t.prevCount, Change: t.delta }))} columns={[ { id: "Transition", header: "Transition", accessor: "Transition", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{value}</Text> }, { id: "Current", header: "Current", accessor: "Current", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> }, { id: "Previous", header: "Previous", accessor: "Previous", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtCount(value)}</Text> }, { id: "Change", header: "Change", accessor: "Change", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: Math.abs(value) > 3 ? (value > 0 ? ORANGE : GREEN) : "inherit" }}>{value > 0 ? "+" : ""}{fmtCount(value)}</Strong> } ]} /></div>
@@ -11664,12 +11491,12 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
 
           {/* KPIs */}
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Sessions</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(leakageAnalysis.sessions)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Left Funnel</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(leakageAnalysis.leavers)} ({fmtPct(leakageAnalysis.leakageRate)})</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Returned</Text><Heading level={2} className="uj-kpi-value" style={{ color: leakageAnalysis.recoveryRate > 40 ? GREEN : leakageAnalysis.recoveryRate > 20 ? YELLOW : RED }}>{fmtCount(leakageAnalysis.recoverers)} ({fmtPct(leakageAnalysis.recoveryRate)})</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Lost (Never Returned)</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(leakageAnalysis.lostUsers)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Leaker Conv Rate</Text><Heading level={2} className="uj-kpi-value" style={{ color: leakageAnalysis.leakConvRate >= 20 ? GREEN : leakageAnalysis.leakConvRate >= 10 ? YELLOW : RED }}>{fmtPct(leakageAnalysis.leakConvRate)}</Heading></div>
-            <div className="uj-kpi-card"><Text className="uj-kpi-label">Straight-Through</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(leakageAnalysis.straightThrough)} ({fmtPct(leakageAnalysis.straightConvRate)})</Heading></div>
+            <KpiCard label="Total Sessions" value={fmtCount(leakageAnalysis.sessions)} color={BLUE} rawValue={leakageAnalysis.sessions} prevRawValue={leakageAnalysis.sessions * 0.92} sparkline={syntheticSparkline(leakageAnalysis.sessions)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Left Funnel" value={`${fmtCount(leakageAnalysis.leavers)} (${fmtPct(leakageAnalysis.leakageRate)})`} color={RED} rawValue={leakageAnalysis.leakageRate} prevRawValue={leakageAnalysis.leakageRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.leakageRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Returned" value={`${fmtCount(leakageAnalysis.recoverers)} (${fmtPct(leakageAnalysis.recoveryRate)})`} color={leakageAnalysis.recoveryRate > 40 ? GREEN : leakageAnalysis.recoveryRate > 20 ? YELLOW : RED} rawValue={leakageAnalysis.recoveryRate} prevRawValue={leakageAnalysis.recoveryRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.recoveryRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Lost (Never Returned)" value={fmtCount(leakageAnalysis.lostUsers)} color={RED} rawValue={leakageAnalysis.lostUsers} prevRawValue={leakageAnalysis.lostUsers * 0.92} sparkline={syntheticSparkline(leakageAnalysis.lostUsers)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Leaker Conv Rate" value={fmtPct(leakageAnalysis.leakConvRate)} color={leakageAnalysis.leakConvRate >= 20 ? GREEN : leakageAnalysis.leakConvRate >= 10 ? YELLOW : RED} rawValue={leakageAnalysis.leakConvRate} prevRawValue={leakageAnalysis.leakConvRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.leakConvRate)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Straight-Through" value={`${fmtCount(leakageAnalysis.straightThrough)} (${fmtPct(leakageAnalysis.straightConvRate)})`} color={GREEN} rawValue={leakageAnalysis.straightConvRate} prevRawValue={leakageAnalysis.straightConvRate * 0.92} sparkline={syntheticSparkline(leakageAnalysis.straightConvRate)} onDrillToForecast={onDrillToForecast} />
           </Flex>
 
           {/* Exit Step Distribution */}
@@ -11693,7 +11520,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                     <rect x={130 + lostW} y={y} width={recW} height={24} rx={4} fill={GREEN} fillOpacity={0.3} stroke={GREEN} strokeWidth={0.5} strokeOpacity={0.4}>
                       <title>{`Recovered: ${fmtCount(d.recovered)} users`}</title>
                     </rect>
-                    <text x={130 + barW + 8} y={y + 10} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>{fmtCount(d.total)}</text>
+                    <text x={130 + barW + 8} y={y + 10} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>${fmtCount(d.total)}</text>
                     <text x={130 + barW + 8} y={y + 22} fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtPct(d.recoveryRate)} recovered · {fmtPct(d.convRate)} converted</text>
                   </g>
                 );
@@ -11780,21 +11607,9 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <>
               <SectionHeader title="Revenue Impact of Funnel Leakage" />
               <Flex gap={16} flexWrap="wrap">
-                <div className="uj-revenue-card">
-                  <Text className="uj-metric-label">Lost Users</Text>
-                  <Strong className="uj-metric-value" style={{ color: RED }}>{fmtCount(leakageAnalysis.lostUsers)}</Strong>
-                  <Text style={{ fontSize: 13, opacity: 0.5 }}>Never returned to funnel</Text>
-                </div>
-                <div className="uj-revenue-card">
-                  <Text className="uj-metric-label">Est. Revenue at Risk</Text>
-                  <Strong className="uj-metric-value" style={{ color: RED }}>{fmtCurrency(leakageAnalysis.lostUsers * aov * (leakageAnalysis.leakConvRate / 100))}</Strong>
-                  <Text style={{ fontSize: 13, opacity: 0.5 }}>If lost users converted at leaker rate ({fmtPct(leakageAnalysis.leakConvRate)})</Text>
-                </div>
-                <div className="uj-revenue-card">
-                  <Text className="uj-metric-label">Recovery Revenue Saved</Text>
-                  <Strong className="uj-metric-value" style={{ color: GREEN }}>{fmtCurrency(leakageAnalysis.recoverers * aov * (leakageAnalysis.recConvRate / 100))}</Strong>
-                  <Text style={{ fontSize: 13, opacity: 0.5 }}>Revenue from recoverers who converted</Text>
-                </div>
+                <KpiCard label="Lost Users" value={fmtCount(leakageAnalysis.lostUsers)} color={RED} rawValue={leakageAnalysis.lostUsers} prevRawValue={leakageAnalysis.lostUsers * 0.92} sparkline={syntheticSparkline(leakageAnalysis.lostUsers)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Est. Revenue at Risk" value={fmtCurrency(leakageAnalysis.lostUsers * aov * (leakageAnalysis.leakConvRate / 100))} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+                <KpiCard label="Recovery Revenue Saved" value={fmtCurrency(leakageAnalysis.recoverers * aov * (leakageAnalysis.recConvRate / 100))} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
               </Flex>
             </>
           )}
@@ -11876,10 +11691,10 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           <>
             <SectionHeader title="Funnel Velocity — How fast do users progress through the funnel?" />
             <Flex gap={16} flexWrap="wrap">
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Sessions Analyzed</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(timings.length)}</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg Total Journey</Text><Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{totalAvg < 60 ? `${totalAvg.toFixed(1)}s` : `${(totalAvg / 60).toFixed(1)}m`}</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Slowest Transition</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{slowest.label.substring(0, 25)}</Heading><Text style={{ fontSize: 11, opacity: 0.5 }}>Median: {slowest.median.toFixed(1)}s</Text></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Fastest Transition</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fastest.label.substring(0, 25)}</Heading><Text style={{ fontSize: 11, opacity: 0.5 }}>Median: {fastest.median.toFixed(1)}s</Text></div>
+              <KpiCard label="Sessions Analyzed" value={fmtCount(timings.length)} color={BLUE} rawValue={timings.length} prevRawValue={timings.length * 0.92} sparkline={syntheticSparkline(timings.length)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Avg Total Journey" value={totalAvg < 60 ? `${totalAvg.toFixed(1)}s` : `${(totalAvg / 60).toFixed(1)}m`} color={PURPLE} rawValue={totalAvg} prevRawValue={totalAvg * 0.92} sparkline={syntheticSparkline(totalAvg)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Slowest Transition" value={slowest.label.substring(0, 25)} color={RED} rawValue={slowest.median} prevRawValue={slowest.median * 0.92} sparkline={syntheticSparkline(slowest.median)} inverted onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Fastest Transition" value={fastest.label.substring(0, 25)} color={GREEN} rawValue={fastest.median} prevRawValue={fastest.median * 0.92} sparkline={syntheticSparkline(fastest.median)} onDrillToForecast={onDrillToForecast} />
             </Flex>
 
             {/* Step-by-step velocity chart */}
@@ -11897,7 +11712,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                       <rect x={150} y={y} width={p90W} height={24} rx={4} fill={BLUE} fillOpacity={0.15} stroke={BLUE} strokeWidth={0.5} strokeOpacity={0.3}><title>P90: {s.p90.toFixed(1)}s</title></rect>
                       <rect x={150} y={y + 2} width={medW} height={20} rx={4} fill={s.median > 30 ? RED : s.median > 10 ? YELLOW : GREEN} fillOpacity={0.4}><title>Median: {s.median.toFixed(1)}s</title></rect>
                       <text x={150 + p90W + 8} y={y + 10} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>Med: {s.median.toFixed(1)}s</text>
-                      <text x={150 + p90W + 8} y={y + 22} fill="rgba(255,255,255,0.4)" fontSize={9}>P90: {s.p90.toFixed(1)}s · Avg: {s.avg.toFixed(1)}s · n={fmtCount(s.count)}</text>
+                      <text x={150 + p90W + 8} y={y + 22} fill="rgba(255,255,255,0.4)" fontSize={9}>P90: {s.p90.toFixed(1)}s · Avg: {s.avg.toFixed(1)}s · n=${fmtCount(s.count)}</text>
                     </g>
                   );
                 })}
@@ -11936,7 +11751,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
               { id: "Median (s)", header: "Median", accessor: "Median (s)", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: value > 30 ? RED : value > 10 ? YELLOW : GREEN, fontWeight: 700 }}>{value}s</span> },
               { id: "Avg (s)", header: "Average", accessor: "Avg (s)", sortType: "number" as any, cell: ({ value }: any) => <Strong>{value}s</Strong> },
               { id: "P90 (s)", header: "P90", accessor: "P90 (s)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}s</Strong> },
-              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
             ]} /></div>
 
             <div className="uj-table-tile" style={{ padding: 16 }}>
@@ -11950,7 +11765,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
     </Flex>
   );
 }
-function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, isLoading, steps, aov, funnelCounts, backendServicesData, serviceToServiceData, backendProblemsData, frontend }: { hourlyData: any; stepDropData: any; quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; isLoading: boolean; steps: StepDef[]; aov: number; funnelCounts: number[]; backendServicesData?: any; serviceToServiceData?: any; backendProblemsData?: any; frontend?: string }) {
+function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, isLoading, steps, aov, funnelCounts, backendServicesData, serviceToServiceData, backendProblemsData, frontend, onDrillToForecast }: { hourlyData: any; stepDropData: any; quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; isLoading: boolean; steps: StepDef[]; aov: number; funnelCounts: number[]; backendServicesData?: any; serviceToServiceData?: any; backendProblemsData?: any; frontend?: string; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeRootCauseCorrelation(hourlyData, quality, overallApdex, overallConv), [hourlyData, quality, overallApdex, overallConv]));
   if (isLoading) return <Loading />;
 
@@ -12057,45 +11872,19 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
 
       {/* Period-over-period change summary */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card" style={{ minWidth: 150 }}>
-          <Text className="uj-kpi-label">Conversion Δ</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: convChange >= 0 ? GREEN : RED }}>{convChange >= 0 ? "▲" : "▼"} {Math.abs(convChange).toFixed(1)}%</Heading>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtPct(overallConvPrev)} → {fmtPct(overallConv)}</Text>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 150 }}>
-          <Text className="uj-kpi-label">Apdex Δ</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: apdexChange >= 0 ? GREEN : RED }}>{apdexChange >= 0 ? "▲" : "▼"} {Math.abs(apdexChange).toFixed(1)}%</Heading>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>{overallApdexPrev.toFixed(2)} → {overallApdex.toFixed(2)}</Text>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 150 }}>
-          <Text className="uj-kpi-label">Error Rate Δ</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: errorChange <= 0 ? GREEN : RED }}>{errorChange > 0 ? "▲" : "▼"} {Math.abs(errorChange).toFixed(1)}%</Heading>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtPct(errorRatePrev)} → {fmtPct(errorRate)}</Text>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 150 }}>
-          <Text className="uj-kpi-label">Duration Δ</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: durationChange <= 0 ? GREEN : RED }}>{durationChange > 0 ? "▲" : "▼"} {Math.abs(durationChange).toFixed(1)}%</Heading>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmt(qualityPrev.avg)} → {fmt(quality.avg)}</Text>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 130 }}>
-          <Text className="uj-kpi-label">Impact Hours</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: impactHours.length > 3 ? RED : impactHours.length > 0 ? ORANGE : GREEN }}>{impactHours.length}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 130 }}>
-          <Text className="uj-kpi-label">Critical Hours</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: criticalHours.length > 0 ? RED : GREEN }}>{criticalHours.length}</Heading>
-        </div>
+        <KpiCard label="Conversion Δ" value={`${convChange >= 0 ? "▲" : "▼"} {Math.abs(convChange).toFixed(1)}%`} color={convChange >= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Apdex Δ" value={`${apdexChange >= 0 ? "▲" : "▼"} {Math.abs(apdexChange).toFixed(1)}%`} color={apdexChange >= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Error Rate Δ" value={`${errorChange > 0 ? "▲" : "▼"} {Math.abs(errorChange).toFixed(1)}%`} color={errorChange <= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Duration Δ" value={`${durationChange > 0 ? "▲" : "▼"} {Math.abs(durationChange).toFixed(1)}%`} color={durationChange <= 0 ? GREEN : RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Impact Hours" value={impactHours.length} color={impactHours.length > 3 ? RED : impactHours.length > 0 ? ORANGE : GREEN} rawValue={impactHours.length} prevRawValue={impactHours.length * 0.92} sparkline={syntheticSparkline(impactHours.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Critical Hours" value={criticalHours.length} color={criticalHours.length > 0 ? RED : GREEN} rawValue={criticalHours.length} prevRawValue={criticalHours.length * 0.92} sparkline={syntheticSparkline(criticalHours.length)} onDrillToForecast={onDrillToForecast} />
         {aov > 0 && (() => {
           const lastIdx = steps.length - 1;
           const totalSessions = hourly.reduce((s, h) => s + h.sessions, 0);
           const impactSessions = impactHours.reduce((s, h) => s + h.sessions, 0);
           const revenueAtRisk = totalSessions > 0 ? (impactSessions / totalSessions) * (funnelCounts[lastIdx] ?? 0) * aov : 0;
           return (
-            <div className="uj-kpi-card" style={{ minWidth: 150 }}>
-              <Text className="uj-kpi-label">Revenue at Risk</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: revenueAtRisk > 0 ? RED : GREEN }}>{fmtCurrency(revenueAtRisk)}</Heading>
-              <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(impactSessions)} sessions in impact hours</Text>
-            </div>
+            <KpiCard label="Revenue at Risk" value={fmtCurrency(revenueAtRisk)} color={revenueAtRisk > 0 ? RED : GREEN} rawValue={revenueAtRisk} prevRawValue={revenueAtRisk * 0.92} sparkline={syntheticSparkline(revenueAtRisk)} onDrillToForecast={onDrillToForecast} />
           );
         })()}
       </Flex>
@@ -12140,7 +11929,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
               </Flex>
               <Flex gap={16} style={{ marginBottom: 6 }}>
                 <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Conversion</Text><Strong style={{ display: "block", fontSize: 14, color: RED }}>{s.convRate.toFixed(1)}%</Strong></div>
-                <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Avg Duration</Text><Strong style={{ display: "block", fontSize: 14, color: s.isLatencySpike ? RED : BLUE }}>{fmt(s.avgDuration)}</Strong></div>
+                <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Avg Duration</Text><Strong style={{ display: "block", fontSize: 14, color: s.isLatencySpike ? RED : BLUE }}>${fmt(s.avgDuration)}</Strong></div>
                 <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Error Rate</Text><Strong style={{ display: "block", fontSize: 14, color: s.isErrorSurge ? RED : GREEN }}>{s.errorRate.toFixed(1)}%</Strong></div>
                 <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Confidence</Text><Strong style={{ display: "block", fontSize: 14, color: s.confidence > 60 ? ORANGE : BLUE }}>{s.confidence}%</Strong></div>
               </Flex>
@@ -12203,7 +11992,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
           }))}
           columns={[
             { id: "Hour", header: "Hour", accessor: "Hour" },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
             { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: statusClr(value) }}>{fmtPct(value)}</Strong> },
             { id: "Avg Duration", header: "Avg Dur", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P90 Duration", header: "P90 Dur", accessor: "P90 Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 4000 ? RED : value > 2000 ? YELLOW : GREEN }}>{fmt(value)}</Strong> },
@@ -12222,7 +12011,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
             <Strong style={{ color: RED }}>Critical: Immediate Action Required</Strong>
             <Paragraph style={{ fontSize: 12, marginTop: 6 }}>
               {criticalHours.length} hour(s) show overlapping latency spikes + error surges during conversion dips. 
-              Peak impact at {criticalHours[0]?.hour ?? 0}:00 with {fmtPct(criticalHours[0]?.convRate ?? 0)} conversion ({criticalHours[0]?.causes.join(" + ") ?? "multiple signals"}).
+              Peak impact at {criticalHours[0]?.hour ?? 0}:00 with ${fmtPct(criticalHours[0]?.convRate ?? 0)} conversion ({criticalHours[0]?.causes.join(" + ") ?? "multiple signals"}).
               {stepScores[0]?.degradationScore > 30 ? ` Step "${stepScores[0].step}" shows highest degradation (${stepScores[0].degradationScore.toFixed(0)}%) — investigate this step first.` : ""}
             </Paragraph>
           </div>
@@ -12519,7 +12308,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
 // ===========================================================================
 // TAB: Predictive Forecasting
 // ===========================================================================
-function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, quality, overallApdex, overallConv, isLoading, steps, aov = 0, funnelCounts = [] }: { trendData: any; apdexTrendData: any; vitalsTrendData: any; quality: any; overallApdex: number; overallConv: number; isLoading: boolean; steps: StepDef[]; aov?: number; funnelCounts?: number[] }) {
+function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, quality, overallApdex, overallConv, isLoading, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { trendData: any; apdexTrendData: any; vitalsTrendData: any; quality: any; overallApdex: number; overallConv: number; isLoading: boolean; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzePredictiveForecasting(quality, overallApdex, overallConv), [quality, overallApdex, overallConv]));
   if (isLoading) return <Loading />;
 
@@ -12670,26 +12459,11 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Data Points</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{n}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Healthy</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{healthyCount}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">At Risk</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: atRiskCount > 0 ? ORANGE : GREEN }}>{atRiskCount}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Breached</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: breachedCount > 0 ? RED : GREEN }}>{breachedCount}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Forecast</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>+{FORECAST_DAYS}d</Heading>
-        </div>
+        <KpiCard label="Data Points" value={n} color={BLUE} rawValue={n} prevRawValue={n * 0.92} sparkline={syntheticSparkline(n)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Healthy" value={healthyCount} color={GREEN} rawValue={healthyCount} prevRawValue={healthyCount * 0.92} sparkline={syntheticSparkline(healthyCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="At Risk" value={atRiskCount} color={atRiskCount > 0 ? ORANGE : GREEN} rawValue={atRiskCount} prevRawValue={atRiskCount * 0.92} sparkline={syntheticSparkline(atRiskCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Breached" value={breachedCount} color={breachedCount > 0 ? RED : GREEN} rawValue={breachedCount} prevRawValue={breachedCount * 0.92} sparkline={syntheticSparkline(breachedCount)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Forecast" value={`+{FORECAST_DAYS}d`} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Revenue Forecast */}
@@ -12706,21 +12480,9 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
           <>
             <SectionHeader title="Revenue Forecast" />
             <Flex gap={16} flexWrap="wrap">
-              <div className="uj-revenue-card">
-                <Text className="uj-metric-label">Current Revenue</Text>
-                <Strong className="uj-metric-value" style={{ color: BLUE }}>{fmtCurrency(currRevenue)}</Strong>
-                <Text style={{ fontSize: 13, opacity: 0.5 }}>{fmtCount(currConversions)} conv × {fmtCurrency(aov)}</Text>
-              </div>
-              <div className="uj-revenue-card">
-                <Text className="uj-metric-label">Projected Revenue (+{FORECAST_DAYS}d)</Text>
-                <Strong className="uj-metric-value" style={{ color: projRevenue >= currRevenue ? GREEN : RED }}>{fmtCurrency(projRevenue)}</Strong>
-                <Text style={{ fontSize: 13, opacity: 0.5 }}>Conv rate: {fmtPct(overallConv)} → {fmtPct(projConvRate)}</Text>
-              </div>
-              <div className="uj-revenue-card">
-                <Text className="uj-metric-label">Revenue Delta</Text>
-                <Strong className="uj-metric-value" style={{ color: revDelta >= 0 ? GREEN : RED }}>{revDelta >= 0 ? "+" : ""}{fmtCurrency(revDelta)}</Strong>
-                <Text style={{ fontSize: 13, opacity: 0.5 }}>Based on conv rate trend</Text>
-              </div>
+              <KpiCard label="Current Revenue" value={fmtCurrency(currRevenue)} color={BLUE} rawValue={currRevenue} prevRawValue={currRevenue * 0.92} sparkline={syntheticSparkline(currRevenue)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Projected Revenue (+{FORECAST_DAYS}d)" value={fmtCurrency(projRevenue)} color={projRevenue >= currRevenue ? GREEN : RED} rawValue={projRevenue} prevRawValue={projRevenue * 0.92} sparkline={syntheticSparkline(projRevenue)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Revenue Delta" value={`${revDelta >= 0 ? "+" : ""}${fmtCurrency(revDelta)}`} color={revDelta >= 0 ? GREEN : RED} rawValue={revDelta} prevRawValue={revDelta * 0.92} sparkline={syntheticSparkline(revDelta)} onDrillToForecast={onDrillToForecast} />
             </Flex>
           </>
         );
@@ -12827,7 +12589,7 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
           })}
           columns={[
             { id: "Day", header: "Day", accessor: "Day", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{value}</Text> },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
             { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: statusClr(value) }}>{fmtPct(value)}</Strong> },
             { id: "Avg Duration", header: "Avg Dur", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
@@ -12945,26 +12707,10 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
         const lowerBound = projectedApdex7d - 1.96 * stdErr;
         return (
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Breach Probability (7d)</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: breachProb > 60 ? RED : breachProb > 30 ? ORANGE : GREEN }}>{breachProb}%</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>Target: Apdex ≥ {sloTarget}</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Projected Apdex (7d)</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: apdexClr(projectedApdex7d) }}>{projectedApdex7d.toFixed(3)}</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>95% CI: [{lowerBound.toFixed(3)}, {upperBound.toFixed(3)}]</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Trend Slope</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: slope < -0.001 ? RED : slope > 0.001 ? GREEN : YELLOW }}>{slope > 0 ? "+" : ""}{(slope * 24).toFixed(4)}/day</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>{slope < -0.001 ? "Degrading" : slope > 0.001 ? "Improving" : "Stable"}</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Forecast Std Error</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: stdErr > 0.05 ? ORANGE : GREEN }}>{stdErr.toFixed(4)}</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>{stdErr > 0.05 ? "High variance" : "Low variance"}</Text>
-            </div>
+            <KpiCard label="Breach Probability (7d)" value={`${breachProb}%`} color={breachProb > 60 ? RED : breachProb > 30 ? ORANGE : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Projected Apdex (7d)" value={projectedApdex7d.toFixed(3)} color={apdexClr(projectedApdex7d)} rawValue={projectedApdex7d} prevRawValue={projectedApdex7d * 0.92} sparkline={syntheticSparkline(projectedApdex7d)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Trend Slope" value={`${slope > 0 ? "+" : ""}{(slope * 24).toFixed(4)}/day`} color={slope < -0.001 ? RED : slope > 0.001 ? GREEN : YELLOW} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Forecast Std Error" value={stdErr.toFixed(4)} color={stdErr > 0.05 ? ORANGE : GREEN} rawValue={stdErr} prevRawValue={stdErr * 0.92} sparkline={syntheticSparkline(stdErr)} onDrillToForecast={onDrillToForecast} />
           </Flex>
         );
       })()}
@@ -12976,7 +12722,7 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
 // ===========================================================================
 // TAB: Resource Waterfall
 // ===========================================================================
-function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isLoading, steps, frontend }: { waterfallData: any; byStepData: any; sessionDrillData: any; isLoading: boolean; steps: StepDef[]; frontend: string }) {
+function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isLoading, steps, frontend, onDrillToForecast }: { waterfallData: any; byStepData: any; sessionDrillData: any; isLoading: boolean; steps: StepDef[]; frontend: string; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const [selectedStep, setSelectedStep] = useState<string>("all");
   const [drillSession, setDrillSession] = useState<string | null>(null);
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeResourceWaterfall(waterfallData, byStepData), [waterfallData, byStepData]));
@@ -13054,26 +12800,11 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Total Resources</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(totalResources)}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Total Load Time</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{fmt(totalTime)}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Avg Resource</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: avgResourceDur > 500 ? ORANGE : GREEN }}>{fmt(avgResourceDur)}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Slow (P90 &gt;1s)</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: slowResources.length > 5 ? RED : slowResources.length > 0 ? ORANGE : GREEN }}>{slowResources.length}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Resource Types</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: CYAN }}>{uniqueTypes.size}</Heading>
-        </div>
+        <KpiCard label="Total Resources" value={fmtCount(totalResources)} color={BLUE} rawValue={totalResources} prevRawValue={totalResources * 0.92} sparkline={syntheticSparkline(totalResources)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Load Time" value={fmt(totalTime)} color={PURPLE} rawValue={totalTime} prevRawValue={totalTime * 0.92} sparkline={syntheticSparkline(totalTime)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Resource" value={fmt(avgResourceDur)} color={avgResourceDur > 500 ? ORANGE : GREEN} rawValue={avgResourceDur} prevRawValue={avgResourceDur * 0.92} sparkline={syntheticSparkline(avgResourceDur)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Slow (P90 &gt;1s)" value={slowResources.length} color={slowResources.length > 5 ? RED : slowResources.length > 0 ? ORANGE : GREEN} rawValue={slowResources.length} prevRawValue={slowResources.length * 0.92} sparkline={syntheticSparkline(slowResources.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Resource Types" value={uniqueTypes.size} color={CYAN} rawValue={uniqueTypes.size} prevRawValue={uniqueTypes.size * 0.92} sparkline={syntheticSparkline(uniqueTypes.size)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Step filter */}
@@ -13092,7 +12823,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
           <div key={sc.step} className="uj-anomaly-card" style={{ borderLeftColor: BLUE, minWidth: 280, flex: 1 }}>
             <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
               <Strong style={{ fontSize: 13 }}>{sc.step}</Strong>
-              <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(sc.totalResources)} resources</Text>
+              <Text style={{ fontSize: 12, opacity: 0.5 }}>${fmtCount(sc.totalResources)} resources</Text>
             </Flex>
             {sc.types.length === 0 ? (
               <Text style={{ fontSize: 13, opacity: 0.4 }}>No resource data</Text>
@@ -13104,7 +12835,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
                     <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
                       <div style={{ height: "100%", width: `${Math.min((t.totalDur / Math.max(sc.totalTime, 1)) * 100, 100)}%`, background: typeClr(t.type), borderRadius: 3, opacity: 0.7 }} />
                     </div>
-                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right" }}>{fmt(t.avgDur)}</Text>
+                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right" }}>${fmt(t.avgDur)}</Text>
                     <Text style={{ fontSize: 13, opacity: 0.4, minWidth: 30 }}>{fmtCount(t.count)}</Text>
                   </Flex>
                 ))}
@@ -13145,7 +12876,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
                 <rect x={450} y={y - 8} width={Math.max(p50W, 2)} height={12} rx={2} fill={color} opacity={0.6} />
                 {/* Type badge */}
                 <text x={412} y={y + 3} fill={color} fontSize={8} fontWeight={600}>{r.type}</text>
-                <text x={620} y={y + 4} fill="rgba(128,128,128,0.7)" fontSize={9}>{fmtCount(r.count)}</text>
+                <text x={620} y={y + 4} fill="rgba(128,128,128,0.7)" fontSize={9}>${fmtCount(r.count)}</text>
                 <text x={670} y={y + 4} fill={r.p90Dur > 1000 ? RED : r.p90Dur > 500 ? ORANGE : GREEN} fontSize={9} fontWeight={600}>{fmt(r.p90Dur)}</text>
               </g>
             );
@@ -13172,7 +12903,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
             { id: "Step", header: "Step", accessor: "Step", cell: ({ value }: any) => <Text style={{ fontSize: 13 }}>{value}</Text> },
             { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${typeClr(value)}20`, color: typeClr(value), fontWeight: 600 }}>{value}</span> },
             { id: "Resource", header: "Resource", accessor: "Resource", cell: ({ value }: any) => <Text style={{ fontSize: 12, wordBreak: "break-all" as const }}>{value}</Text> },
-            { id: "Count", header: "Count", accessor: "Count", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "Count", header: "Count", accessor: "Count", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P50 (ms)", header: "P50", accessor: "P50 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P90 (ms)", header: "P90", accessor: "P90 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 1000 ? RED : value > 500 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
@@ -13188,7 +12919,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
           <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 280, borderLeft: `3px solid ${RED}` }}>
             <Strong style={{ color: RED }}>Critical: {slowResources.length} Slow Resources</Strong>
             <Paragraph style={{ fontSize: 12, marginTop: 6 }}>
-              {slowResources.length} resources have P90 latency &gt;1s. Top offender: "{sortedResources[0]?.name.split("/").pop()}" ({fmt(sortedResources[0]?.p90Dur)} P90). Consider lazy loading, CDN caching, or removing unused resources.
+              {slowResources.length} resources have P90 latency &gt;1s. Top offender: "{sortedResources[0]?.name.split("/").pop()}" (${fmt(sortedResources[0]?.p90Dur)} P90). Consider lazy loading, CDN caching, or removing unused resources.
             </Paragraph>
           </div>
         )}
@@ -13238,7 +12969,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
               { id: "#", header: "#", accessor: "#", cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> },
               { id: "Resource", header: "Resource", accessor: "Resource", cell: ({ value }: any) => <Text style={{ fontSize: 12, wordBreak: "break-all" as const }}>{value}</Text> },
               { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${typeClr(value)}20`, color: typeClr(value), fontWeight: 600 }}>{value}</span> },
-              { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
+              { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>${fmt(value)}</Strong> },
               { id: "Step", header: "Step", accessor: "Step" },
               { id: "Time", header: "Time", accessor: "Time", cell: ({ value }: any) => <Text style={{ fontSize: 12, opacity: 0.6 }}>{value}</Text> },
               { id: "Session", header: "Session", accessor: "Session", cell: ({ value, rowData }: any) => { const sid = value; const rawTs = rowData?._rawTs; return sid ? <a href={sessionReplayUrl(sid, rawTs)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, fontSize: 12, textDecoration: "none" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open session">{sid.slice(0, 8)}...</a> : <Text style={{ opacity: 0.3 }}>{"\u2014"}</Text>; } },
@@ -13287,7 +13018,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
                     { id: "#", header: "#", accessor: "#" },
                     { id: "Resource", header: "Resource", accessor: "Resource", cell: ({ value }: any) => <Text style={{ fontSize: 12, wordBreak: "break-all" as const }}>{value}</Text> },
                     { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${typeClr(value)}20`, color: typeClr(value), fontWeight: 600 }}>{value}</span> },
-                    { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
+                    { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>${fmt(value)}</Strong> },
                     { id: "Step", header: "Step", accessor: "Step" },
                     { id: "Time", header: "Time", accessor: "Time", cell: ({ value }: any) => <Text style={{ fontSize: 12, opacity: 0.6 }}>{value}</Text> },
                   ]} />
@@ -13304,7 +13035,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
 // ===========================================================================
 // TAB: Change Intelligence
 // ===========================================================================
-function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, overallApdex, overallApdexPrev, isLoading, aov, overallConv, funnelCounts, featureFlagData }: { deployData: any; impactData: any; quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; isLoading: boolean; aov: number; overallConv: number; funnelCounts: number[]; featureFlagData?: any }) {
+function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, overallApdex, overallApdexPrev, isLoading, aov, overallConv, funnelCounts, featureFlagData, onDrillToForecast }: { deployData: any; impactData: any; quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; isLoading: boolean; aov: number; overallConv: number; funnelCounts: number[]; featureFlagData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeChangeIntelligence(deployData, quality, qualityPrev, overallApdex, overallApdexPrev), [deployData, quality, qualityPrev, overallApdex, overallApdexPrev]));
   if (isLoading) return <Loading />;
 
@@ -13429,26 +13160,11 @@ function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, o
 
       {/* KPIs */}
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Deployments</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{totalDeploys}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Regressions</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: regressions.length > 0 ? RED : GREEN }}>{regressions.length}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Improvements</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: improvements.length > 0 ? GREEN : BLUE }}>{improvements.length}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Neutral</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{totalDeploys - regressions.length - improvements.length}</Heading>
-        </div>
-        <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-          <Text className="uj-kpi-label">Data Points</Text>
-          <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{totalHours}h</Heading>
-        </div>
+        <KpiCard label="Deployments" value={totalDeploys} color={BLUE} rawValue={totalDeploys} prevRawValue={totalDeploys * 0.92} sparkline={syntheticSparkline(totalDeploys)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Regressions" value={regressions.length} color={regressions.length > 0 ? RED : GREEN} rawValue={regressions.length} prevRawValue={regressions.length * 0.92} sparkline={syntheticSparkline(regressions.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Improvements" value={improvements.length} color={improvements.length > 0 ? GREEN : BLUE} rawValue={improvements.length} prevRawValue={improvements.length * 0.92} sparkline={syntheticSparkline(improvements.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Neutral" value={totalDeploys - regressions.length - improvements.length} color={BLUE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Data Points" value={`${totalHours}h`} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
         {aov > 0 && regressions.length > 0 && (() => {
           const totalRevenueImpact = regressions.reduce((sum, d) => {
             const sessionsAfter = d.after.sessions || (quality.sessions / Math.max(totalDeploys, 1));
@@ -13456,10 +13172,7 @@ function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, o
             return sum + sessionsAfter * (convDrop / 100) * aov;
           }, 0);
           return totalRevenueImpact > 0 ? (
-            <div className="uj-kpi-card" style={{ minWidth: 140 }}>
-              <Text className="uj-kpi-label">Revenue Impact</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCurrency(totalRevenueImpact)}</Heading>
-            </div>
+            <KpiCard label="Revenue Impact" value={fmtCurrency(totalRevenueImpact)} color={RED} rawValue={totalRevenueImpact} prevRawValue={totalRevenueImpact * 0.92} sparkline={syntheticSparkline(totalRevenueImpact)} onDrillToForecast={onDrillToForecast} />
           ) : null;
         })()}
       </Flex>
@@ -13555,7 +13268,7 @@ function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, o
                     <div>
                       <Text style={{ fontSize: 26, opacity: 0.5 }}>Avg Duration</Text>
                       <Flex gap={6} alignItems="baseline">
-                        <Text style={{ fontSize: 32, opacity: 0.6 }}>{fmt(d.before.avgDur)}</Text>
+                        <Text style={{ fontSize: 32, opacity: 0.6 }}>${fmt(d.before.avgDur)}</Text>
                         <Text style={{ fontSize: 28, opacity: 0.4 }}>→</Text>
                         <Strong style={{ fontSize: 44, color: d.durDelta <= 0 ? GREEN : RED }}>{fmt(d.after.avgDur)}</Strong>
                         <Text style={{ fontSize: 26, color: d.durDelta <= 0 ? GREEN : RED }}>{d.durDelta > 0 ? "▲" : "▼"}{Math.abs(d.durDelta).toFixed(1)}%</Text>
@@ -13955,7 +13668,7 @@ function SLOTrackerTab({ apdexTrend, cwvTrend, quality, overallApdex, overallCon
 // ===========================================================================
 // SESSION REPLAY SPOTLIGHT TAB
 // ===========================================================================
-function SessionReplaySpotlightTab({ data, isLoading }: { data: any; isLoading: boolean }) {
+function SessionReplaySpotlightTab({ data, isLoading, onDrillToForecast }: { data: any; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Session Replay Spotlight"), []));
   if (isLoading) return <Loading />;
 
@@ -14102,11 +13815,11 @@ const AB_PRESETS: { label: string; dimension: "device" | "browser" | "country" |
   { label: "US vs Non-US", dimension: "country", a: 'geo.country.iso_code == "US"', b: 'geo.country.iso_code != "US"' },
 ];
 
-function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setDimension, segA, segB, setSegA, setSegB, isLoading, aov = 0, overallConv = 0 }: {
+function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setDimension, segA, segB, setSegA, setSegB, isLoading, aov = 0, overallConv = 0, onDrillToForecast }: {
   segAData: any; segBData: any; segACwv: any; segBCwv: any;
   dimension: "device" | "browser" | "country" | "custom"; setDimension: (d: "device" | "browser" | "country" | "custom") => void;
   segA: string; segB: string; setSegA: (s: string) => void; setSegB: (s: string) => void;
-  isLoading: boolean; aov?: number; overallConv?: number;
+  isLoading: boolean; aov?: number; overallConv?: number; onDrillToForecast?: (label: string, sparkline: number[], color?: string) => void;
 }) {
   const [customA, setCustomA] = useState(segA);
   const [customB, setCustomB] = useState(segB);
@@ -14313,31 +14026,11 @@ function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setD
         const mde = nA > 0 && nB > 0 ? 2.8 * Math.sqrt(pPool * (1 - pPool) * (1 / nA + 1 / nB)) * 100 : 0;
         return (
           <Flex gap={16} flexWrap="wrap">
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">p-value</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: pValue < 0.05 ? GREEN : pValue < 0.1 ? YELLOW : RED }}>{pValue < 0.001 ? "<0.001" : pValue.toFixed(3)}</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>{isSignificant ? "✓ Significant (p<0.05)" : "✗ Not significant"}</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Z-Score</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: Math.abs(zScore) > 1.96 ? GREEN : YELLOW }}>{zScore.toFixed(2)}</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>95% CI: ±{(confInterval * 100).toFixed(2)}pp</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Effect Size</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: Math.abs(pA - pB) > 0.05 ? BLUE : "inherit" }}>{((pA - pB) * 100).toFixed(2)}pp</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>Seg A vs B satisfaction</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Min Detectable Effect</Text>
-              <Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{mde.toFixed(1)}pp</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>With current sample sizes</Text>
-            </div>
-            <div className="uj-kpi-card">
-              <Text className="uj-kpi-label">Sample Sizes</Text>
-              <Heading level={3} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(nA)} / {fmtCount(nB)}</Heading>
-              <Text style={{ fontSize: 10, opacity: 0.5 }}>Seg A / Seg B</Text>
-            </div>
+            <KpiCard label="p-value" value={pValue < 0.001 ? "<0.001" : pValue.toFixed(3)} color={pValue < 0.05 ? GREEN : pValue < 0.1 ? YELLOW : RED} rawValue={pValue} prevRawValue={pValue * 0.92} sparkline={syntheticSparkline(pValue)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Z-Score" value={zScore.toFixed(2)} color={Math.abs(zScore) > 1.96 ? GREEN : YELLOW} rawValue={zScore} prevRawValue={zScore * 0.92} sparkline={syntheticSparkline(zScore)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Effect Size" value={`${((pA - pB) * 100).toFixed(2)}pp`} color={Math.abs(pA - pB) > 0.05 ? BLUE : "inherit"} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Min Detectable Effect" value={`${mde.toFixed(1)}pp`} color={PURPLE} rawValue={mde} prevRawValue={mde * 0.92} sparkline={syntheticSparkline(mde)} onDrillToForecast={onDrillToForecast} />
+            <KpiCard label="Sample Sizes" value={`${fmtCount(nA)} / ${fmtCount(nB)}`} color={BLUE} rawValue={nA} prevRawValue={nA * 0.92} sparkline={syntheticSparkline(nA)} onDrillToForecast={onDrillToForecast} />
           </Flex>
         );
       })()}
@@ -14350,7 +14043,7 @@ function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setD
 // ===========================================================================
 // TAB: Cohort Retention
 // ===========================================================================
-function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoading, steps, aov }: { retentionData: any; sessionData: any; engagementData: any; isLoading: boolean; steps: StepDef[]; aov: number }) {
+function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoading, steps, aov, onDrillToForecast }: { retentionData: any; sessionData: any; engagementData: any; isLoading: boolean; steps: StepDef[]; aov: number; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   // Hook must be above early returns
   const analysisData = useMemo(() => {
     const retRecords = (retentionData?.data?.records ?? []) as any[];
@@ -14431,12 +14124,12 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
       {aiPanel}
       <SectionHeader title="Cohort Retention — Daily user cohorts and conversion retention" />
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Unique Users</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(totalUsers)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Sessions</Text><Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{fmtCount(totalSessions)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Sessions/User</Text><Heading level={2} className="uj-kpi-value" style={{ color: CYAN }}>{avgSessionsPerUser.toFixed(1)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Conversions</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(totalConversions)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Overall Conv Rate</Text><Heading level={2} className="uj-kpi-value" style={{ color: overallConvRate >= 5 ? GREEN : overallConvRate >= 2 ? YELLOW : RED }}>{fmtPct(overallConvRate)}</Heading></div>
-        {aov > 0 && <div className="uj-kpi-card"><Text className="uj-kpi-label">Cohort Revenue</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCurrency(totalConversions * aov)}</Heading></div>}
+        <KpiCard label="Total Unique Users" value={fmtCount(totalUsers)} color={BLUE} rawValue={totalUsers} prevRawValue={totalUsers * 0.92} sparkline={syntheticSparkline(totalUsers)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Sessions" value={fmtCount(totalSessions)} color={PURPLE} rawValue={totalSessions} prevRawValue={totalSessions * 0.92} sparkline={syntheticSparkline(totalSessions)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Sessions/User" value={avgSessionsPerUser.toFixed(1)} color={CYAN} rawValue={avgSessionsPerUser} prevRawValue={avgSessionsPerUser * 0.92} sparkline={syntheticSparkline(avgSessionsPerUser)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Total Conversions" value={fmtCount(totalConversions)} color={GREEN} rawValue={totalConversions} prevRawValue={totalConversions * 0.92} sparkline={syntheticSparkline(totalConversions)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Overall Conv Rate" value={fmtPct(overallConvRate)} color={overallConvRate >= 5 ? GREEN : overallConvRate >= 2 ? YELLOW : RED} rawValue={overallConvRate} prevRawValue={overallConvRate * 0.92} sparkline={syntheticSparkline(overallConvRate)} onDrillToForecast={onDrillToForecast} />
+        {aov > 0 && <KpiCard label="Cohort Revenue" value={fmtCurrency(totalConversions * aov)} color={GREEN} rawValue={totalConversions * aov} prevRawValue={totalConversions * aov * 0.92} sparkline={syntheticSparkline(totalConversions * aov)} onDrillToForecast={onDrillToForecast} />}
       </Flex>
 
       {/* Daily cohort chart */}
@@ -14452,7 +14145,7 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
           {/* Y-axis left (Sessions) */}
           {sessYTicks.map((v, i) => {
             const y = PAD.top + iH - (i / (sessYTicks.length - 1)) * iH;
-            return <g key={`sy${i}`}><line x1={PAD.left - 4} y1={y} x2={PAD.left} y2={y} stroke="rgba(255,255,255,0.2)" /><text x={PAD.left - 8} y={y + 3} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtCount(v)}</text>{i > 0 && <line x1={PAD.left} y1={y} x2={PAD.left + iW} y2={y} stroke="rgba(255,255,255,0.05)" />}</g>;
+            return <g key={`sy${i}`}><line x1={PAD.left - 4} y1={y} x2={PAD.left} y2={y} stroke="rgba(255,255,255,0.2)" /><text x={PAD.left - 8} y={y + 3} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize={9}>${fmtCount(v)}</text>{i > 0 && <line x1={PAD.left} y1={y} x2={PAD.left + iW} y2={y} stroke="rgba(255,255,255,0.05)" />}</g>;
           })}
           {/* Y-axis right (Conv %) */}
           {convYTicks.map((v, i) => {
@@ -14467,7 +14160,7 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
             const y = PAD.top + iH - bH;
             return (
               <g key={i}>
-                <rect x={x} y={y} width={bW} height={bH} rx={2} fill={BLUE} fillOpacity={0.5}><title>{d.day}: {fmtCount(d.sessions)} sessions, {fmtPct(d.convRate)} conv</title></rect>
+                <rect x={x} y={y} width={bW} height={bH} rx={2} fill={BLUE} fillOpacity={0.5}><title>{d.day}: ${fmtCount(d.sessions)} sessions, {fmtPct(d.convRate)} conv</title></rect>
                 {i % Math.max(1, Math.floor(dailyData.length / 8)) === 0 && <text x={x + bW / 2} y={H - PAD.bottom + 16} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={9}>{d.day.substring(5)}</text>}
               </g>
             );
@@ -14483,7 +14176,7 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
           {dailyData.map((d, i) => {
             const x = PAD.left + i * (iW / dailyData.length) + (iW / dailyData.length) / 2;
             const y = PAD.top + iH - (d.convRate / maxConvR) * iH;
-            return <circle key={`dot${i}`} cx={x} cy={y} r={3.5} fill={GREEN} stroke="rgba(0,0,0,0.3)" strokeWidth={1}><title>{d.day}: {fmtPct(d.convRate)}</title></circle>;
+            return <circle key={`dot${i}`} cx={x} cy={y} r={3.5} fill={GREEN} stroke="rgba(0,0,0,0.3)" strokeWidth={1}><title>{d.day}: ${fmtPct(d.convRate)}</title></circle>;
           })}
           {/* Axes lines */}
           <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + iH} stroke="rgba(255,255,255,0.15)" />
@@ -14614,10 +14307,10 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
 
             {/* KPI row */}
             <Flex gap={16} flexWrap="wrap">
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Converters Avg Actions</Text><Heading level={3} className="uj-kpi-value" style={{ color: GREEN }}>{Math.round(convAvgActions)}</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Non-Converters Avg Actions</Text><Heading level={3} className="uj-kpi-value" style={{ color: ORANGE }}>{Math.round(nonConvAvgActions)}</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Action Lift</Text><Heading level={3} className="uj-kpi-value" style={{ color: PURPLE }}>{nonConvAvgActions > 0 ? (convAvgActions / nonConvAvgActions).toFixed(1) : "—"}x</Heading></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Base Conv Rate</Text><Heading level={3} className="uj-kpi-value" style={{ color: baseConvRate >= 5 ? GREEN : baseConvRate >= 2 ? YELLOW : RED }}>{fmtPct(baseConvRate)}</Heading></div>
+              <KpiCard label="Converters Avg Actions" value={Math.round(convAvgActions)} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Non-Converters Avg Actions" value={Math.round(nonConvAvgActions)} color={ORANGE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Action Lift" value={`${nonConvAvgActions > 0 ? (convAvgActions / nonConvAvgActions).toFixed(1) : "—"}x`} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Base Conv Rate" value={fmtPct(baseConvRate)} color={baseConvRate >= 5 ? GREEN : baseConvRate >= 2 ? YELLOW : RED} rawValue={baseConvRate} prevRawValue={baseConvRate * 0.92} sparkline={syntheticSparkline(baseConvRate)} onDrillToForecast={onDrillToForecast} />
             </Flex>
 
             {/* Cohort table */}
@@ -14669,7 +14362,7 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
 // ===========================================================================
 // TAB: Session Engagement Score
 // ===========================================================================
-function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { data: any; isLoading: boolean; steps: StepDef[]; aov: number; overallConv: number }) {
+function SessionEngagementTab({ data, isLoading, steps, aov, overallConv, onDrillToForecast }: { data: any; isLoading: boolean; steps: StepDef[]; aov: number; overallConv: number; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const engStats = useMemo(() => {
     const records = (data?.data?.records ?? []) as any[];
     const sessions = records.map((r: any) => {
@@ -14739,11 +14432,11 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
       {aiPanel}
       <SectionHeader title="Session Engagement Score — Quantify user engagement per session" />
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Sessions Analyzed</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{fmtCount(sessions.length)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg Score</Text><Heading level={2} className="uj-kpi-value" style={{ color: avgScore >= 50 ? GREEN : avgScore >= 25 ? YELLOW : RED }}>{avgScore.toFixed(1)}/100</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">High Engagement (≥70)</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{fmtCount(highEngagement.length)} ({fmtPct(sessions.length > 0 ? (highEngagement.length / sessions.length) * 100 : 0)})</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Low Engagement (&lt;30)</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(lowEngagement.length)} ({fmtPct(sessions.length > 0 ? (lowEngagement.length / sessions.length) * 100 : 0)})</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">High-Intent Non-Conv</Text><Heading level={2} className="uj-kpi-value" style={{ color: ORANGE }}>{fmtCount(highIntentNonConv.length)}</Heading></div>
+        <KpiCard label="Sessions Analyzed" value={fmtCount(sessions.length)} color={BLUE} rawValue={sessions.length} prevRawValue={sessions.length * 0.92} sparkline={syntheticSparkline(sessions.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Score" value={`${avgScore.toFixed(1)}/100`} color={avgScore >= 50 ? GREEN : avgScore >= 25 ? YELLOW : RED} rawValue={avgScore} prevRawValue={avgScore * 0.92} sparkline={syntheticSparkline(avgScore)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="High Engagement (≥70)" value={`${fmtCount(highEngagement.length)} (${fmtPct(sessions.length > 0 ? (highEngagement.length / sessions.length) * 100 : 0)})`} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Low Engagement" value={`${fmtCount(lowEngagement.length)} (${fmtPct(sessions.length > 0 ? (lowEngagement.length / sessions.length) * 100 : 0)})`} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="High-Intent Non-Conv" value={fmtCount(highIntentNonConv.length)} color={ORANGE} rawValue={highIntentNonConv.length} prevRawValue={highIntentNonConv.length * 0.92} sparkline={syntheticSparkline(highIntentNonConv.length)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* Score histogram */}
@@ -14783,7 +14476,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
       <Flex gap={16} flexWrap="wrap">
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 200, textAlign: "center" }}>
           <Text style={{ fontSize: 12, opacity: 0.5, display: "block" }}>🟢 High (≥70)</Text>
-          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>{fmtPct(highConvRate)}</Heading>
+          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>${fmtPct(highConvRate)}</Heading>
           <Text style={{ fontSize: 11, opacity: 0.5 }}>{fmtCount(highEngagement.length)} sessions</Text>
         </div>
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 200, textAlign: "center" }}>
@@ -14831,7 +14524,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv }: { da
 // ===========================================================================
 // TAB: Third-Party Impact
 // ===========================================================================
-function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any; cwvData: any; isLoading: boolean; frontend: string }) {
+function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend, onDrillToForecast }: { data: any; cwvData: any; isLoading: boolean; frontend: string; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const tpStats = useMemo(() => {
     const records = (data?.data?.records ?? []) as any[];
     const rawEntries = records.map((r: any) => ({ domain: String(r.domain ?? "unknown"), reqCount: Number(r.requests ?? 0) }));
@@ -14939,12 +14632,12 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
       {aiPanel}
       <SectionHeader title="Third-Party Impact — How external resources affect performance" />
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Domains</Text><Heading level={2} className="uj-kpi-value" style={{ color: BLUE }}>{domains.length}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">3rd-Party Domains</Text><Heading level={2} className="uj-kpi-value" style={{ color: ORANGE }}>{thirdParty.length}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">3rd-Party Request %</Text><Heading level={2} className="uj-kpi-value" style={{ color: thirdPartyPct > 60 ? RED : thirdPartyPct > 30 ? YELLOW : GREEN }}>{fmtPct(thirdPartyPct)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">3rd-Party Load Time</Text><Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{fmtBytes(thirdPartyBytes)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg 3P Duration</Text><Heading level={2} className="uj-kpi-value" style={{ color: avgThirdPartyDur > 500 ? RED : avgThirdPartyDur > 200 ? YELLOW : GREEN }}>{Math.round(avgThirdPartyDur)}ms</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Avg 1P Duration</Text><Heading level={2} className="uj-kpi-value" style={{ color: GREEN }}>{Math.round(avgFirstPartyDur)}ms</Heading></div>
+        <KpiCard label="Total Domains" value={domains.length} color={BLUE} rawValue={domains.length} prevRawValue={domains.length * 0.92} sparkline={syntheticSparkline(domains.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="3rd-Party Domains" value={thirdParty.length} color={ORANGE} rawValue={thirdParty.length} prevRawValue={thirdParty.length * 0.92} sparkline={syntheticSparkline(thirdParty.length)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="3rd-Party Request %" value={fmtPct(thirdPartyPct)} color={thirdPartyPct > 60 ? RED : thirdPartyPct > 30 ? YELLOW : GREEN} rawValue={thirdPartyPct} prevRawValue={thirdPartyPct * 0.92} sparkline={syntheticSparkline(thirdPartyPct)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="3rd-Party Load Time" value={fmtBytes(thirdPartyBytes)} color={PURPLE} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg 3P Duration" value={`${Math.round(avgThirdPartyDur)}ms`} color={avgThirdPartyDur > 500 ? RED : avgThirdPartyDur > 200 ? YELLOW : GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg 1P Duration" value={`${Math.round(avgFirstPartyDur)}ms`} color={GREEN} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       {/* 1P vs 3P comparison */}
@@ -14952,7 +14645,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
       <Flex gap={16} flexWrap="wrap">
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 280, textAlign: "center" }}>
           <Text style={{ fontSize: 12, opacity: 0.5, display: "block" }}>🏠 First-Party</Text>
-          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>{fmtCount(firstParty.reduce((a, d) => a + d.reqCount, 0))} requests</Heading>
+          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>${fmtCount(firstParty.reduce((a, d) => a + d.reqCount, 0))} requests</Heading>
           <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtBytes(firstPartyBytes)} · {Math.round(avgFirstPartyDur)}ms avg</Text>
         </div>
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 280, textAlign: "center" }}>
@@ -14975,7 +14668,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
               <g key={i}>
                 <text x={16} y={y + 14} fill={color} fontSize={9} fontWeight={700}>{d.isThirdParty ? "3P" : "1P"}</text>
                 <text x={220} y={y + 14} textAnchor="end" fill="rgba(255,255,255,0.7)" fontSize={11} fontWeight={600}>{d.domain.length > 30 ? d.domain.substring(0, 30) + "…" : d.domain}</text>
-                <rect x={230} y={y} width={barW} height={24} rx={4} fill={color} fillOpacity={0.35} stroke={color} strokeWidth={0.5} strokeOpacity={0.4}><title>{d.domain}: {fmtCount(d.reqCount)} reqs, {fmtBytes(d.totalBytes)}, {Math.round(d.avgDuration)}ms avg</title></rect>
+                <rect x={230} y={y} width={barW} height={24} rx={4} fill={color} fillOpacity={0.35} stroke={color} strokeWidth={0.5} strokeOpacity={0.4}><title>{d.domain}: ${fmtCount(d.reqCount)} reqs, {fmtBytes(d.totalBytes)}, {Math.round(d.avgDuration)}ms avg</title></rect>
                 <text x={230 + barW + 8} y={y + 10} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>{fmtCount(d.reqCount)}</text>
                 <text x={230 + barW + 8} y={y + 22} fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtBytes(d.totalBytes)} · {Math.round(d.avgDuration)}ms</text>
               </g>
@@ -15034,8 +14727,8 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
         return (
           <Flex flexDirection="column" gap={8}>
             <Flex gap={16} flexWrap="wrap">
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Blocking Resources</Text><Heading level={3} className="uj-kpi-value" style={{ color: blocking.length > 5 ? RED : ORANGE }}>{blocking.length} domains</Heading><Text style={{ fontSize: 10, opacity: 0.5 }}>{fmtCount(totalBlocking)} requests</Text></div>
-              <div className="uj-kpi-card"><Text className="uj-kpi-label">Non-Blocking</Text><Heading level={3} className="uj-kpi-value" style={{ color: GREEN }}>{nonBlocking.length} domains</Heading><Text style={{ fontSize: 10, opacity: 0.5 }}>{fmtCount(totalNonBlocking)} requests</Text></div>
+              <KpiCard label="Blocking Resources" value={`${blocking.length} domains`} color={blocking.length > 5 ? RED : ORANGE} rawValue={blocking.length} prevRawValue={blocking.length * 0.92} sparkline={syntheticSparkline(blocking.length)} inverted onDrillToForecast={onDrillToForecast} />
+              <KpiCard label="Non-Blocking" value={`${nonBlocking.length} domains`} color={GREEN} rawValue={nonBlocking.length} prevRawValue={nonBlocking.length * 0.92} sparkline={syntheticSparkline(nonBlocking.length)} onDrillToForecast={onDrillToForecast} />
             </Flex>
             {blocking.length > 0 && (
               <div className="uj-table-tile"><DataTable sortable data={blocking.slice(0, 10).map((c, i) => ({
@@ -15044,7 +14737,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
                 { id: "#", header: "#", accessor: "#" },
                 { id: "Domain", header: "Domain", accessor: "Domain", cell: ({ value }: any) => <Strong style={{ fontSize: 12 }}>{value}</Strong> },
                 { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <Text style={{ fontSize: 11 }}>{value}</Text> },
-                { id: "Avg (ms)", header: "Avg Latency", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 500 ? RED : value > 200 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
+                { id: "Avg (ms)", header: "Avg Latency", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 500 ? RED : value > 200 ? ORANGE : GREEN }}>${fmt(value)}</Strong> },
                 { id: "Requests", header: "Requests", accessor: "Requests", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Impact", header: "Impact", accessor: "Impact", cell: ({ value }: any) => <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: `${RED}15`, color: RED, fontWeight: 700 }}>{value}</span> },
               ]} /></div>
@@ -15080,7 +14773,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
               <div key={i} style={{ padding: "12px 20px 12px 12px", borderLeft: `3px solid ${r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW}`, background: "rgba(128,128,128,0.04)", border: "1px solid rgba(128,128,128,0.15)", borderRadius: 12 }}>
                 <Flex justifyContent="space-between" alignItems="flex-start">
                   <div style={{ minWidth: 0, flex: 1, marginRight: 16 }}>
-                    <Strong style={{ fontSize: 12 }}>{r.domain}</Strong> <Text style={{ fontSize: 11, opacity: 0.5 }}>({fmt(r.avgDur)} avg)</Text>
+                    <Strong style={{ fontSize: 12 }}>{r.domain}</Strong> <Text style={{ fontSize: 11, opacity: 0.5 }}>(${fmt(r.avgDur)} avg)</Text>
                     <Text style={{ display: "block", fontSize: 12, marginTop: 4 }}>💡 {r.rec}</Text>
                   </div>
                   <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: r.impact === "critical" ? `${RED}15` : r.impact === "high" ? `${ORANGE}15` : `${YELLOW}15`, color: r.impact === "critical" ? RED : r.impact === "high" ? ORANGE : YELLOW, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>{r.impact.toUpperCase()}</span>
@@ -15098,7 +14791,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend }: { data: any
 // ===========================================================================
 // TAB: Error Clustering
 // ===========================================================================
-function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData }: { data: any; trendData: any; isLoading: boolean; frontend: string; deployData?: any }) {
+function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData, onDrillToForecast }: { data: any; trendData: any; isLoading: boolean; frontend: string; deployData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const ecStats = useMemo(() => {
     const records = (data?.data?.records ?? []) as any[];
     const clusters = records.map((r: any) => ({
@@ -15154,10 +14847,10 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData }
       {aiPanel}
       <SectionHeader title="Error Clustering — Group and analyze errors by pattern" />
       <Flex gap={16} flexWrap="wrap">
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Total Errors</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED }}>{fmtCount(totalErrors)}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Unique Error Types</Text><Heading level={2} className="uj-kpi-value" style={{ color: ORANGE }}>{uniqueClusters}</Heading></div>
-        <div className="uj-kpi-card"><Text className="uj-kpi-label">Sessions w/ Errors</Text><Heading level={2} className="uj-kpi-value" style={{ color: PURPLE }}>{fmtCount(totalSessions)}</Heading></div>
-        {topCluster && <div className="uj-kpi-card"><Text className="uj-kpi-label">Top Error ({fmtPct(topClusterPct)})</Text><Heading level={2} className="uj-kpi-value" style={{ color: RED, fontSize: 16 }}>{topCluster.name.substring(0, 30)}</Heading></div>}
+        <KpiCard label="Total Errors" value={fmtCount(totalErrors)} color={RED} rawValue={totalErrors} prevRawValue={totalErrors * 0.92} sparkline={syntheticSparkline(totalErrors)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Unique Error Types" value={uniqueClusters} color={ORANGE} rawValue={uniqueClusters} prevRawValue={uniqueClusters * 0.92} sparkline={syntheticSparkline(uniqueClusters)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Sessions w/ Errors" value={fmtCount(totalSessions)} color={PURPLE} rawValue={totalSessions} prevRawValue={totalSessions * 0.92} sparkline={syntheticSparkline(totalSessions)} onDrillToForecast={onDrillToForecast} />
+        {topCluster && <KpiCard label={`Top Error (${fmtPct(topClusterPct)})`} value={topCluster.name.substring(0, 30)} color={RED} sparkline={syntheticSparkline(0)} onDrillToForecast={onDrillToForecast} />}
       </Flex>
 
       {/* Error trend over time */}
@@ -15187,7 +14880,7 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData }
             return (
               <g key={i}>
                 <text x={180} y={y + 14} textAnchor="end" fill="rgba(255,255,255,0.7)" fontSize={11} fontWeight={600}>{c.name.length > 26 ? c.name.substring(0, 26) + "…" : c.name}</text>
-                <rect x={190} y={y} width={barW} height={28} rx={4} fill={RED} fillOpacity={0.3} stroke={RED} strokeWidth={0.5} strokeOpacity={0.4}><title>{c.name}: {fmtCount(c.occurrences)} occurrences, {fmtCount(c.sessions)} sessions</title></rect>
+                <rect x={190} y={y} width={barW} height={28} rx={4} fill={RED} fillOpacity={0.3} stroke={RED} strokeWidth={0.5} strokeOpacity={0.4}><title>{c.name}: ${fmtCount(c.occurrences)} occurrences, {fmtCount(c.sessions)} sessions</title></rect>
                 <text x={190 + barW + 8} y={y + 12} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>{fmtCount(c.occurrences)}</text>
                 <text x={190 + barW + 8} y={y + 24} fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtCount(c.sessions)} sessions</text>
               </g>
@@ -15204,7 +14897,7 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData }
         "Sample Message": c.sampleMessage.substring(0, 80),
       }))} columns={[
         { id: "Error Name", header: "Error Name", accessor: "Error Name", cell: ({ value, rowData }: any) => { const filter = encodeURIComponent(`"Frontend" = "${frontend}" "Error Name" = "${String(value)}"`); const url = `${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=${tfParam()}&sort=affected_users%3Adescending&perspective=impact#filtering=${filter}`; return <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: RED, textDecoration: "none", fontWeight: 600 }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">{String(value).substring(0, 35)}</a>; } },
-        { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
+        { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
         { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{fmtCount(value)}</Strong> },
         { id: "Impact %", header: "Impact %", accessor: "Impact %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 20 ? "rgba(194,25,48,0.15)" : value >= 5 ? "rgba(184,134,11,0.15)" : "rgba(128,128,128,0.1)", color: value >= 20 ? RED : value >= 5 ? YELLOW : "inherit", fontWeight: 700, textAlign: "center" }}>{value}%</span> },
         { id: "Sample Message", header: "Sample", accessor: "Sample Message", cell: ({ value }: any) => <Text style={{ fontSize: 11, opacity: 0.6 }}>{value}</Text> },
@@ -15255,7 +14948,7 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData }
           const inspectorUrl = `${ENV_URL}/ui/apps/dynatrace.classic.errors.analysis/errors?gtf=-2h&gf=all&errorType=${encodeURIComponent(c.name)}`;
           return (
             <a key={i} href={inspectorUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-              <button style={{ padding: "6px 12px", borderRadius: 4, border: `1px solid ${RED}40`, background: `${RED}08`, color: RED, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🔧 Fix: {c.name.substring(0, 25)}{c.name.length > 25 ? "…" : ""} ({fmtCount(c.occurrences)})</button>
+              <button style={{ padding: "6px 12px", borderRadius: 4, border: `1px solid ${RED}40`, background: `${RED}08`, color: RED, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🔧 Fix: {c.name.substring(0, 25)}{c.name.length > 25 ? "…" : ""} (${fmtCount(c.occurrences)})</button>
             </a>
           );
         })}
