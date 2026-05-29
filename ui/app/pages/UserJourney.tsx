@@ -616,8 +616,8 @@ ${iAnyLines}
 ${countLines}`;
 }
 
-function stepMetricsQuery(days: number, frontend: string, steps: StepDef[], nonce = 0): string {
-  const period = periodClause(days);
+function stepMetricsQuery(days: number, frontend: string, steps: StepDef[], nonce = 0, prev = false): string {
+  const period = periodClause(days, prev);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `// ${nonce}
 fetch user.events, ${period}
@@ -781,6 +781,28 @@ function trendsSparklineQuery(days: number, frontend: string, steps: StepDef[]):
     tolerating = countIf(dur_ms > ${APDEX_T}.0 and dur_ms <= ${APDEX_4T}.0),
     frustrated = countIf(dur_ms > ${APDEX_4T}.0),
     by: {slot_day}
+| sort slot_day asc`;
+}
+
+/** Per-step sparkline query — groups by step_tag AND time bucket for per-step sparklines */
+function stepSparklineQuery(days: number, frontend: string, steps: StepDef[]): string {
+  const period = periodClause(days, false);
+  const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
+  const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
+  return `fetch user.events, ${period}
+| filter frontend.name == "${frontend}"
+| filter ${anyStepFilter(steps)}
+| fieldsAdd dur_ms = toDouble(duration) / 1000000.0
+| fieldsAdd step_tag = ${tagExpr}
+| fieldsAdd slot_day = bin(start_time, ${binSize})
+| summarize
+    total = count(),
+    avg_dur = avg(dur_ms),
+    p50_dur = percentile(dur_ms, 50),
+    p90_dur = percentile(dur_ms, 90),
+    p99_dur = percentile(dur_ms, 99),
+    errors = countIf(characteristics.has_error == true),
+    by: {step_tag, slot_day}
 | sort slot_day asc`;
 }
 
@@ -2942,6 +2964,7 @@ export function UserJourney() {
   const refetchOpts = refreshIntervalMs > 0 ? { refetchInterval: refreshIntervalMs } : undefined;
   const funnelResult = useDql({ query: sessionFlowQuery(timeframeDays, frontend, steps, false) }, refetchOpts);
   const stepMetrics = useDql({ query: stepMetricsQuery(timeframeDays, frontend, steps) }, refetchOpts);
+  const stepMetricsPrev = useDql({ query: stepMetricsQuery(timeframeDays, frontend, steps, 1, true) }, refetchOpts);
   const hasMultiPageSteps = steps.some(s => s.identifiers.length > 1);
   const pageMetrics = useDql({ query: hasMultiPageSteps ? pageMetricsQuery(timeframeDays, frontend, steps) : "fetch user.events | limit 0" }, refetchOpts);
   const cwvResult = useDql({ query: cwvQuery(timeframeDays, frontend) }, refetchOpts);
@@ -2957,6 +2980,7 @@ export function UserJourney() {
   const qualityDataPrev = useDql({ query: sessionQualityQuery(timeframeDays, frontend, steps, true) }, refetchOpts);
   const sparklineData = useDql({ query: trendsSparklineQuery(timeframeDays, frontend, steps) }, refetchOpts);
   const convSparklineData = useDql({ query: trendsConvSparklineQuery(timeframeDays, frontend, steps) }, refetchOpts);
+  const stepSparklineData = useDql({ query: stepSparklineQuery(timeframeDays, frontend, steps) }, refetchOpts);
 
   // Today's hourly funnel data for predictive EOD model
   const todayFunnelData = useDql({ query: todayFunnelHourlyQuery(frontend, steps) }, refetchOpts);
@@ -3074,6 +3098,38 @@ export function UserJourney() {
     (stepMetrics.data?.records ?? []).forEach((r: any) => { if (r?.step_tag) m.set(r.step_tag, r); });
     return m;
   }, [stepMetrics.data]);
+
+  // Previous-period step metrics map
+  const stepMapPrev = useMemo(() => {
+    const m = new Map<string, any>();
+    (stepMetricsPrev.data?.records ?? []).forEach((r: any) => { if (r?.step_tag) m.set(r.step_tag, r); });
+    return m;
+  }, [stepMetricsPrev.data]);
+
+  // Per-step sparklines: step_tag → { avgDur[], p50[], p90[], p99[], total[], errors[] }
+  const stepSparklines = useMemo(() => {
+    const m = new Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[] }>();
+    const records = (stepSparklineData.data?.records ?? []) as any[];
+    // Group by step_tag, sorted by time
+    const byStep = new Map<string, any[]>();
+    for (const r of records) {
+      const tag = String(r.step_tag ?? "");
+      if (!tag) continue;
+      if (!byStep.has(tag)) byStep.set(tag, []);
+      byStep.get(tag)!.push(r);
+    }
+    for (const [tag, rows] of byStep) {
+      m.set(tag, {
+        avgDur: rows.map(r => Number(r.avg_dur ?? 0)),
+        p50: rows.map(r => Number(r.p50_dur ?? 0)),
+        p90: rows.map(r => Number(r.p90_dur ?? 0)),
+        p99: rows.map(r => Number(r.p99_dur ?? 0)),
+        total: rows.map(r => Number(r.total ?? 0)),
+        errors: rows.map(r => Number(r.errors ?? 0)),
+      });
+    }
+    return m;
+  }, [stepSparklineData.data]);
 
   // Parse per-page metrics (for multi-page step comparison)
   const pageMap = useMemo(() => {
@@ -3378,7 +3434,7 @@ export function UserJourney() {
             case "Funnel Overview": content = <FunnelOverviewTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} stepMap={stepMap} pageMap={pageMap} quality={quality} qualityPrev={qualityPrev} compareMode={compareMode} setCompareMode={setCompareMode} isLoading={isLoading || qualityData.isLoading} isFetching={isFunnelFetching} lastRefreshedAt={lastRefreshedAt} refreshIntervalMs={refreshIntervalMs} appEntityId={appEntityId} steps={steps} aov={aov} funnelStyle={funnelStyle} onFunnelStyleChange={(v: FunnelStyle) => { setFunnelStyle(v); saveState({ key: FUNNEL_STYLE_STATE_KEY, body: { value: v } }); }} todayHourlyData={todayFunnelData} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Trends": content = <TrendsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || funnelResult.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Web Vitals": content = <WebVitalsTab cwv={cwv} cwvByPage={cwvByPage} cwvTrend={sloCwvTrendData} isLoading={cwvResult.isLoading || cwvByPage.isLoading} appEntityId={appEntityId} onDrillToForecast={openForecast} />; break;
-            case "Step Details": content = <StepDetailsTab stepMap={stepMap} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
+            case "Step Details": content = <StepDetailsTab stepMap={stepMap} stepMapPrev={stepMapPrev} stepSparklines={stepSparklines} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
             case "Worst Sessions": content = <WorstSessionsTab data={worstSessionsData} isLoading={worstSessionsData.isLoading} onDrillToForecast={openForecast} />; break;
             case "Exceptions": content = <JSErrorsTab data={jsErrorsData} prevData={jsErrorsPrevData} isLoading={jsErrorsData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
             case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
@@ -5255,7 +5311,7 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId, onD
 // ===========================================================================
 // TAB: Step Details
 // ===========================================================================
-function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; stepMapPrev: Map<string, any>; stepSparklines: Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[] }>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeStepDetails(stepMap, steps, funnelCounts), [stepMap, steps, funnelCounts]));
   const [compareSteps, setCompareSteps] = React.useState<Set<number>>(new Set());
   const [cwvSteps, setCwvSteps] = React.useState<Set<number>>(new Set());
@@ -5313,21 +5369,21 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
     return <span style={{ fontSize: 11, color: clr, fontWeight: 600, marginLeft: 4 }}>{arrow}{Math.abs(pct).toFixed(1)}%{suffix}</span>;
   };
 
-  const renderMetricRow = (label: string, met: ReturnType<typeof extractMetrics>, primaryMet?: ReturnType<typeof extractMetrics>, isPrimary = false) => (
+  const renderMetricRow = (label: string, met: ReturnType<typeof extractMetrics>, primaryMet?: ReturnType<typeof extractMetrics>, isPrimary = false, sparklines?: { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[] }, prevMet?: ReturnType<typeof extractMetrics>) => (
     <>
-      <Flex gap={16} flexWrap="wrap">
-        <div className="uj-metric-box"><Text className="uj-metric-label">Avg Duration</Text><Strong className="uj-metric-value" style={{ color: met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN }}>{fmt(met.avg)}</Strong>{primaryMet && !isPrimary && renderDelta(met.avg, primaryMet.avg, true)}</div>
-        <div className="uj-metric-box"><Text className="uj-metric-label">P50</Text><Strong className="uj-metric-value">{fmt(met.p50)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p50, primaryMet.p50, true)}</div>
-        <div className="uj-metric-box"><Text className="uj-metric-label">P90</Text><Strong className="uj-metric-value" style={{ color: met.p90 > 3000 ? RED : met.p90 > 1500 ? YELLOW : GREEN }}>{fmt(met.p90)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p90, primaryMet.p90, true)}</div>
-        <div className="uj-metric-box"><Text className="uj-metric-label">P99</Text><Strong className="uj-metric-value" style={{ color: met.p99 > 5000 ? RED : GREEN }}>{fmt(met.p99)}</Strong>{primaryMet && !isPrimary && renderDelta(met.p99, primaryMet.p99, true)}</div>
-        <div className="uj-metric-box"><Text className="uj-metric-label">Events</Text><Strong className="uj-metric-value" style={{ color: BLUE }}>{fmtCount(met.total)}</Strong>{primaryMet && !isPrimary && renderDelta(met.total, primaryMet.total)}</div>
-        <div className="uj-metric-box"><Text className="uj-metric-label">Errors</Text><Strong className="uj-metric-value" style={{ color: met.errors > 0 ? RED : GREEN }}>{met.errors}</Strong></div>
-        <div className="uj-metric-box"><Text className="uj-metric-label">Error Rate</Text><Strong className="uj-metric-value" style={{ color: met.errRate > 5 ? RED : met.errRate > 1 ? YELLOW : GREEN }}>{fmtPct(met.errRate)}</Strong>{primaryMet && !isPrimary && renderDelta(met.errRate, primaryMet.errRate, true)}</div>
+      <Flex gap={12} flexWrap="wrap">
+        <KpiCard label="Avg Duration" value={fmt(met.avg)} color={met.avg > 3000 ? RED : met.avg > 1000 ? YELLOW : GREEN} rawValue={met.avg} prevRawValue={prevMet ? prevMet.avg : (primaryMet && !isPrimary ? primaryMet.avg : null)} sparkline={sparklines?.avgDur} inverted={true} />
+        <KpiCard label="P50" value={fmt(met.p50)} color={BLUE} rawValue={met.p50} prevRawValue={prevMet ? prevMet.p50 : (primaryMet && !isPrimary ? primaryMet.p50 : null)} sparkline={sparklines?.p50} inverted={true} />
+        <KpiCard label="P90" value={fmt(met.p90)} color={met.p90 > 3000 ? RED : met.p90 > 1500 ? YELLOW : GREEN} rawValue={met.p90} prevRawValue={prevMet ? prevMet.p90 : (primaryMet && !isPrimary ? primaryMet.p90 : null)} sparkline={sparklines?.p90} inverted={true} />
+        <KpiCard label="P99" value={fmt(met.p99)} color={met.p99 > 5000 ? RED : GREEN} rawValue={met.p99} prevRawValue={prevMet ? prevMet.p99 : (primaryMet && !isPrimary ? primaryMet.p99 : null)} sparkline={sparklines?.p99} inverted={true} />
+        <KpiCard label="Events" value={fmtCount(met.total)} color={BLUE} rawValue={met.total} prevRawValue={prevMet ? prevMet.total : (primaryMet && !isPrimary ? primaryMet.total : null)} sparkline={sparklines?.total} higherIsBetter={true} />
+        <KpiCard label="Errors" value={fmtCount(met.errors)} color={met.errors > 0 ? RED : GREEN} rawValue={met.errors} prevRawValue={prevMet ? prevMet.errors : null} sparkline={sparklines?.errors} inverted={true} />
+        <KpiCard label="Error Rate" value={fmtPct(met.errRate)} color={met.errRate > 5 ? RED : met.errRate > 1 ? YELLOW : GREEN} rawValue={met.errRate} prevRawValue={prevMet ? prevMet.errRate : (primaryMet && !isPrimary ? primaryMet.errRate : null)} inverted={true} />
       </Flex>
       <Flex gap={12} alignItems="center" style={{ marginTop: 8 }}>
-        <Text style={{ fontSize: 12, color: GREEN }}>Satisfied: {met.sat}</Text>
-        <Text style={{ fontSize: 12, color: YELLOW }}>Tolerating: {met.tol}</Text>
-        <Text style={{ fontSize: 12, color: RED }}>Frustrated: {met.fru}</Text>
+        <Text style={{ fontSize: 12, color: GREEN }}>Satisfied: {fmtCount(met.sat)}</Text>
+        <Text style={{ fontSize: 12, color: YELLOW }}>Tolerating: {fmtCount(met.tol)}</Text>
+        <Text style={{ fontSize: 12, color: RED }}>Frustrated: {fmtCount(met.fru)}</Text>
         <div style={{ flex: 1, height: 6, borderRadius: 3, overflow: "hidden", display: "flex" }}>
           <div style={{ width: `${met.total > 0 ? (met.sat / met.total) * 100 : 0}%`, background: GREEN, height: "100%" }} />
           <div style={{ width: `${met.total > 0 ? (met.tol / met.total) * 100 : 0}%`, background: YELLOW, height: "100%" }} />
@@ -5342,6 +5398,9 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
       {aiPanel}
       {steps.map((step, i) => {
         const met = extractMetrics(stepMap.get(step.label));
+        const prevRaw = stepMapPrev.get(step.label);
+        const prevMet = prevRaw ? extractMetrics(prevRaw) : undefined;
+        const spark = stepSparklines.get(step.label);
         const dropOff = i > 0 && funnelCounts.length > i ? (funnelCounts[i - 1] - funnelCounts[i]) : 0;
         const revenueAtRisk = aov > 0 && dropOff > 0 ? dropOff * aov : 0;
         const isMulti = step.identifiers.length > 1;
@@ -5381,7 +5440,7 @@ function StepDetailsTab({ stepMap, pageMap, cwvByPage, isLoading, appEntityId, s
             </Flex>
 
             {/* Aggregate step metrics */}
-            {renderMetricRow(step.label, met)}
+            {renderMetricRow(step.label, met, undefined, true, spark, prevMet)}
             {revenueAtRisk > 0 && <Flex gap={16} style={{ marginTop: 4 }}><div className="uj-metric-box"><Text className="uj-metric-label">Revenue at Risk</Text><Strong className="uj-metric-value" style={{ color: RED }}>${fmtCurrency(revenueAtRisk)}</Strong><Text style={{ fontSize: 13, opacity: 0.4 }}>{fmtCount(dropOff)} drop-offs</Text></div></Flex>}
 
             {/* Page-level drop-off funnel (for multi-page steps) */}
