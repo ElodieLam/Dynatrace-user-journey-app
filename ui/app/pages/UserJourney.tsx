@@ -644,8 +644,8 @@ fetch user.events, ${period}
 }
 
 /** Per-page metrics — breaks down each page (view.name) individually for multi-page steps */
-function pageMetricsQuery(days: number, frontend: string, steps: StepDef[], nonce = 0): string {
-  const period = periodClause(days);
+function pageMetricsQuery(days: number, frontend: string, steps: StepDef[], nonce = 0, prev = false): string {
+  const period = periodClause(days, prev);
   const field = steps[0]?.type === "view" ? "view.name" : "url.path";
   return `// ${nonce}
 fetch user.events, ${period}
@@ -781,6 +781,27 @@ function trendsSparklineQuery(days: number, frontend: string, steps: StepDef[]):
     tolerating = countIf(dur_ms > ${APDEX_T}.0 and dur_ms <= ${APDEX_4T}.0),
     frustrated = countIf(dur_ms > ${APDEX_4T}.0),
     by: {slot_day}
+| sort slot_day asc`;
+}
+
+/** Per-page sparkline query — groups by page identifier AND time bucket */
+function pageSparklineQuery(days: number, frontend: string, steps: StepDef[]): string {
+  const period = periodClause(days, false);
+  const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
+  const field = steps[0]?.type === "view" ? "view.name" : "url.path";
+  return `fetch user.events, ${period}
+| filter frontend.name == "${frontend}"
+| filter ${anyStepFilter(steps)}
+| fieldsAdd dur_ms = toDouble(duration) / 1000000.0
+| fieldsAdd slot_day = bin(start_time, ${binSize})
+| summarize
+    total = count(),
+    avg_dur = avg(dur_ms),
+    p50_dur = percentile(dur_ms, 50),
+    p90_dur = percentile(dur_ms, 90),
+    p99_dur = percentile(dur_ms, 99),
+    errors = countIf(characteristics.has_error == true),
+    by: {${field}, slot_day}
 | sort slot_day asc`;
 }
 
@@ -2967,6 +2988,8 @@ export function UserJourney() {
   const stepMetricsPrev = useDql({ query: stepMetricsQuery(timeframeDays, frontend, steps, 1, true) }, refetchOpts);
   const hasMultiPageSteps = steps.some(s => s.identifiers.length > 1);
   const pageMetrics = useDql({ query: hasMultiPageSteps ? pageMetricsQuery(timeframeDays, frontend, steps) : "fetch user.events | limit 0" }, refetchOpts);
+  const pageMetricsPrev = useDql({ query: hasMultiPageSteps ? pageMetricsQuery(timeframeDays, frontend, steps, 1, true) : "fetch user.events | limit 0" }, refetchOpts);
+  const pageSparklineData = useDql({ query: hasMultiPageSteps ? pageSparklineQuery(timeframeDays, frontend, steps) : "fetch user.events | limit 0" }, refetchOpts);
   const cwvResult = useDql({ query: cwvQuery(timeframeDays, frontend) }, refetchOpts);
   const cwvByPage = useDql({ query: cwvByPageQuery(timeframeDays, frontend) }, refetchOpts);
   const deviceData = useDql({ query: deviceQuery(timeframeDays, frontend, steps) }, refetchOpts);
@@ -3143,6 +3166,43 @@ export function UserJourney() {
     }
     return m;
   }, [pageMetrics.data]);
+
+  // Previous-period per-page metrics map
+  const pageMapPrev = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const r of (pageMetricsPrev.data?.records ?? []) as any[]) {
+      const key = String(r["view.name"] ?? r["url.path"] ?? "");
+      if (key) m.set(key, r);
+    }
+    return m;
+  }, [pageMetricsPrev.data]);
+
+  // Per-page sparklines: pageId → { avgDur[], p50[], p90[], p99[], total[], errors[], errRate[] }
+  const pageSparklines = useMemo(() => {
+    const m = new Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }>();
+    const records = (pageSparklineData.data?.records ?? []) as any[];
+    const byPage = new Map<string, any[]>();
+    for (const r of records) {
+      const key = String(r["view.name"] ?? r["url.path"] ?? "");
+      if (!key) continue;
+      if (!byPage.has(key)) byPage.set(key, []);
+      byPage.get(key)!.push(r);
+    }
+    for (const [key, rows] of byPage) {
+      const totalArr = rows.map(r => Number(r.total ?? 0));
+      const errorsArr = rows.map(r => Number(r.errors ?? 0));
+      m.set(key, {
+        avgDur: rows.map(r => Number(r.avg_dur ?? 0)),
+        p50: rows.map(r => Number(r.p50_dur ?? 0)),
+        p90: rows.map(r => Number(r.p90_dur ?? 0)),
+        p99: rows.map(r => Number(r.p99_dur ?? 0)),
+        total: totalArr,
+        errors: errorsArr,
+        errRate: totalArr.map((t, i) => t > 0 ? (errorsArr[i] / t) * 100 : 0),
+      });
+    }
+    return m;
+  }, [pageSparklineData.data]);
 
   // Parse CWV
   const cwv = useMemo(() => {
@@ -3437,7 +3497,7 @@ export function UserJourney() {
             case "Funnel Overview": content = <FunnelOverviewTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} stepMap={stepMap} pageMap={pageMap} quality={quality} qualityPrev={qualityPrev} compareMode={compareMode} setCompareMode={setCompareMode} isLoading={isLoading || qualityData.isLoading} isFetching={isFunnelFetching} lastRefreshedAt={lastRefreshedAt} refreshIntervalMs={refreshIntervalMs} appEntityId={appEntityId} steps={steps} aov={aov} funnelStyle={funnelStyle} onFunnelStyleChange={(v: FunnelStyle) => { setFunnelStyle(v); saveState({ key: FUNNEL_STYLE_STATE_KEY, body: { value: v } }); }} todayHourlyData={todayFunnelData} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Trends": content = <TrendsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || funnelResult.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Web Vitals": content = <WebVitalsTab cwv={cwv} cwvByPage={cwvByPage} cwvTrend={sloCwvTrendData} isLoading={cwvResult.isLoading || cwvByPage.isLoading} appEntityId={appEntityId} onDrillToForecast={openForecast} />; break;
-            case "Step Details": content = <StepDetailsTab stepMap={stepMap} stepMapPrev={stepMapPrev} stepSparklines={stepSparklines} pageMap={pageMap} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
+            case "Step Details": content = <StepDetailsTab stepMap={stepMap} stepMapPrev={stepMapPrev} stepSparklines={stepSparklines} pageMap={pageMap} pageMapPrev={pageMapPrev} pageSparklines={pageSparklines} cwvByPage={cwvByPage} isLoading={stepMetrics.isLoading} appEntityId={appEntityId} steps={steps} aov={aov} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
             case "Worst Sessions": content = <WorstSessionsTab data={worstSessionsData} isLoading={worstSessionsData.isLoading} onDrillToForecast={openForecast} />; break;
             case "Exceptions": content = <JSErrorsTab data={jsErrorsData} prevData={jsErrorsPrevData} isLoading={jsErrorsData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
             case "Click Issues": content = <ClickIssuesTab data={clickIssuesData} replayData={clickReplayData} isLoading={clickIssuesData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
@@ -5314,7 +5374,7 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId, onD
 // ===========================================================================
 // TAB: Step Details
 // ===========================================================================
-function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; stepMapPrev: Map<string, any>; stepSparklines: Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }>; pageMap: Map<string, any>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, pageMapPrev, pageSparklines, cwvByPage, isLoading, appEntityId, steps, aov = 0, funnelCounts = [], onDrillToForecast }: { stepMap: Map<string, any>; stepMapPrev: Map<string, any>; stepSparklines: Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }>; pageMap: Map<string, any>; pageMapPrev: Map<string, any>; pageSparklines: Map<string, { avgDur: number[]; p50: number[]; p90: number[]; p99: number[]; total: number[]; errors: number[]; errRate: number[] }>; cwvByPage: any; isLoading: boolean; appEntityId?: string; steps: StepDef[]; aov?: number; funnelCounts?: number[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeStepDetails(stepMap, steps, funnelCounts), [stepMap, steps, funnelCounts]));
   const [compareSteps, setCompareSteps] = React.useState<Set<number>>(new Set());
   const [cwvSteps, setCwvSteps] = React.useState<Set<number>>(new Set());
@@ -5526,7 +5586,7 @@ function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, cwvByPa
                         )}
                         <div style={{ marginLeft: "auto" }}><ApdexGauge score={pm.metrics.apdex} size={48} label="" /></div>
                       </Flex>
-                      {renderMetricRow(pm.id, pm.metrics, isPrimary ? undefined : primaryMetrics, isPrimary)}
+                      {renderMetricRow(pm.id, pm.metrics, isPrimary ? undefined : primaryMetrics, isPrimary, pageSparklines.get(pm.id), (() => { const prev = pageMapPrev.get(pm.id); return prev ? extractMetrics(prev) : undefined; })())}
                       {pageCwv && (
                         <Flex gap={16} style={{ marginTop: 8 }}>
                           <div className="uj-metric-box">
