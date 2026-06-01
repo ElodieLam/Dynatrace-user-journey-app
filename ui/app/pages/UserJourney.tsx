@@ -124,12 +124,12 @@ type TabKey = typeof TAB_KEYS[number];
 type TabGroupDef = { label: string; subTabs: TabKey[] };
 const TAB_GROUPS: TabGroupDef[] = [
   { label: "Funnel & Conversion", subTabs: ["Funnel Overview", "Step Details", "Trends", "Conversion Attribution", "Errors & Drop-offs"] },
-  { label: "User Experience", subTabs: ["Web Vitals", "Worst Sessions", "Click Issues", "Perf Budgets", "Resource Waterfall", "Third-Party Impact"] },
-  { label: "Navigation & Flows", subTabs: ["Navigation Paths", "Sankey", "Geo Heatmap", "Maps"] },
+  { label: "Executive Summary", subTabs: ["Executive Summary"] },
+  { label: "User Experience", subTabs: ["Web Vitals", "Worst Sessions", "Click Issues", "Perf Budgets", "Resource Waterfall", "Third-Party Impact", "Hyperlyzer"] },
+  { label: "Navigation & Flows", subTabs: ["Navigation Paths", "Sankey", "Geo Heatmap", "Maps", "Session Replay Spotlight"] },
   { label: "Intelligence & AI", subTabs: ["Anomaly Detection", "Root Cause Correlation", "Predictive Forecasting", "Change Intelligence", "What-If Analysis"] },
   { label: "Engagement & Revenue", subTabs: ["Segmentation", "Cohort Retention", "Session Engagement", "Revenue Intelligence", "A/B Comparison"] },
   { label: "Errors & Reliability", subTabs: ["Exceptions", "Error Clustering", "SLO Tracker"] },
-  { label: "Exploration", subTabs: ["Executive Summary", "Session Replay Spotlight", "Hyperlyzer"] },
 ];
 type ParentTabKey = typeof TAB_GROUPS[number]["label"];
 const PARENT_TAB_KEYS: ParentTabKey[] = TAB_GROUPS.map(g => g.label);
@@ -2614,11 +2614,11 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 1, 2026</Paragraph>
             <Paragraph><Strong>Tab Groups — Nested Parent Tabs with Sub-Tabs</Strong></Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>7 Parent Tab Groups</Strong>: 31 sub-tabs organized into logical groups — Funnel &amp; Conversion, User Experience, Navigation &amp; Flows, Intelligence &amp; AI, Engagement &amp; Revenue, Errors &amp; Reliability, and Exploration</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>7 Parent Tab Groups</Strong>: 31 sub-tabs organized into logical groups — Funnel &amp; Conversion, Executive Summary, User Experience, Navigation &amp; Flows, Intelligence &amp; AI, Engagement &amp; Revenue, and Errors &amp; Reliability</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Hierarchical Settings</Strong>: Toggle visibility and drag-to-reorder at both the parent group level and individual sub-tab level. Expand groups in Settings with ▸/▾ to access sub-tab controls</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>AI Insights — Sub-Tab Aware</Strong>: The AI Insights panel now automatically adapts to the active sub-tab, showing contextual analysis for whichever view you're currently on</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Persisted per user</Strong>: Parent tab order, parent visibility, sub-tab order, and sub-tab visibility all persist independently via Dynatrace App State</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Executive Summary standalone</Strong>: Placed in the Exploration group for quick access to high-level KPIs without navigating deep into analytics groups</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Executive Summary standalone</Strong>: Elevated to its own parent tab in 2nd position for quick access to high-level KPIs without navigating deep into analytics groups</Paragraph>
           </div>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 29, 2026</Paragraph>
@@ -2839,12 +2839,12 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph>Click the <Strong>gear icon</Strong> (⚙) next to the help button to open Settings. Tabs are organized into <Strong>7 parent tab groups</Strong>, each containing related sub-tabs. Both parent groups and individual sub-tabs can be toggled on/off and reordered via drag-and-drop. Settings are saved per user via Dynatrace App State — they persist across sessions and browser refreshes.</Paragraph>
         <Paragraph><Strong>Tab Groups</Strong>:</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Funnel &amp; Conversion</Strong>: Funnel Overview, Step Details, Trends, Conversion Attribution, Errors &amp; Drop-offs</Paragraph>
-        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>User Experience</Strong>: Web Vitals, Worst Sessions, Click Issues, Perf Budgets, Resource Waterfall, Third-Party Impact</Paragraph>
-        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Navigation &amp; Flows</Strong>: Navigation Paths, Sankey, Geo Heatmap, Maps</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Executive Summary</Strong>: Executive Summary (standalone parent tab)</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>User Experience</Strong>: Web Vitals, Worst Sessions, Click Issues, Perf Budgets, Resource Waterfall, Third-Party Impact, Hyperlyzer</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Navigation &amp; Flows</Strong>: Navigation Paths, Sankey, Geo Heatmap, Maps, Session Replay Spotlight</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Intelligence &amp; AI</Strong>: Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Engagement &amp; Revenue</Strong>: Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Errors &amp; Reliability</Strong>: Exceptions, Error Clustering, SLO Tracker</Paragraph>
-        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Exploration</Strong>: Executive Summary, Session Replay Spotlight, Hyperlyzer</Paragraph>
         <Paragraph><Strong>Hiding a parent group</Strong> hides all its sub-tabs. Hiding individual sub-tabs within a visible group removes only those sub-tabs. Hiding a tab does not affect data collection, only display.</Paragraph>
         <Paragraph><Strong>Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. Selecting a different app immediately re-queries all data and updates the Pages / Identifiers dropdowns for the new app.</Paragraph>
         <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the selected app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>

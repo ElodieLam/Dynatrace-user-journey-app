@@ -34,12 +34,12 @@ The 31 sub-tabs are organized into **7 parent tab groups** with nested Strato `<
 | # | Parent Tab Group | Sub-Tabs |
 |---|---|---|
 | 1 | **Funnel & Conversion** | Funnel Overview, Step Details, Trends, Conversion Attribution, Errors & Drop-offs |
-| 2 | **User Experience** | Web Vitals, Worst Sessions, Click Issues, Perf Budgets, Resource Waterfall, Third-Party Impact |
-| 3 | **Navigation & Flows** | Navigation Paths, Sankey, Geo Heatmap, Maps |
-| 4 | **Intelligence & AI** | Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis |
-| 5 | **Engagement & Revenue** | Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison |
-| 6 | **Errors & Reliability** | Exceptions, Error Clustering, SLO Tracker |
-| 7 | **Exploration** | Executive Summary, Session Replay Spotlight, Hyperlyzer |
+| 2 | **Executive Summary** | Executive Summary (standalone) |
+| 3 | **User Experience** | Web Vitals, Worst Sessions, Click Issues, Perf Budgets, Resource Waterfall, Third-Party Impact, Hyperlyzer |
+| 4 | **Navigation & Flows** | Navigation Paths, Sankey, Geo Heatmap, Maps, Session Replay Spotlight |
+| 5 | **Intelligence & AI** | Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis |
+| 6 | **Engagement & Revenue** | Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison |
+| 7 | **Errors & Reliability** | Exceptions, Error Clustering, SLO Tracker |
 
 **Key architecture decisions**:
 - Parent tab groups and sub-tabs are independently reorderable and toggleable via Settings
