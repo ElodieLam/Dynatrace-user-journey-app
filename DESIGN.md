@@ -21,9 +21,32 @@
 
 ## Overview
 
-The User Journey & Experience App is a 31-tab frontend observability suite built as a Dynatrace Platform App. It provides comprehensive Real User Monitoring (RUM) analysis including funnel tracking, Web Vitals, geographic heatmaps, predictive forecasting, automated anomaly detection, and multidimensional radial performance exploration — all powered by DQL (Dynatrace Query Language).
+The User Journey & Experience App is a 31-tab frontend observability suite built as a Dynatrace Platform App, organized into 7 parent tab groups with nested sub-tabs. It provides comprehensive Real User Monitoring (RUM) analysis including funnel tracking, Web Vitals, geographic heatmaps, predictive forecasting, automated anomaly detection, and multidimensional radial performance exploration — all powered by DQL (Dynatrace Query Language).
 
 **Architecture**: Single-page React app using Strato Design System components, `@dynatrace-sdk/react-hooks` (`useDql`) for data fetching, and SVG-based custom visualizations. All queries are parameterized by a user-selectable frontend application, funnel step definitions, and timeframe.
+
+---
+
+## Tab Group Structure
+
+The 31 sub-tabs are organized into **7 parent tab groups** with nested Strato `<Tabs>` navigation:
+
+| # | Parent Tab Group | Sub-Tabs |
+|---|---|---|
+| 1 | **Funnel & Conversion** | Funnel Overview, Step Details, Trends, Conversion Attribution, Errors & Drop-offs |
+| 2 | **User Experience** | Web Vitals, Worst Sessions, Click Issues, Perf Budgets, Resource Waterfall, Third-Party Impact |
+| 3 | **Navigation & Flows** | Navigation Paths, Sankey, Geo Heatmap, Maps |
+| 4 | **Intelligence & AI** | Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis |
+| 5 | **Engagement & Revenue** | Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison |
+| 6 | **Errors & Reliability** | Exceptions, Error Clustering, SLO Tracker |
+| 7 | **Exploration** | Executive Summary, Session Replay Spotlight, Hyperlyzer |
+
+**Key architecture decisions**:
+- Parent tab groups and sub-tabs are independently reorderable and toggleable via Settings
+- Parent tab visibility hides the entire group; sub-tab visibility hides individual views
+- Both orders are persisted per user via Dynatrace App State (`uj-parent-tab-order`, `uj-parent-tab-visibility`, `uj-sub-tab-order`)
+- AI Insights is sub-tab aware — the analysis panel updates based on the active sub-tab within each group
+- The `TAB_GROUPS` constant defines the default grouping; `TAB_TO_PARENT` provides reverse lookup
 
 ---
 

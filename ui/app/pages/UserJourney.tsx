@@ -117,6 +117,31 @@ const TAB_KEYS = [
   "Hyperlyzer",
 ] as const;
 type TabKey = typeof TAB_KEYS[number];
+
+// ---------------------------------------------------------------------------
+// Tab Groups — parent tabs containing sub-tabs
+// ---------------------------------------------------------------------------
+type TabGroupDef = { label: string; subTabs: TabKey[] };
+const TAB_GROUPS: TabGroupDef[] = [
+  { label: "Funnel & Conversion", subTabs: ["Funnel Overview", "Step Details", "Trends", "Conversion Attribution", "Errors & Drop-offs"] },
+  { label: "User Experience", subTabs: ["Web Vitals", "Worst Sessions", "Click Issues", "Perf Budgets", "Resource Waterfall", "Third-Party Impact"] },
+  { label: "Navigation & Flows", subTabs: ["Navigation Paths", "Sankey", "Geo Heatmap", "Maps"] },
+  { label: "Intelligence & AI", subTabs: ["Anomaly Detection", "Root Cause Correlation", "Predictive Forecasting", "Change Intelligence", "What-If Analysis"] },
+  { label: "Engagement & Revenue", subTabs: ["Segmentation", "Cohort Retention", "Session Engagement", "Revenue Intelligence", "A/B Comparison"] },
+  { label: "Errors & Reliability", subTabs: ["Exceptions", "Error Clustering", "SLO Tracker"] },
+  { label: "Exploration", subTabs: ["Executive Summary", "Session Replay Spotlight", "Hyperlyzer"] },
+];
+type ParentTabKey = typeof TAB_GROUPS[number]["label"];
+const PARENT_TAB_KEYS: ParentTabKey[] = TAB_GROUPS.map(g => g.label);
+const DEFAULT_PARENT_TAB_ORDER: ParentTabKey[] = [...PARENT_TAB_KEYS];
+const TAB_TO_PARENT: Record<TabKey, ParentTabKey> = {} as any;
+TAB_GROUPS.forEach(g => g.subTabs.forEach(t => { (TAB_TO_PARENT as any)[t] = g.label; }));
+const PARENT_TAB_ORDER_STATE_KEY = "uj-parent-tab-order";
+const PARENT_TAB_VISIBILITY_STATE_KEY = "uj-parent-tab-visibility";
+const SUB_TAB_ORDER_STATE_KEY = "uj-sub-tab-order";
+const DEFAULT_PARENT_TAB_VISIBILITY: Record<ParentTabKey, boolean> = Object.fromEntries(PARENT_TAB_KEYS.map(k => [k, true])) as Record<ParentTabKey, boolean>;
+const DEFAULT_SUB_TAB_ORDER: Record<ParentTabKey, TabKey[]> = Object.fromEntries(TAB_GROUPS.map(g => [g.label, [...g.subTabs]])) as Record<ParentTabKey, TabKey[]>;
+
 const DEFAULT_TAB_VISIBILITY: Record<TabKey, boolean> = Object.fromEntries(TAB_KEYS.map(k => [k, true])) as Record<TabKey, boolean>;
 const TAB_STATE_KEY = "uj-tab-visibility";
 const TAB_ORDER_STATE_KEY = "uj-tab-order";
@@ -2587,6 +2612,15 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 1, 2026</Paragraph>
+            <Paragraph><Strong>Tab Groups — Nested Parent Tabs with Sub-Tabs</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>7 Parent Tab Groups</Strong>: 31 sub-tabs organized into logical groups — Funnel &amp; Conversion, User Experience, Navigation &amp; Flows, Intelligence &amp; AI, Engagement &amp; Revenue, Errors &amp; Reliability, and Exploration</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Hierarchical Settings</Strong>: Toggle visibility and drag-to-reorder at both the parent group level and individual sub-tab level. Expand groups in Settings with ▸/▾ to access sub-tab controls</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>AI Insights — Sub-Tab Aware</Strong>: The AI Insights panel now automatically adapts to the active sub-tab, showing contextual analysis for whichever view you're currently on</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Persisted per user</Strong>: Parent tab order, parent visibility, sub-tab order, and sub-tab visibility all persist independently via Dynatrace App State</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Executive Summary standalone</Strong>: Placed in the Exploration group for quick access to high-level KPIs without navigating deep into analytics groups</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>May 29, 2026</Paragraph>
             <Paragraph><Strong>Forecast Modal — Multi-Model Popup Forecasting</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Forecast Modal</Strong>: Clicking any KPI card now opens a full-screen forecast popup (instead of navigating to a tab) showing a 7-day forecast with historical data, projected trend line, and confidence band — all rendered inline as an interactive SVG chart</Paragraph>
@@ -2802,10 +2836,20 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph>The <Strong>Metric-Stream</Strong> selector in the header controls automatic data re-fetching. Options: <Strong>Off</Strong> (manual only), <Strong>30 seconds</Strong>, <Strong>1 minute</Strong>, <Strong>5 minutes</Strong>, <Strong>10 minutes</Strong>. When active, all DQL queries across every tab re-execute at the chosen interval. Data updates seamlessly in-place — existing values remain visible during refresh (no loading spinners). A status indicator shows "Refreshing…" with a spinner during fetch, and "Last refreshed Xs ago" when idle. Use for wall displays, NOC dashboards, or continuous incident monitoring.</Paragraph>
       </HelpSection>
       <HelpSection title="Tab Settings">
-        <Paragraph>Click the <Strong>gear icon</Strong> (⚙) next to the help button to open Settings. Each of the 31 tabs can be toggled on or off individually. Drag to reorder. Settings are saved per user via Dynatrace App State — they persist across sessions and browser refreshes. All tabs default to visible. Hiding a tab does not affect data collection, only display.</Paragraph>
+        <Paragraph>Click the <Strong>gear icon</Strong> (⚙) next to the help button to open Settings. Tabs are organized into <Strong>7 parent tab groups</Strong>, each containing related sub-tabs. Both parent groups and individual sub-tabs can be toggled on/off and reordered via drag-and-drop. Settings are saved per user via Dynatrace App State — they persist across sessions and browser refreshes.</Paragraph>
+        <Paragraph><Strong>Tab Groups</Strong>:</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Funnel &amp; Conversion</Strong>: Funnel Overview, Step Details, Trends, Conversion Attribution, Errors &amp; Drop-offs</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>User Experience</Strong>: Web Vitals, Worst Sessions, Click Issues, Perf Budgets, Resource Waterfall, Third-Party Impact</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Navigation &amp; Flows</Strong>: Navigation Paths, Sankey, Geo Heatmap, Maps</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Intelligence &amp; AI</Strong>: Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Engagement &amp; Revenue</Strong>: Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Errors &amp; Reliability</Strong>: Exceptions, Error Clustering, SLO Tracker</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Exploration</Strong>: Executive Summary, Session Replay Spotlight, Hyperlyzer</Paragraph>
+        <Paragraph><Strong>Hiding a parent group</Strong> hides all its sub-tabs. Hiding individual sub-tabs within a visible group removes only those sub-tabs. Hiding a tab does not affect data collection, only display.</Paragraph>
         <Paragraph><Strong>Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. Selecting a different app immediately re-queries all data and updates the Pages / Identifiers dropdowns for the new app.</Paragraph>
         <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the selected app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
         <Paragraph><Strong>Average Order Value</Strong>: Set in Settings to enable revenue metrics across What-If Analysis, Revenue Intelligence, Errors &amp; Drop-offs, Conversion Attribution, Map, Root Cause Correlation, Trends, Executive Summary, Anomaly Detection, and Change Intelligence tabs. This value represents the average revenue per conversion (final funnel step completion). Set to 0 to hide revenue metrics.</Paragraph>
+        <Paragraph><Strong>AI Insights</Strong>: The AI Insights panel is sub-tab aware — it shows analysis specific to the currently active sub-tab within each parent group. Toggle AI Insights in the header and navigate between sub-tabs to get contextual recommendations for each view.</Paragraph>
       </HelpSection>
       <HelpSection title="Apdex Score">
         <Paragraph>Apdex = (satisfied + tolerating/2) / total. Thresholds: <Strong>Satisfied ≤ {APDEX_T / 1000}s</Strong>, <Strong>Tolerating ≤ {APDEX_4T / 1000}s</Strong>, <Strong>Frustrated &gt; {APDEX_4T / 1000}s</Strong>. Ranges: ≥0.85 Excellent, ≥0.7 Good, ≥0.5 Fair, &lt;0.5 Poor.</Paragraph>
@@ -2867,9 +2911,16 @@ export function UserJourney() {
   const [tabOrder, setTabOrder] = useState<TabKey[]>([...DEFAULT_TAB_ORDER]);
   const [draggedTabIdx, setDraggedTabIdx] = useState<number | null>(null);
   const [selectedTabIndex, setSelectedTabIndex] = useState<number>(0);
+  const [parentTabOrder, setParentTabOrder] = useState<ParentTabKey[]>([...DEFAULT_PARENT_TAB_ORDER]);
+  const [parentTabVisibility, setParentTabVisibility] = useState<Record<ParentTabKey, boolean>>(DEFAULT_PARENT_TAB_VISIBILITY);
+  const [subTabOrder, setSubTabOrder] = useState<Record<ParentTabKey, TabKey[]>>(DEFAULT_SUB_TAB_ORDER);
+  const [draggedParentIdx, setDraggedParentIdx] = useState<number | null>(null);
+  const [draggedSubIdx, setDraggedSubIdx] = useState<number | null>(null);
+  const [settingsExpandedGroup, setSettingsExpandedGroup] = useState<ParentTabKey | null>(null);
+  const [activeSubTabKey, setActiveSubTabKey] = useState<TabKey | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const closeAiInsights = React.useCallback(() => setAiOpen(false), []);
-  const aiContextValue = React.useMemo(() => ({ open: aiOpen, close: closeAiInsights }), [aiOpen, closeAiInsights]);
+  const aiContextValue = React.useMemo(() => ({ open: aiOpen, close: closeAiInsights, activeSubTab: activeSubTabKey }), [aiOpen, closeAiInsights, activeSubTabKey]);
   const { frontend, steps, saveFrontend, saveSteps, aov, saveAov } = useSettings();
   const [sankeyStyle, setSankeyStyle] = useState<SankeyStyle>(DEFAULT_SANKEY_STYLE);
   const [funnelStyle, setFunnelStyle] = useState<FunnelStyle>(DEFAULT_FUNNEL_STYLE);
@@ -2885,6 +2936,9 @@ export function UserJourney() {
   // Persist tab visibility per user
   const savedState = useUserAppState({ key: TAB_STATE_KEY });
   const savedTabOrder = useUserAppState({ key: TAB_ORDER_STATE_KEY });
+  const savedParentTabOrder = useUserAppState({ key: PARENT_TAB_ORDER_STATE_KEY });
+  const savedParentTabVisibility = useUserAppState({ key: PARENT_TAB_VISIBILITY_STATE_KEY });
+  const savedSubTabOrder = useUserAppState({ key: SUB_TAB_ORDER_STATE_KEY });
   const savedSankeyStyle = useUserAppState({ key: SANKEY_STYLE_STATE_KEY });
   const savedFunnelStyle = useUserAppState({ key: FUNNEL_STYLE_STATE_KEY });
   const savedMapView = useUserAppState({ key: MAP_VIEW_STATE_KEY });
@@ -2915,6 +2969,55 @@ export function UserJourney() {
       } catch { /* ignore */ }
     }
   }, [savedTabOrder.data?.value]);
+
+  // Load persisted parent tab order
+  useEffect(() => {
+    if (savedParentTabOrder.data?.value) {
+      try {
+        const parsed = JSON.parse(savedParentTabOrder.data.value as string) as string[];
+        if (Array.isArray(parsed) && parsed.length) {
+          const validKeys = new Set<string>(PARENT_TAB_KEYS);
+          const ordered = parsed.filter(k => validKeys.has(k)) as ParentTabKey[];
+          const missing = DEFAULT_PARENT_TAB_ORDER.filter(k => !ordered.includes(k));
+          setParentTabOrder([...ordered, ...missing]);
+        }
+      } catch { /* ignore */ }
+    }
+  }, [savedParentTabOrder.data?.value]);
+
+  // Load persisted parent tab visibility
+  useEffect(() => {
+    if (savedParentTabVisibility.data?.value) {
+      try {
+        const parsed = JSON.parse(savedParentTabVisibility.data.value as string);
+        setParentTabVisibility(prev => ({ ...prev, ...parsed }));
+      } catch { /* ignore */ }
+    }
+  }, [savedParentTabVisibility.data?.value]);
+
+  // Load persisted sub-tab order
+  useEffect(() => {
+    if (savedSubTabOrder.data?.value) {
+      try {
+        const parsed = JSON.parse(savedSubTabOrder.data.value as string) as Record<string, string[]>;
+        if (parsed && typeof parsed === "object") {
+          const merged = { ...DEFAULT_SUB_TAB_ORDER };
+          for (const [parent, subs] of Object.entries(parsed)) {
+            if (PARENT_TAB_KEYS.includes(parent as ParentTabKey) && Array.isArray(subs)) {
+              const group = TAB_GROUPS.find(g => g.label === parent);
+              if (group) {
+                const validSubs = new Set<string>(group.subTabs);
+                const ordered = subs.filter(k => validSubs.has(k)) as TabKey[];
+                const missing = group.subTabs.filter(k => !ordered.includes(k));
+                (merged as any)[parent] = [...ordered, ...missing];
+              }
+            }
+          }
+          setSubTabOrder(merged);
+        }
+      } catch { /* ignore */ }
+    }
+  }, [savedSubTabOrder.data?.value]);
 
   useEffect(() => {
     if (savedSankeyStyle.data?.value) {
@@ -2964,6 +3067,43 @@ export function UserJourney() {
   };
 
   const isTabVisible = (tab: TabKey) => tabVisibility[tab] !== false;
+
+  const toggleParentTab = (parent: ParentTabKey) => {
+    setParentTabVisibility(prev => {
+      const next = { ...prev, [parent]: !prev[parent] };
+      saveState({ key: PARENT_TAB_VISIBILITY_STATE_KEY, body: { value: JSON.stringify(next) } });
+      return next;
+    });
+  };
+
+  const handleParentTabDragOver = (idx: number) => {
+    if (draggedParentIdx === null || draggedParentIdx === idx) return;
+    const updated = [...parentTabOrder];
+    const [moved] = updated.splice(draggedParentIdx, 1);
+    updated.splice(idx, 0, moved);
+    setParentTabOrder(updated);
+    setDraggedParentIdx(idx);
+  };
+
+  const saveParentTabOrder = (order: ParentTabKey[]) => {
+    setParentTabOrder(order);
+    saveState({ key: PARENT_TAB_ORDER_STATE_KEY, body: { value: JSON.stringify(order) } });
+  };
+
+  const handleSubTabDragOver = (parent: ParentTabKey, idx: number) => {
+    if (draggedSubIdx === null || draggedSubIdx === idx) return;
+    const subs = [...(subTabOrder[parent] || [])];
+    const [moved] = subs.splice(draggedSubIdx, 1);
+    subs.splice(idx, 0, moved);
+    setSubTabOrder(prev => ({ ...prev, [parent]: subs }));
+    setDraggedSubIdx(idx);
+  };
+
+  const saveSubTabOrder = (parent: ParentTabKey, order: TabKey[]) => {
+    const next = { ...subTabOrder, [parent]: order };
+    setSubTabOrder(next);
+    saveState({ key: SUB_TAB_ORDER_STATE_KEY, body: { value: JSON.stringify(next) } });
+  };
 
   const handleTabDragOver = (idx: number) => {
     if (draggedTabIdx === null || draggedTabIdx === idx) return;
@@ -3233,6 +3373,10 @@ export function UserJourney() {
 
   // Navigation helper — drill from KPI card to a specific tab (DOM-based click)
   const visibleTabs = useMemo(() => tabOrder.filter(t => tabVisibility[t] !== false), [tabOrder, tabVisibility]);
+  const visibleParentTabs = useMemo(() => parentTabOrder.filter(p => parentTabVisibility[p] !== false), [parentTabOrder, parentTabVisibility]);
+  const getVisibleSubTabs = React.useCallback((parent: ParentTabKey) => {
+    return (subTabOrder[parent] || TAB_GROUPS.find(g => g.label === parent)?.subTabs || []).filter(t => tabVisibility[t] !== false);
+  }, [subTabOrder, tabVisibility]);
   const navigateToTab = React.useCallback((tabName: TabKey) => {
     const idx = visibleTabs.indexOf(tabName);
     if (idx < 0) return;
@@ -3314,7 +3458,7 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.49.12</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.51.0</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
@@ -3463,40 +3607,80 @@ export function UserJourney() {
             </Select>
           </div>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
-          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Tab Order & Visibility</Paragraph>
-          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Drag to reorder tabs and toggle visibility. Changes are saved per user and persist across sessions.</Paragraph>
-          {tabOrder.map((tab, idx) => (
-            <div
-              key={tab}
-              draggable
-              onDragStart={() => setDraggedTabIdx(idx)}
-              onDragOver={(e) => { e.preventDefault(); handleTabDragOver(idx); }}
-              onDragEnd={() => { setDraggedTabIdx(null); saveTabOrder(tabOrder); }}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.06)",
-                background: draggedTabIdx === idx ? "rgba(69,137,255,0.12)" : "transparent",
-                cursor: "grab", transition: "background 0.15s ease",
-              }}
-            >
-              <Flex alignItems="center" gap={8}>
-                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14, userSelect: "none" }}>{"\u2630"}</span>
-                <Text style={{ fontSize: 13 }}>{tab}</Text>
-              </Flex>
-              <Switch value={tabVisibility[tab] !== false} onChange={() => toggleTab(tab)} />
-            </div>
-          ))}
-          <button onClick={() => { saveTabOrder([...DEFAULT_TAB_ORDER]); }} style={{ width: "100%", padding: "6px", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, marginTop: 8 }}>Reset Tab Order</button>
+          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Tab Groups & Sub-Tab Visibility</Paragraph>
+          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Drag to reorder parent tab groups and sub-tabs. Toggle visibility at both levels. Changes are saved per user and persist across sessions.</Paragraph>
+          {parentTabOrder.map((parent, pIdx) => {
+            const group = TAB_GROUPS.find(g => g.label === parent);
+            if (!group) return null;
+            const isExpanded = settingsExpandedGroup === parent;
+            const subTabs = subTabOrder[parent] || group.subTabs;
+            return (
+              <div key={parent} style={{ marginBottom: 4, border: "1px solid rgba(128,128,128,0.15)", borderRadius: 8, overflow: "hidden" }}>
+                <div
+                  draggable
+                  onDragStart={() => setDraggedParentIdx(pIdx)}
+                  onDragOver={(e) => { e.preventDefault(); handleParentTabDragOver(pIdx); }}
+                  onDragEnd={() => { setDraggedParentIdx(null); saveParentTabOrder(parentTabOrder); }}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "8px 10px",
+                    background: draggedParentIdx === pIdx ? "rgba(69,137,255,0.12)" : "rgba(128,128,128,0.04)",
+                    cursor: "grab", transition: "background 0.15s ease",
+                  }}
+                >
+                  <Flex alignItems="center" gap={8}>
+                    <span style={{ color: "rgba(128,128,128,0.5)", fontSize: 14, userSelect: "none" }}>{"\u2630"}</span>
+                    <button onClick={() => setSettingsExpandedGroup(isExpanded ? null : parent)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "rgba(128,128,128,0.7)", padding: "0 4px" }}>{isExpanded ? "▾" : "▸"}</button>
+                    <Text style={{ fontSize: 13, fontWeight: 600 }}>{parent}</Text>
+                    <Text style={{ fontSize: 11, opacity: 0.4 }}>({subTabs.filter(t => tabVisibility[t] !== false).length}/{subTabs.length})</Text>
+                  </Flex>
+                  <Switch value={parentTabVisibility[parent] !== false} onChange={() => toggleParentTab(parent)} />
+                </div>
+                {isExpanded && (
+                  <div style={{ padding: "4px 0 4px 28px", borderTop: "1px solid rgba(128,128,128,0.1)" }}>
+                    {subTabs.map((sub, sIdx) => (
+                      <div
+                        key={sub}
+                        draggable
+                        onDragStart={(e) => { e.stopPropagation(); setDraggedSubIdx(sIdx); }}
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); handleSubTabDragOver(parent, sIdx); }}
+                        onDragEnd={(e) => { e.stopPropagation(); setDraggedSubIdx(null); saveSubTabOrder(parent, subTabOrder[parent] || group.subTabs); }}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "5px 8px", borderBottom: "1px solid rgba(128,128,128,0.06)",
+                          background: draggedSubIdx === sIdx ? "rgba(69,137,255,0.08)" : "transparent",
+                          cursor: "grab", transition: "background 0.15s ease",
+                        }}
+                      >
+                        <Flex alignItems="center" gap={8}>
+                          <span style={{ color: "rgba(128,128,128,0.3)", fontSize: 12, userSelect: "none" }}>{"\u2630"}</span>
+                          <Text style={{ fontSize: 12 }}>{sub}</Text>
+                        </Flex>
+                        <Switch value={tabVisibility[sub] !== false} onChange={() => toggleTab(sub)} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button onClick={() => { saveParentTabOrder([...DEFAULT_PARENT_TAB_ORDER]); setParentTabVisibility(DEFAULT_PARENT_TAB_VISIBILITY); setSubTabOrder(DEFAULT_SUB_TAB_ORDER); setTabVisibility(DEFAULT_TAB_VISIBILITY); saveState({ key: PARENT_TAB_ORDER_STATE_KEY, body: { value: JSON.stringify(DEFAULT_PARENT_TAB_ORDER) } }); saveState({ key: PARENT_TAB_VISIBILITY_STATE_KEY, body: { value: JSON.stringify(DEFAULT_PARENT_TAB_VISIBILITY) } }); saveState({ key: SUB_TAB_ORDER_STATE_KEY, body: { value: JSON.stringify(DEFAULT_SUB_TAB_ORDER) } }); saveState({ key: TAB_STATE_KEY, body: { value: JSON.stringify(DEFAULT_TAB_VISIBILITY) } }); }} style={{ width: "100%", padding: "6px", background: "none", border: "1px solid rgba(128,128,128,0.2)", borderRadius: 6, color: "rgba(128,128,128,0.7)", cursor: "pointer", fontSize: 13, marginTop: 8 }}>Reset All Tab Groups</button>
         </div>
       </Sheet>
 
-      {/* Tabs — rendered in user-defined tabOrder */}
+      {/* Tabs — rendered as parent tab groups with sub-tabs */}
       <ForecastProvider value={openForecast}>
       <AIInsightsContext.Provider value={aiContextValue}>
-      <Tabs>
-        {tabOrder.filter(t => isTabVisible(t)).map(tabId => {
-          let content: React.ReactNode = null;
-          switch (tabId) {
+      <Tabs selectedIndex={Math.max(0, visibleParentTabs.indexOf(activeSubTabKey ? TAB_TO_PARENT[activeSubTabKey] : visibleParentTabs[0]))} onChange={(idx: number) => { const parent = visibleParentTabs[idx]; if (parent) { const subs = getVisibleSubTabs(parent); if (subs.length > 0) setActiveSubTabKey(subs[0]); } }}>
+        {visibleParentTabs.map(parentLabel => {
+          const subTabs = getVisibleSubTabs(parentLabel);
+          if (subTabs.length === 0) return null;
+          return (
+            <Tab key={parentLabel} title={parentLabel}>
+              <Tabs selectedIndex={Math.max(0, subTabs.indexOf(activeSubTabKey as TabKey))} onChange={(idx: number) => { if (subTabs[idx]) setActiveSubTabKey(subTabs[idx]); }}>
+                {subTabs.map(tabId => {
+                  let content: React.ReactNode = null;
+                  switch (tabId) {
             case "Funnel Overview": content = <FunnelOverviewTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} stepMap={stepMap} pageMap={pageMap} quality={quality} qualityPrev={qualityPrev} compareMode={compareMode} setCompareMode={setCompareMode} isLoading={isLoading || qualityData.isLoading} isFetching={isFunnelFetching} lastRefreshedAt={lastRefreshedAt} refreshIntervalMs={refreshIntervalMs} appEntityId={appEntityId} steps={steps} aov={aov} funnelStyle={funnelStyle} onFunnelStyleChange={(v: FunnelStyle) => { setFunnelStyle(v); saveState({ key: FUNNEL_STYLE_STATE_KEY, body: { value: v } }); }} todayHourlyData={todayFunnelData} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Trends": content = <TrendsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || funnelResult.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} sparklineRecords={sparklineData.data?.records ?? []} convSparklineRecords={convSparklineData.data?.records ?? []} onDrillToForecast={openForecast} />; break;
             case "Web Vitals": content = <WebVitalsTab cwv={cwv} cwvByPage={cwvByPage} cwvTrend={sloCwvTrendData} isLoading={cwvResult.isLoading || cwvByPage.isLoading} appEntityId={appEntityId} onDrillToForecast={openForecast} />; break;
@@ -3528,8 +3712,12 @@ export function UserJourney() {
             case "Third-Party Impact": content = <ThirdPartyImpactTab data={thirdPartyData} cwvData={thirdPartyCwvData} isLoading={thirdPartyData.isLoading || thirdPartyCwvData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
             case "Error Clustering": content = <ErrorClusteringTab deployData={deploymentEventsData} data={errorClusterData} trendData={errorTrendData} isLoading={errorClusterData.isLoading || errorTrendData.isLoading} frontend={frontend} onDrillToForecast={openForecast} />; break;
             case "Hyperlyzer": content = <HyperlyzerTab frontend={frontend} periodStr={periodClause(timeframeDays)} appEntityId={appEntityId} refetchOpts={refetchOpts} />; break;
-          }
-          return <Tab key={tabId} title={tabId}>{content}</Tab>;
+                  }
+                  return <Tab key={tabId} title={tabId}>{content}</Tab>;
+                })}
+              </Tabs>
+            </Tab>
+          );
         })}
       </Tabs>
       </AIInsightsContext.Provider>
@@ -3660,15 +3848,17 @@ function AIInsightsPanel({ data, onClose }: { data: AIInsightsData; onClose: () 
   );
 }
 
-/** Context: shares AI Insights open/close state from header to all tabs */
-export const AIInsightsContext = React.createContext({ open: false, close: () => {} });
+/** Context: shares AI Insights open/close state and active sub-tab from header to all tabs */
+export const AIInsightsContext = React.createContext<{ open: boolean; close: () => void; activeSubTab: TabKey | null }>({ open: false, close: () => {}, activeSubTab: null });
 
-/** Hook: reads AI open state from context, returns panel only */
-export function useAIInsights(analysisFn: () => AIInsightsData): { panel: React.ReactNode } {
-  const { open, close } = React.useContext(AIInsightsContext);
-  const data = useMemo(() => open ? analysisFn() : null, [open, analysisFn]);
+/** Hook: reads AI open state from context, returns panel only. Sub-tab aware — only shows panel for the active sub-tab. */
+export function useAIInsights(analysisFn: () => AIInsightsData, subTabKey?: TabKey): { panel: React.ReactNode } {
+  const { open, close, activeSubTab } = React.useContext(AIInsightsContext);
+  // If subTabKey is provided and doesn't match active sub-tab, skip rendering
+  const isActive = !subTabKey || activeSubTab === subTabKey || activeSubTab === null;
+  const data = useMemo(() => (open && isActive) ? analysisFn() : null, [open, isActive, analysisFn]);
   return {
-    panel: open && data ? <AIInsightsPanel data={data} onClose={close} /> : null,
+    panel: open && isActive && data ? <AIInsightsPanel data={data} onClose={close} /> : null,
   };
 }
 
