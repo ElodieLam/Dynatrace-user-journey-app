@@ -50,6 +50,24 @@ The 31 sub-tabs are organized into **7 parent tab groups** with nested Strato `<
 
 ---
 
+## Cross-Cutting Features
+
+### Related Metrics — Cross-Metric Correlation Discovery
+
+**Purpose**: Allow users to discover which metrics have a statistically significant relationship with any given KPI, helping identify root causes and contributing factors.
+
+**Implementation** (`ui/app/components/CorrelationsPanel.tsx`):
+- **Pearson correlation coefficient** (r) computed between sparkline time-series arrays of all registered metrics
+- **Central metrics registry**: 11 metrics registered from top-level sparkline data (Sessions, Total Actions, Conversion Rate, Conversions, Apdex, Avg Duration, P50/P90 Duration, Error Rate, Errors, Frustrated, Revenue)
+- **Context pattern**: `CorrelationsContext` provides `registry`, `register`, and `open` functions — wraps all tabs alongside `ForecastProvider` and `AIInsightsContext.Provider`
+- **Trigger**: ⟷ button appears on hover in KPI cards (via `kpi-related-btn` CSS class) and Trends cards. Click opens the panel for that metric
+- **Panel**: Full-screen overlay with ranked correlation results, mini sparklines, strength bars, direction descriptions, and business-context narratives
+- **Threshold filter**: User can toggle between 30%+, 50%+, 70%+ minimum correlation strength
+- **Direction-aware narratives**: Explains whether a positive or inverse relationship exists and what it means in context (e.g. "when Sessions rises, Error Rate tends to worsen")
+- Minimum 3 sparkline data points required for meaningful correlation computation
+
+---
+
 ## Tab Reference
 
 ### 1. Funnel Overview
@@ -65,7 +83,7 @@ The 31 sub-tabs are organized into **7 parent tab groups** with nested Strato `<
 - Period-over-period comparison overlay (optional)
 - Per-step Apdex gauges and satisfaction breakdowns
 - KPI cards: Total Sessions, Conversions, Conversion Rate, Apdex, Error Rate, Avg Duration
-- **Enhanced KPI cards**: Inline sparklines (time-bucketed trend shapes), comparison arrows showing % delta vs. previous period, and one-click forecast popup (opens ForecastModal with 6 statistical models: Holt-Winters, Triple Exp., Prophet, ARIMA, SARIMA, Linear Regression)
+- **Enhanced KPI cards**: Inline sparklines (time-bucketed trend shapes), comparison arrows showing % delta vs. previous period, one-click forecast popup (opens ForecastModal with 6 statistical models: Holt-Winters, Triple Exp., Prophet, ARIMA, SARIMA, Linear Regression), and **Related Metrics** correlation discovery button (⟷) showing Pearson-correlated metrics ranked by strength
 - **Forecast Modal** (`ui/app/components/ForecastModal.tsx`): Full-screen overlay with interactive SVG chart showing historical data + 7-day forecast + confidence band. Supports model switching via dropdown. Hover crosshair shows exact values. Click-outside or Close button to dismiss
 - **Revenue lost annotations** per funnel drop-off step when AOV is configured (shows estimated $ lost at each stage)
 

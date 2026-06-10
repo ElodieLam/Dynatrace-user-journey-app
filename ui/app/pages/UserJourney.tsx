@@ -20,6 +20,8 @@ import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, MIN_STEPS, MAX_STE
 import type { StepDef } from "../SettingsContext";
 import { HyperlyzerTab } from "./HyperlyzerTab";
 import { ForecastModal } from "../components/ForecastModal";
+import { CorrelationsPanel, CorrelationsContext, computeCorrelations } from "../components/CorrelationsPanel";
+import type { MetricEntry, CorrelationOpener } from "../components/CorrelationsPanel";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -514,10 +516,17 @@ interface KpiCardProps {
 }
 function KpiCard({ label, value, color, rawValue, prevRawValue, higherIsBetter, inverted = false, sparkline, onDrillToForecast, customContent, isLoading, style }: KpiCardProps) {
   const forecastOpener = useContext(ForecastContext);
+  const correlationsCtx = useContext(CorrelationsContext);
   const hasSpark = sparkline && sparkline.length >= 2;
   const handleClick = hasSpark
     ? (onDrillToForecast ? () => onDrillToForecast(label, sparkline!, color) : (forecastOpener ? () => forecastOpener(label, sparkline!, color) : undefined))
     : undefined;
+
+  // Related metrics button handler
+  const handleRelated = hasSpark && correlationsCtx ? (e: React.MouseEvent) => {
+    e.stopPropagation();
+    correlationsCtx.open({ label, sparkline: sparkline!, color, inverted: !(higherIsBetter ?? !inverted) });
+  } : undefined;
 
   // Delta calculation
   const delta = useMemo<number | null>(() => {
@@ -539,6 +548,15 @@ function KpiCard({ label, value, color, rawValue, prevRawValue, higherIsBetter, 
       title={handleClick ? `${label} — click for forecast` : label}
       onClick={handleClick}
     >
+      {handleRelated && (
+        <button
+          className="kpi-related-btn"
+          onClick={handleRelated}
+          title="Show related metrics with high correlation"
+        >
+          ⟷
+        </button>
+      )}
       <Text style={{ fontSize: 11, opacity: 0.7, display: "block" }}>{label}</Text>
       {isLoading ? (
         <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
@@ -2612,6 +2630,17 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 10, 2026</Paragraph>
+            <Paragraph><Strong>Related Metrics — Cross-Metric Correlation Discovery</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Correlation button</Strong> (⟷) appears on hover in the top-left corner of every KPI card and Trends card — click to discover which other metrics have a statistically significant relationship with the selected metric</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Pearson correlation analysis</Strong>: Computes pairwise correlation coefficients (r) between time-series sparklines of all registered metrics, identifying both positive co-movement and inverse relationships</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Ranked results panel</Strong>: Full-screen overlay (matching Forecast Modal pattern) shows correlated metrics sorted by strength, with mini sparklines, direction descriptions, strength bars, and business-context narratives</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Adjustable threshold</Strong>: Filter by minimum correlation strength (30%, 50%, 70%) to focus on the strongest relationships or discover weaker signals</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Intelligent narratives</Strong>: Each correlation includes a human-readable explanation — e.g. "Sessions shows a strong positive correlation (r=+0.82) — when Sessions rises, Error Rate tends to worsen"</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>11 registered metrics</Strong>: Sessions, Total Actions, Conversion Rate, Conversions, Apdex, Avg Duration, P50/P90 Duration, Error Rate, Errors, Frustrated (+ Revenue when AOV configured)</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• All analysis runs client-side using Pearson r computation — zero latency, no external API calls</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 1, 2026</Paragraph>
             <Paragraph><Strong>Tab Groups — Nested Parent Tabs with Sub-Tabs</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>7 Parent Tab Groups</Strong>: 31 sub-tabs organized into logical groups — Funnel &amp; Conversion, Executive Summary, User Experience, Navigation &amp; Flows, Intelligence &amp; AI, Engagement &amp; Revenue, and Errors &amp; Reliability</Paragraph>
@@ -2886,6 +2915,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph>• Set Average Order Value in Settings to unlock revenue projections in What-If Analysis and Revenue Intelligence tabs.</Paragraph>
         <Paragraph>• Click <Strong>AI Insights</Strong> (✦) in the header bar to get instant, data-driven analysis for whichever tab you're viewing — Summary, Insights, and Recommendations powered by industry benchmarks.</Paragraph>
         <Paragraph>• Click any KPI card to open the <Strong>Forecast Modal</Strong> — switch between 6 statistical models (Holt-Winters, ARIMA, SARIMA, Prophet, Triple Exp., Linear) to compare projections. The modal shows historical data + 7-day forecast with confidence band, all without leaving the current tab.</Paragraph>
+        <Paragraph>• Hover over any KPI card and click the <Strong>⟷ button</Strong> (top-left) to open the <Strong>Related Metrics</Strong> panel — see which other metrics are statistically correlated with the one you're investigating, ranked by strength with direction and narrative explanations.</Paragraph>
         <Paragraph>• The <Strong>Predictive Model</Strong> sub-tab is most reliable after 6+ hours of today's data. Early-morning projections have wide confidence intervals — check again at midday for a stable EOD forecast.</Paragraph>
         <Paragraph>• The <Strong>Step Analysis</Strong> sub-tab's sortable table is the fastest way to find which funnel step has the worst Apdex or highest abandon count — sort by "Conv %" ascending or "Abandons" descending.</Paragraph>
         <Paragraph>• <Strong>Hyperlyzer</Strong> lets you visually compare performance across OS, geo, browser, and user action dimensions simultaneously — click slices to stack filters and isolate problem segments (e.g. "Chrome + Germany + /checkout" to find a geo-specific performance issue).</Paragraph>
@@ -2932,6 +2962,21 @@ export function UserJourney() {
   const openForecast = React.useCallback((label: string, sparkline: number[], color?: string) => {
     if (sparkline && sparkline.length > 1) setForecastModal({ label, sparkline, color });
   }, []);
+
+  // Correlations panel state
+  const [correlationsTarget, setCorrelationsTarget] = useState<MetricEntry | null>(null);
+  const [metricsRegistryState, setMetricsRegistryState] = useState<MetricEntry[]>([]);
+  const openCorrelations: CorrelationOpener = React.useCallback((target: MetricEntry) => {
+    setCorrelationsTarget(target);
+  }, []);
+  const registerMetrics = React.useCallback((metrics: MetricEntry[]) => {
+    setMetricsRegistryState(metrics);
+  }, []);
+  const correlationsCtxValue = React.useMemo(() => ({
+    registry: metricsRegistryState,
+    register: registerMetrics,
+    open: openCorrelations,
+  }), [metricsRegistryState, registerMetrics, openCorrelations]);
 
   // Persist tab visibility per user
   const savedState = useUserAppState({ key: TAB_STATE_KEY });
@@ -3402,6 +3447,50 @@ export function UserJourney() {
     return () => clearInterval(id);
   }, [refreshIntervalMs]);
 
+  // Build central metrics registry for correlations from sparkline data
+  const metricsRegistry: MetricEntry[] = useMemo(() => {
+    const sparkRows = (sparklineData.data?.records ?? []).map((r: any) => ({
+      sessions: Number(r.sessions ?? 0), total: Number(r.total ?? 0),
+      avg_dur: Number(r.avg_dur ?? 0), p50_dur: Number(r.p50_dur ?? 0), p90_dur: Number(r.p90_dur ?? 0),
+      errors: Number(r.errors ?? 0), satisfied: Number(r.satisfied ?? 0),
+      tolerating: Number(r.tolerating ?? 0), frustrated: Number(r.frustrated ?? 0),
+    }));
+    const convSparkRows = (convSparklineData.data?.records ?? []).map((r: any) => ({
+      conv_rate: Number(r.conv_rate ?? 0), converted: Number(r.converted_sessions ?? 0),
+    }));
+    if (sparkRows.length < 3 && convSparkRows.length < 3) return [];
+    const entries: MetricEntry[] = [];
+    const sessionsArr = sparkRows.map((r: any) => r.sessions);
+    const totalArr = sparkRows.map((r: any) => r.total);
+    const avgDurArr = sparkRows.map((r: any) => r.avg_dur);
+    const p50Arr = sparkRows.map((r: any) => r.p50_dur);
+    const p90Arr = sparkRows.map((r: any) => r.p90_dur);
+    const errorsArr = sparkRows.map((r: any) => r.errors);
+    const errorRateArr = sparkRows.map((r: any) => r.total > 0 ? (r.errors / r.total) * 100 : 0);
+    const apdexArr = sparkRows.map((r: any) => r.total > 0 ? calcApdex(r.satisfied, r.tolerating, r.total) : 0);
+    const frustratedArr = sparkRows.map((r: any) => r.frustrated);
+    const convRateArr = convSparkRows.map((r: any) => r.conv_rate);
+    const conversionsArr = convSparkRows.map((r: any) => r.converted);
+    if (sessionsArr.length >= 3) entries.push({ label: "Sessions", sparkline: sessionsArr, color: BLUE, inverted: false });
+    if (totalArr.length >= 3) entries.push({ label: "Total Actions", sparkline: totalArr, color: BLUE, inverted: false });
+    if (convRateArr.length >= 3) entries.push({ label: "Conversion Rate", sparkline: convRateArr, color: GREEN, inverted: false });
+    if (conversionsArr.length >= 3) entries.push({ label: "Conversions", sparkline: conversionsArr, color: GREEN, inverted: false });
+    if (apdexArr.length >= 3) entries.push({ label: "Apdex", sparkline: apdexArr, color: GREEN, inverted: false });
+    if (avgDurArr.length >= 3) entries.push({ label: "Avg Duration", sparkline: avgDurArr, color: YELLOW, inverted: true });
+    if (p50Arr.length >= 3) entries.push({ label: "P50 Duration", sparkline: p50Arr, color: YELLOW, inverted: true });
+    if (p90Arr.length >= 3) entries.push({ label: "P90 Duration", sparkline: p90Arr, color: YELLOW, inverted: true });
+    if (errorRateArr.length >= 3) entries.push({ label: "Error Rate", sparkline: errorRateArr, color: RED, inverted: true });
+    if (errorsArr.length >= 3) entries.push({ label: "Errors", sparkline: errorsArr, color: RED, inverted: true });
+    if (frustratedArr.length >= 3) entries.push({ label: "Frustrated", sparkline: frustratedArr, color: RED, inverted: true });
+    if (aov > 0 && conversionsArr.length >= 3) entries.push({ label: "Revenue", sparkline: conversionsArr.map((c: number) => c * aov), color: GREEN, inverted: false });
+    return entries;
+  }, [sparklineData.data?.records, convSparklineData.data?.records, aov]);
+
+  // Register metrics whenever they change
+  useEffect(() => {
+    if (metricsRegistry.length > 0) registerMetrics(metricsRegistry);
+  }, [metricsRegistry, registerMetrics]);
+
   return (
     <div className="uj-container">
       {/* Header */}
@@ -3670,6 +3759,7 @@ export function UserJourney() {
 
       {/* Tabs — rendered as parent tab groups with sub-tabs */}
       <ForecastProvider value={openForecast}>
+      <CorrelationsContext.Provider value={correlationsCtxValue}>
       <AIInsightsContext.Provider value={aiContextValue}>
       <Tabs selectedIndex={Math.max(0, visibleParentTabs.indexOf(activeSubTabKey ? TAB_TO_PARENT[activeSubTabKey] : visibleParentTabs[0]))} onChange={(idx: number) => { const parent = visibleParentTabs[idx]; if (parent) { const subs = getVisibleSubTabs(parent); if (subs.length > 0) setActiveSubTabKey(subs[0]); } }}>
         {visibleParentTabs.map(parentLabel => {
@@ -3721,6 +3811,7 @@ export function UserJourney() {
         })}
       </Tabs>
       </AIInsightsContext.Provider>
+      </CorrelationsContext.Provider>
       </ForecastProvider>
 
       {/* Forecast Modal */}
@@ -3732,6 +3823,15 @@ export function UserJourney() {
           fromMs={Date.now() - timeframeDays * 86400000}
           toMs={Date.now()}
           onClose={() => setForecastModal(null)}
+        />
+      )}
+
+      {/* Correlations Panel */}
+      {correlationsTarget && (
+        <CorrelationsPanel
+          target={correlationsTarget}
+          allMetrics={metricsRegistry}
+          onClose={() => setCorrelationsTarget(null)}
         />
       )}
     </div>
@@ -3931,6 +4031,7 @@ function analyzeFunnelOverview(overallConv: number, overallApdex: number, qualit
   const hasNegativeTrend = overallConv < 5 || overallApdex < 0.7 || errorRate > 3 || quality.avg > 2000;
   if (hasNegativeTrend) {
     recs.push({ impact: "high", text: "Click any KPI card to open the Forecast Modal — choose from 6 forecasting models (Holt-Winters, Triple Exp., Prophet, ARIMA, SARIMA, Linear Regression) and see a 7-day projection with confidence bands. Proactive forecasting lets you intervene before users are impacted." });
+    recs.push({ impact: "medium", text: "Hover over any KPI card and click the ⟷ button to discover Related Metrics — see which other metrics are statistically correlated and may be contributing factors to the degradation." });
   }
 
   const summary = `Funnel Overview is the primary command center for understanding end-to-end user conversion. It visualizes how ${fmtCount(quality.sessions)} sessions progress through your defined funnel steps, tracking where users advance, where they abandon, and why. KPI cards now feature inline sparklines showing metric trends over time, comparison arrows showing % change vs. the previous period, and one-click Forecast Modal popup with 6 statistical models. This tab is designed for Product Managers evaluating conversion effectiveness, UX Designers identifying friction points, and Performance Engineers correlating speed with business outcomes. It answers: What is my overall conversion rate (currently ${fmtPct(overallConv)} against an industry average of 2-5%)? How satisfied are users with performance (Apdex ${overallApdex.toFixed(2)}, where ≥0.85 is excellent)? Where is the biggest drop-off in my funnel? ${worstDrop > 30 ? `The steepest abandonment occurs at "${worstStep}" where ${fmtPct(worstDrop)} of users leave — this is your highest-leverage optimization target.` : "Funnel progression is relatively smooth with no severe drop-off points."} ${errorRate > 1 ? `Error rate of ${fmtPct(errorRate)} exceeds the <1% industry benchmark and may be suppressing conversion.` : "Error rate is within healthy bounds."} ${hasNegativeTrend ? "One or more metrics show concerning trends — click any KPI card to open the Forecast Modal and compare projections across 6 models." : ""} The tab is organized into 4 sub-tabs: (1) Conversion Funnel — Apdex satisfaction breakdown, 5 visualization styles (Classic, Horizontal Bar, Stacked Cohort, Elapsed-Time Curve, Comparison Split), and Compare mode to overlay the previous period; (2) Predictive Model — linear regression on today's hourly conversion rates projects where the conversion rate will land by 23:59, with hourly velocity and confidence score; (3) Step Analysis — sortable table of all funnel steps with sessions, avg/P90 duration, Apdex, conversion %, abandons, and errors per step; (4) Per-Page Breakdown — per-page metrics for steps with multiple page identifiers. Revenue-lost annotations are shown when AOV is configured.`;
@@ -5183,6 +5284,7 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
 // ===========================================================================
 function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, isLoading, steps, aov, sparklineRecords, convSparklineRecords, onDrillToForecast }: { quality: any; qualityPrev: any; overallApdex: number; overallApdexPrev: number; overallConv: number; overallConvPrev: number; funnelCounts: number[]; funnelCountsPrev: number[]; isLoading: boolean; steps: StepDef[]; aov: number; sparklineRecords: any[]; convSparklineRecords: any[]; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeTrends(quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, aov), [quality, qualityPrev, overallApdex, overallApdexPrev, overallConv, overallConvPrev, funnelCounts, funnelCountsPrev, aov]));
+  const correlationsCtx = useContext(CorrelationsContext);
 
   if (isLoading) return <Loading />;
 
@@ -5273,6 +5375,9 @@ function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overa
           return (
             <div key={t.label} className={`uj-trend-card${hasSpark ? " clickable" : ""}`} onClick={hasSpark ? () => onDrillToForecast(t.label, series, color) : undefined} style={{ cursor: hasSpark ? "pointer" : undefined }}>
               {hasSpark && <span className="kpi-drill-hint">→ Forecast</span>}
+              {hasSpark && correlationsCtx && (
+                <button className="kpi-related-btn" onClick={(e) => { e.stopPropagation(); correlationsCtx.open({ label: t.label, sparkline: series, color, inverted: t.inverted }); }} title="Show related metrics">⟷</button>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <span style={{ fontSize: 11, opacity: 0.5, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>{t.label}</span>
                 {anomaly?.level === "anomaly" && !anomaly.good && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(194,25,48,0.15)", color: RED, border: "1px solid rgba(194,25,48,0.25)", whiteSpace: "nowrap" as const }}>⚠ Anomaly</span>}

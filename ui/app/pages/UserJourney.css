@@ -104,6 +104,29 @@
 .uj-kpi-card-enhanced:hover .kpi-drill-hint {
   opacity: 1;
 }
+.uj-kpi-card-enhanced .kpi-related-btn {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 11px;
+  opacity: 0;
+  background: rgba(128, 128, 128, 0.1);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: rgba(165, 110, 255, 0.8);
+  cursor: pointer;
+  transition: opacity 0.2s, background 0.15s;
+  line-height: 1.2;
+  z-index: 2;
+}
+.uj-kpi-card-enhanced:hover .kpi-related-btn {
+  opacity: 1;
+}
+.uj-kpi-card-enhanced .kpi-related-btn:hover {
+  background: rgba(165, 110, 255, 0.15);
+  border-color: rgba(165, 110, 255, 0.4);
+}
 
 .uj-kpi-label {
   font-size: 12px;
@@ -637,6 +660,30 @@
   border: 1px solid rgba(128, 128, 128, 0.2);
   border-radius: 12px;
   padding: 16px 20px;
+  position: relative;
+}
+.uj-trend-card .kpi-related-btn {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 11px;
+  opacity: 0;
+  background: rgba(128, 128, 128, 0.1);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: rgba(165, 110, 255, 0.8);
+  cursor: pointer;
+  transition: opacity 0.2s, background 0.15s;
+  line-height: 1.2;
+  z-index: 2;
+}
+.uj-trend-card:hover .kpi-related-btn {
+  opacity: 1;
+}
+.uj-trend-card .kpi-related-btn:hover {
+  background: rgba(165, 110, 255, 0.15);
+  border-color: rgba(165, 110, 255, 0.4);
 }
 
 /* Session Replay Link */
