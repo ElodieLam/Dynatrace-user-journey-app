@@ -243,7 +243,7 @@ export function CorrelationsPanel({ target, allMetrics, onClose }: {
                 }}
               >
                 <Flex justifyContent="space-between" alignItems="center" style={{ marginBottom: 6 }}>
-                  <Flex alignItems="center" gap={10}>
+                  <Flex alignItems="center" gap={8}>
                     <span style={{ fontSize: 11, opacity: 0.35, fontWeight: 600 }}>#{idx + 1}</span>
                     <Strong style={{ fontSize: 13, color: c.color ?? "#4589FF" }}>{c.label}</Strong>
                     <span style={{
