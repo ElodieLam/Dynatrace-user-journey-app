@@ -5374,7 +5374,6 @@ function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overa
 
           return (
             <div key={t.label} className={`uj-trend-card${hasSpark ? " clickable" : ""}`} onClick={hasSpark ? () => onDrillToForecast(t.label, series, color) : undefined} style={{ cursor: hasSpark ? "pointer" : undefined }}>
-              {hasSpark && <span className="kpi-drill-hint">→ Forecast</span>}
               {hasSpark && correlationsCtx && (
                 <button className="kpi-related-btn" onClick={(e) => { e.stopPropagation(); correlationsCtx.open({ label: t.label, sparkline: series, color, inverted: t.inverted }); }} title="Show related metrics">⟷</button>
               )}
