@@ -1207,11 +1207,12 @@ fetch user.events, {periodStr}
 | Sankey Style | `uj-sankey-style` | Preferred Sankey rendering mode |
 | Map View | `uj-map-view` | Default map view (World/US) |
 | Average Order Value | `uj-average-order-value` | Revenue per conversion for What-If & Revenue Intelligence |
-| Monthly Infra Cost | `uj-monthly-infra-cost` | Monthly infrastructure spend for FinOps calculations (default $100) |
+| Monthly Infra Cost | `uj-monthly-infra-cost` | Monthly infrastructure spend for FinOps calculations (default $100,000) |
 | CDN Monthly Cost | `uj-cdn-monthly-cost` | Monthly CDN spend for CDN ROI analysis (default $100) |
 | Compute Cost/Hour | `uj-compute-cost-per-hour` | Hourly compute cost for Idle Capacity calculations (default $100) |
 | Cost Per GB | `uj-cost-per-gb` | Data transfer cost per GB for Cost Anomalies (default $100) |
 | Engineer Hourly Rate | `uj-engineer-hourly-rate` | Engineering cost per hour for Performance Tax ROI (default $100) |
+| Industry | `uj-industry` | Industry vertical for AI Insights benchmarks (default "ecommerce"). Options: ecommerce, saas, media, financial, travel, healthcare, gaming, general. Controls all benchmark thresholds in AI analysis. |
 
 ### Key Constants
 
@@ -1276,15 +1277,18 @@ All revenue calculations are client-side — no additional DQL queries needed be
 - **Three-sparkle icon**: SVG with 3 four-pointed diamond sparkles (large, medium, small) using purple gradient fill.
 - **Panel**: `AIInsightsPanel` renders inside each tab via `useAIInsights(analysisFn)` hook, which reads open state from context and returns `{ panel }`. Panel includes Summary, color-coded Insights (good/warning/critical/info with left-border accents), and prioritized Recommendations (high/medium/low impact badges).
 - **Typewriter animation**: `StreamText` component splits text into words, each rendered as a `<span>` with staggered `animationDelay` (60ms per word). CSS `@keyframes uj-ai-typewriter` (opacity 0→1, translateY 4→0, 0.3s duration). Section headers and insight rows also fade in sequentially with cumulative offsets.
-- **Analysis functions**: 25+ tab-specific analysis functions using industry benchmarks:
-  - Conversion: 2-5% industry average
-  - Apdex: ≥0.85 excellent, ≥0.7 good, ≥0.5 fair, <0.5 poor
-  - CWV: Google thresholds (LCP ≤2.5s, CLS ≤0.1, INP ≤200ms, TTFB ≤800ms)
-  - Error rate: <1% healthy, >5% critical
+- **Industry-Aware Enrichment**: The `useAIInsights` hook automatically calls `enrichWithIndustryContext()` on every analysis result. This function reads the user's selected industry from `useSettings()` and appends industry-specific benchmark comparisons based on detected metrics (conversion rate, Apdex, error rate, latency, LCP, CLS, third-party budget, mobile share). All 30+ tabs benefit without any per-tab code changes.
+- **Industry Benchmarks** (`INDUSTRY_BENCHMARKS` in SettingsContext): Per-industry targets for 22 metrics across 8 verticals (E-Commerce, SaaS, Media, Financial Services, Travel, Healthcare, Gaming, General). Includes: convRateTarget, apdexTarget, avgDurationTarget, errorRateTarget, lcpTarget, clsTarget, inpTarget, costPerConvLow/High, revCostRatioTarget, cdnRoiTarget, idleUtilTarget, breakEvenHoursTarget, bounceRateTarget, frustratedPctTarget, sessionDepthTarget, retentionD7Target, thirdPartyBudgetMs, mobileShareExpected.
+- **Data-Driven FinOps Analysis**: 5 dedicated analysis functions (`analyzeCostPerConversion`, `analyzePerformanceTax`, `analyzeIdleCapacity`, `analyzeCdnRoi`, `analyzeCostAnomalies`) compute actual metrics from tab data and compare against industry benchmarks with severity-appropriate insights.
+- **Data-Driven Non-FinOps Analysis**: `analyzeWhatIf`, `analyzeRevenueIntelligence`, `analyzeSessionReplaySpotlight`, `analyzeABComparison` replace generic descriptions with data-driven analysis using available tab props + industry context.
+- **Analysis functions**: 30+ tab-specific analysis functions using industry benchmarks:
+  - Conversion: Industry-specific target (1.5%–8% depending on vertical)
+  - Apdex: Industry-specific target (0.8–0.92 depending on vertical)
+  - CWV: Google thresholds + industry targets (LCP 1800–3000ms, CLS 0.03–0.15, INP 100–250ms)
+  - Error rate: Industry-specific (<0.1% financial to <2% media)
+  - FinOps: Cost per conversion, revenue:cost ratio, idle utilization, CDN ROI, break-even hours
   - SLO compliance, cohort retention, engagement scoring, 3P impact, error clustering
-- **Architecture**: All analysis runs client-side — pure heuristic functions, no external AI API calls. Each tab's analysis function receives computed data from the tab and returns `AIInsightsData { summary, insights[], recommendations[] }`.
-
-### Help System
+- **Architecture**: All analysis runs client-side — pure heuristic functions, no external AI API calls. Each tab's analysis function receives computed data from the tab and returns `AIInsightsData { summary, insights[], recommendations[] }`. The `enrichWithIndustryContext` wrapper adds industry framing automatically.
 
 - **Help Sheet**: Slide-out panel (`<Sheet>`) with `HelpContent` component covering all 31 tabs, configuration, Apdex, CWV thresholds, and tips
 - **What's New section**: Changelog at the top of Help, newest entries first. Each entry has a date stamp, title, and bullet-pointed feature list. Styled with blue left-border accent cards. New changes are added at the top; older entries slide down — serves as an in-app audit log of feature changes
@@ -1295,6 +1299,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-06-11 | 4.53.5 | **AI Insights — Industry-Aware Analysis Engine**: All 30+ AI analysis functions now automatically enriched with industry-specific benchmarks via `enrichWithIndustryContext()` in the `useAIInsights` hook. New Industry setting (8 verticals: E-Commerce, SaaS, Media, Financial Services, Travel, Healthcare, Gaming, General) in SettingsContext with `INDUSTRY_BENCHMARKS` containing 22 per-industry metrics. New `IndustryBenchmark` interface. 9 data-driven analysis functions replace `analyzeGenericTab` calls: `analyzeCostPerConversion`, `analyzePerformanceTax`, `analyzeIdleCapacity`, `analyzeCdnRoi`, `analyzeCostAnomalies`, `analyzeWhatIf`, `analyzeRevenueIntelligence`, `analyzeSessionReplaySpotlight`, `analyzeABComparison`. Enrichment function detects metric keywords in existing insights and appends contextual industry comparisons (conversion rate, Apdex, error rate, latency, LCP, CLS, third-party, mobile share). Help panel and DESIGN.md updated. |
 | 2026-06-04 | 4.53.0 | **FinOps Tab Group — 5 New Sub-Tabs**: Added 8th parent tab group "FinOps" with 5 sub-tabs: Cost per Conversion (infrastructure spend per conversion, efficiency scorecard), Performance Tax (revenue lost to latency/frustration/errors with ROI scenarios), Idle Capacity (traffic pattern analysis detecting idle hours and autoscaling savings), CDN ROI (latency reduction → conversion improvement modeling with payback period), Cost Anomalies (z-score anomaly detection on daily cost trend with budget forecast). 5 new user-configurable cost settings in SettingsContext (Monthly Infra Cost, CDN Monthly Cost, Compute Cost/Hour, Cost Per GB, Engineer Hourly Rate) — all default to $100. Help panel, AI Insights descriptions, and DESIGN.md updated. App now has 36 sub-tabs across 8 parent groups. |
 | 2026-05-29 | 4.49.98 | **Forecast Modal — Multi-Model Popup Forecasting**: Clicking any KPI card now opens a full-screen `ForecastModal` popup (`ui/app/components/ForecastModal.tsx`) instead of navigating to the Predictive Forecasting tab. Modal displays historical sparkline data + 7-day forecast with confidence band in an interactive SVG chart. Users select from 6 forecasting models via dropdown: Holt-Winters (Double Exponential Smoothing), Triple Exponential Smoothing, Prophet (piecewise trend + Fourier seasonality), ARIMA(5,1,2), SARIMA(3,1,1)(1,1,1,m), and Linear Regression. Hover crosshair shows actual/forecast values with confidence interval. Click-outside or Close button dismisses. KpiCard `onDrillToForecast` prop changed from `() => void` to `(label, sparkline, color) => void`; cards only show clickable state when sparkline has ≥2 points. AI Assist recommendations updated to reference Forecast Modal. Help panel updated with new What's New entry and Tips section. |
 | 2026-05-28 | 4.49.94 | **KPI Cards — Sparklines, Comparison Arrows & Drill-to-Forecast**: Funnel Overview and Executive Summary KPI cards upgraded with inline sparklines (time-bucketed trend lines from `trendsSparklineQuery`/`trendsConvSparklineQuery`), period-over-period comparison arrows showing % delta vs. previous timeframe (`prevRawValue`), and one-click drill-to-forecast navigation (clicking a card navigates to the Predictive Forecasting tab). AI Assist (`analyzeFunnelOverview`, `analyzeTrends`) now proactively recommends drilling into Predictive Forecasting when negative trends are detected (low conversion, poor Apdex, rising errors). Help panel updated with What's New entry and tab description refresh. |

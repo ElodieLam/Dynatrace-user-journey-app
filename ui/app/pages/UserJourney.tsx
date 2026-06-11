@@ -16,7 +16,7 @@ import { TimeseriesChart, TimeseriesAnnotations } from "@dynatrace/strato-compon
 import type { Timeseries } from "@dynatrace/strato-components/charts";
 import { DataTable } from "@dynatrace/strato-components-preview/tables";
 import "./UserJourney.css";
-import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, MIN_STEPS, MAX_STEPS, DEFAULT_AOV } from "../SettingsContext";
+import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, MIN_STEPS, MAX_STEPS, DEFAULT_AOV, INDUSTRY_OPTIONS, INDUSTRY_BENCHMARKS, IndustryType, IndustryBenchmark } from "../SettingsContext";
 import type { StepDef } from "../SettingsContext";
 import { HyperlyzerTab } from "./HyperlyzerTab";
 import { ForecastModal } from "../components/ForecastModal";
@@ -2776,8 +2776,9 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
             <Paragraph style={{ fontSize: 13 }}>• <Strong>AI Insights button</Strong> in the header bar (between timeframe selector and help icon) — single toggle for all tabs</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• Collapsible panel with <Strong>Summary</Strong>, color-coded <Strong>Insights</Strong> (good/warning/critical/info), and prioritized <Strong>Recommendations</Strong> (high/medium/low impact)</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Typewriter streaming animation</Strong>: text appears word-by-word like an AI chatbot response</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• 25+ analysis functions with industry-standard benchmarks: conversion rate (2-5% avg), Apdex thresholds, Google CWV targets, error rate benchmarks, SLO compliance, and more</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• Tab-specific analysis: each tab evaluates its own data — Funnel Overview analyzes conversion & drop-offs, Web Vitals checks CWV against Google thresholds, Anomaly Detection flags significant deviations, etc.</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Industry-Aware Benchmarks</Strong>: All analysis is automatically contextualized for your selected industry (E-Commerce, SaaS, Media, Financial Services, Travel, Healthcare, Gaming, General). Set your industry in Settings to get vertical-specific targets for conversion rates, Apdex, error rates, latency, CDN ROI, idle capacity, and more</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• 30+ analysis functions with industry-standard benchmarks: conversion rate targets, Apdex thresholds, Google CWV targets, error rate benchmarks, FinOps efficiency ratios, CDN ROI targets, utilization standards, and performance tax modeling</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• Tab-specific analysis: each tab evaluates its own data — Funnel Overview analyzes conversion & drop-offs, Web Vitals checks CWV against Google thresholds, FinOps tabs compute cost per conversion/performance tax/idle waste/CDN ROI/cost anomalies against industry benchmarks, Anomaly Detection flags significant deviations, etc.</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• All analysis runs client-side using heuristic benchmarks — no external AI API calls, zero latency</Paragraph>
           </div>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
@@ -2881,7 +2882,8 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph><Strong>Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. Selecting a different app immediately re-queries all data and updates the Pages / Identifiers dropdowns for the new app.</Paragraph>
         <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the selected app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
         <Paragraph><Strong>Average Order Value</Strong>: Set in Settings to enable revenue metrics across What-If Analysis, Revenue Intelligence, Errors &amp; Drop-offs, Conversion Attribution, Map, Root Cause Correlation, Trends, Executive Summary, Anomaly Detection, and Change Intelligence tabs. This value represents the average revenue per conversion (final funnel step completion). Set to 0 to hide revenue metrics.</Paragraph>
-        <Paragraph><Strong>AI Insights</Strong>: The AI Insights panel is sub-tab aware — it shows analysis specific to the currently active sub-tab within each parent group. Toggle AI Insights in the header and navigate between sub-tabs to get contextual recommendations for each view.</Paragraph>
+        <Paragraph><Strong>AI Insights</Strong>: The AI Insights panel is sub-tab aware and <Strong>industry-aware</Strong> — it shows analysis specific to the currently active sub-tab, automatically enriched with benchmarks for your selected industry. Toggle AI Insights in the header and navigate between sub-tabs to get contextual recommendations tailored to E-Commerce, SaaS, Media, Financial Services, Travel, Healthcare, or Gaming verticals.</Paragraph>
+        <Paragraph><Strong>Industry</Strong>: Select your industry vertical in Settings to calibrate all AI Insights benchmarks. Each industry has specific targets for conversion rate, Apdex, error rate, latency, CDN ROI, idle capacity utilization, cost per conversion, and more. The analysis engine compares your actual metrics against these industry-specific thresholds to surface relevant insights.</Paragraph>
       </HelpSection>
       <HelpSection title="Apdex Score">
         <Paragraph>Apdex = (satisfied + tolerating/2) / total. Thresholds: <Strong>Satisfied ≤ {APDEX_T / 1000}s</Strong>, <Strong>Tolerating ≤ {APDEX_4T / 1000}s</Strong>, <Strong>Frustrated &gt; {APDEX_4T / 1000}s</Strong>. Ranges: ≥0.85 Excellent, ≥0.7 Good, ≥0.5 Fair, &lt;0.5 Poor.</Paragraph>
@@ -2916,7 +2918,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph>• Error Clustering groups similar errors together — fix the top cluster first for maximum session impact reduction.</Paragraph>
         <Paragraph>• Funnel Velocity (Sankey sub-tab) identifies the slowest step transitions — if P90 is much higher than median, a subset of users is struggling disproportionately.</Paragraph>
         <Paragraph>• Set Average Order Value in Settings to unlock revenue projections in What-If Analysis and Revenue Intelligence tabs.</Paragraph>
-        <Paragraph>• Click <Strong>AI Insights</Strong> (✦) in the header bar to get instant, data-driven analysis for whichever tab you're viewing — Summary, Insights, and Recommendations powered by industry benchmarks.</Paragraph>
+        <Paragraph>• Click <Strong>AI Insights</Strong> (✦) in the header bar to get instant, data-driven analysis for whichever tab you're viewing — Summary, Insights, and Recommendations automatically contextualized for your selected industry (set in Settings). All 30+ analysis functions compare your metrics against industry-specific benchmarks.</Paragraph>
         <Paragraph>• Click any KPI card to open the <Strong>Forecast Modal</Strong> — switch between 6 statistical models (Holt-Winters, ARIMA, SARIMA, Prophet, Triple Exp., Linear) to compare projections. The modal shows historical data + 7-day forecast with confidence band, all without leaving the current tab.</Paragraph>
         <Paragraph>• Hover over any KPI card and click the <Strong>⟷ button</Strong> (top-left) to open the <Strong>Related Metrics</Strong> panel — see which other metrics are statistically correlated with the one you're investigating, ranked by strength with direction and narrative explanations.</Paragraph>
         <Paragraph>• The <Strong>Predictive Model</Strong> sub-tab is most reliable after 6+ hours of today's data. Early-morning projections have wide confidence intervals — check again at midday for a stable EOD forecast.</Paragraph>
@@ -2954,7 +2956,7 @@ export function UserJourney() {
   const [aiOpen, setAiOpen] = useState(false);
   const closeAiInsights = React.useCallback(() => setAiOpen(false), []);
   const aiContextValue = React.useMemo(() => ({ open: aiOpen, close: closeAiInsights, activeSubTab: activeSubTabKey }), [aiOpen, closeAiInsights, activeSubTabKey]);
-  const { frontend, steps, saveFrontend, saveSteps, aov, saveAov, monthlyInfraCost, saveMonthlyInfraCost, cdnMonthlyCost, saveCdnMonthlyCost, computeCostPerHour, saveComputeCostPerHour, costPerGb, saveCostPerGb, engineerHourlyRate, saveEngineerHourlyRate } = useSettings();
+  const { frontend, steps, saveFrontend, saveSteps, aov, saveAov, monthlyInfraCost, saveMonthlyInfraCost, cdnMonthlyCost, saveCdnMonthlyCost, computeCostPerHour, saveComputeCostPerHour, costPerGb, saveCostPerGb, engineerHourlyRate, saveEngineerHourlyRate, industry, saveIndustry } = useSettings();
   const [sankeyStyle, setSankeyStyle] = useState<SankeyStyle>(DEFAULT_SANKEY_STYLE);
   const [funnelStyle, setFunnelStyle] = useState<FunnelStyle>(DEFAULT_FUNNEL_STYLE);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(0);
@@ -3667,6 +3669,16 @@ export function UserJourney() {
           <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>FinOps Cost Settings</Paragraph>
           <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Configure cost parameters for FinOps analysis. These values are used to model cost-per-conversion, idle capacity waste, CDN ROI, and performance tax calculations.</Paragraph>
           <div style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 12, opacity: 0.7, display: "block", marginBottom: 4 }}>Industry</Text>
+            <Select value={industry} onChange={(val) => { if (val) saveIndustry(val as IndustryType); }}>
+              <Select.Trigger style={{ minWidth: 200 }} />
+              <Select.Content>
+                {INDUSTRY_OPTIONS.map(o => <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>)}
+              </Select.Content>
+            </Select>
+            <Text style={{ fontSize: 11, opacity: 0.5, display: "block", marginTop: 4 }}>AI Insights will use industry-specific benchmarks for FinOps analysis and recommendations.</Text>
+          </div>
+          <div style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 12, opacity: 0.7, display: "block", marginBottom: 4 }}>Monthly Infrastructure Cost ($)</Text>
             <Flex alignItems="center" gap={8}>
               <Text style={{ fontSize: 16, fontWeight: 600 }}>$</Text>
@@ -3836,7 +3848,7 @@ export function UserJourney() {
             case "Resource Waterfall": content = <ResourceWaterfallTab waterfallData={resourceWaterfallData} byStepData={resourceByStepData} sessionDrillData={resourceSessionDrillData} isLoading={resourceWaterfallData.isLoading || resourceByStepData.isLoading || resourceSessionDrillData.isLoading} steps={steps} frontend={frontend} onDrillToForecast={openForecast} />; break;
             case "Change Intelligence": content = <ChangeIntelligenceTab featureFlagData={featureFlagData} deployData={deploymentEventsData} impactData={changeImpactData} quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} isLoading={deploymentEventsData.isLoading || changeImpactData.isLoading} aov={aov} overallConv={overallConv} funnelCounts={funnelCounts} onDrillToForecast={openForecast} />; break;
             case "SLO Tracker": content = <SLOTrackerTab apdexTrend={sloApdexTrendData} cwvTrend={sloCwvTrendData} quality={quality} overallApdex={overallApdex} overallConv={overallConv} cwv={cwv} isLoading={sloApdexTrendData.isLoading || sloCwvTrendData.isLoading} saveState={saveState} savedTargets={savedSloTargets} frontend={frontend} />; break;
-            case "Session Replay Spotlight": content = <SessionReplaySpotlightTab data={sessionReplayData} isLoading={sessionReplayData.isLoading} onDrillToForecast={openForecast} />; break;
+            case "Session Replay Spotlight": content = <SessionReplaySpotlightTab data={sessionReplayData} quality={quality} overallConv={overallConv} isLoading={sessionReplayData.isLoading} onDrillToForecast={openForecast} />; break;
             case "A/B Comparison": content = <ABComparisonTab segAData={abSegAData} segBData={abSegBData} segACwv={abSegACwv} segBCwv={abSegBCwv} dimension={abDimension} setDimension={setAbDimension} segA={abSegA} segB={abSegB} setSegA={setAbSegA} setSegB={setAbSegB} isLoading={abSegAData.isLoading || abSegBData.isLoading || abSegACwv.isLoading || abSegBCwv.isLoading} aov={aov} overallConv={overallConv} onDrillToForecast={openForecast} />; break;
             case "Revenue Intelligence": content = <RevenueIntelligenceTab funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} overallConv={overallConv} overallConvPrev={overallConvPrev} overallApdex={overallApdex} quality={quality} qualityPrev={qualityPrev} isLoading={isLoading || qualityData.isLoading || qualityDataPrev.isLoading || funnelResultPrev.isLoading} steps={steps} aov={aov} onDrillToForecast={openForecast} />; break;
             case "Cohort Retention": content = <CohortRetentionTab retentionData={cohortRetentionData} sessionData={cohortSessionData} engagementData={sessionEngagementData} isLoading={cohortRetentionData.isLoading || cohortSessionData.isLoading} steps={steps} aov={aov} onDrillToForecast={openForecast} />; break;
@@ -3998,12 +4010,99 @@ function AIInsightsPanel({ data, onClose }: { data: AIInsightsData; onClose: () 
 /** Context: shares AI Insights open/close state and active sub-tab from header to all tabs */
 export const AIInsightsContext = React.createContext<{ open: boolean; close: () => void; activeSubTab: TabKey | null }>({ open: false, close: () => {}, activeSubTab: null });
 
+// ---------------------------------------------------------------------------
+// Industry-Aware Enrichment — automatically appends industry benchmarks to any analysis
+// ---------------------------------------------------------------------------
+function enrichWithIndustryContext(data: AIInsightsData, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights = [...data.insights];
+  const recs = [...data.recommendations];
+  const summaryText = data.summary.toLowerCase();
+
+  // Extract numeric patterns from insights for context-aware benchmarking
+  const insightTexts = data.insights.map(i => i.text.toLowerCase()).join(" ");
+
+  // Conversion rate benchmarking
+  if (summaryText.includes("conversion") || insightTexts.includes("conversion")) {
+    const convMatch = insightTexts.match(/conversion.*?(\d+\.?\d*)%/) || data.summary.match(/(\d+\.?\d*)%.*conversion/i);
+    if (convMatch) {
+      const actual = parseFloat(convMatch[1]);
+      if (!isNaN(actual) && actual > 0) {
+        if (actual >= b.convRateTarget * 1.2) insights.push({ severity: "good", icon: "🏆", text: `${b.label} benchmark: Your ${actual.toFixed(1)}% conversion exceeds the ${b.convRateTarget}% industry target by ${((actual / b.convRateTarget - 1) * 100).toFixed(0)}%.` });
+        else if (actual < b.convRateTarget * 0.7) insights.push({ severity: "warning", icon: "🏭", text: `${b.label} benchmark: Conversion of ${actual.toFixed(1)}% is ${((1 - actual / b.convRateTarget) * 100).toFixed(0)}% below the ${b.convRateTarget}% industry target. Top performers in ${b.label.toLowerCase()} achieve ${(b.convRateTarget * 1.5).toFixed(1)}%+.` });
+      }
+    }
+  }
+
+  // Apdex benchmarking
+  if (summaryText.includes("apdex") || insightTexts.includes("apdex")) {
+    const apdexMatch = insightTexts.match(/apdex.*?(\d+\.?\d*)/) || data.summary.match(/apdex.*?(\d+\.?\d*)/i);
+    if (apdexMatch) {
+      const actual = parseFloat(apdexMatch[1]);
+      if (!isNaN(actual) && actual > 0 && actual <= 1) {
+        if (actual >= b.apdexTarget) insights.push({ severity: "good", icon: "🏆", text: `${b.label} benchmark: Apdex ${actual.toFixed(2)} meets or exceeds the ${b.apdexTarget} industry standard for ${b.label.toLowerCase()}.` });
+        else if (actual < b.apdexTarget - 0.1) recs.push({ impact: "high", text: `${b.label} industry standard: Target Apdex ≥${b.apdexTarget}. Your ${actual.toFixed(2)} is below expectations for this vertical — ${b.label.toLowerCase()} users expect faster experiences.` });
+      }
+    }
+  }
+
+  // Error rate benchmarking
+  if (summaryText.includes("error") || insightTexts.includes("error rate")) {
+    const errMatch = insightTexts.match(/error rate.*?(\d+\.?\d*)%/) || insightTexts.match(/(\d+\.?\d*)%.*error/);
+    if (errMatch) {
+      const actual = parseFloat(errMatch[1]);
+      if (!isNaN(actual) && actual > 0) {
+        if (actual <= b.errorRateTarget) insights.push({ severity: "good", icon: "🏆", text: `${b.label} benchmark: Error rate ${actual.toFixed(1)}% is within the ${b.errorRateTarget}% industry target.` });
+        else if (actual > b.errorRateTarget * 2) recs.push({ impact: "high", text: `${b.label} standard: Error rate should be ≤${b.errorRateTarget}%. At ${actual.toFixed(1)}%, you're ${(actual / b.errorRateTarget).toFixed(1)}x above acceptable levels for this industry.` });
+      }
+    }
+  }
+
+  // Duration/latency benchmarking
+  if (summaryText.includes("duration") || summaryText.includes("latency") || insightTexts.includes("duration") || insightTexts.includes("latency")) {
+    const durMatch = insightTexts.match(/(\d{3,5})\s*ms/) || data.summary.match(/(\d{3,5})\s*ms/);
+    if (durMatch) {
+      const actual = parseFloat(durMatch[1]);
+      if (!isNaN(actual) && actual > 100) {
+        if (actual <= b.avgDurationTarget) insights.push({ severity: "good", icon: "🏆", text: `${b.label} benchmark: ${Math.round(actual)}ms is within the ${b.avgDurationTarget}ms industry target.` });
+        else if (actual > b.avgDurationTarget * 1.5) recs.push({ impact: "medium", text: `${b.label} standard: Target ≤${b.avgDurationTarget}ms average duration. ${b.label.toLowerCase()} users tolerate up to ${b.avgDurationTarget}ms but you're at ${Math.round(actual)}ms.` });
+      }
+    }
+  }
+
+  // Web Vitals (LCP) benchmarking
+  if (summaryText.includes("lcp") || summaryText.includes("largest contentful")) {
+    recs.push({ impact: "medium", text: `${b.label} LCP target: ≤${b.lcpTarget}ms. ${b.label.toLowerCase()} sites should aim for sub-${b.lcpTarget}ms LCP — users in this vertical have ${b.lcpTarget <= 2000 ? "very low" : b.lcpTarget <= 2500 ? "moderate" : "typical"} patience for initial load.` });
+  }
+
+  // CLS benchmarking
+  if (summaryText.includes("cls") || summaryText.includes("layout shift")) {
+    recs.push({ impact: "medium", text: `${b.label} CLS target: ≤${b.clsTarget}. ${b.label.toLowerCase()} applications ${b.clsTarget <= 0.05 ? "require near-zero layout shift for trust and usability" : "should minimize visual instability during interactions"}.` });
+  }
+
+  // Third-party benchmarking
+  if (summaryText.includes("third-party") || summaryText.includes("third party") || insightTexts.includes("third-party")) {
+    recs.push({ impact: "medium", text: `${b.label} third-party budget: ≤${b.thirdPartyBudgetMs}ms total third-party load time. ${b.label.toLowerCase()} sites ${b.thirdPartyBudgetMs <= 500 ? "must strictly limit third-party scripts" : "can tolerate moderate third-party load"} before impacting core UX.` });
+  }
+
+  // Mobile benchmarking
+  if (insightTexts.includes("mobile") || summaryText.includes("mobile")) {
+    insights.push({ severity: "info", icon: "📱", text: `${b.label} benchmark: Expect ~${b.mobileShareExpected}% mobile traffic share. ${b.mobileShareExpected >= 60 ? "Mobile-first optimization is critical for this industry." : b.mobileShareExpected >= 45 ? "Both mobile and desktop matter equally." : "Desktop remains the primary platform but mobile is growing."}` });
+  }
+
+  // Add industry framing to summary
+  const enrichedSummary = `[${b.label} Industry Context] ${data.summary}`;
+
+  return { summary: enrichedSummary, insights, recommendations: recs };
+}
+
 /** Hook: reads AI open state from context, returns panel only. Sub-tab aware — only shows panel for the active sub-tab. */
 export function useAIInsights(analysisFn: () => AIInsightsData, subTabKey?: TabKey): { panel: React.ReactNode } {
   const { open, close, activeSubTab } = React.useContext(AIInsightsContext);
+  const { industry } = useSettings();
   // If subTabKey is provided and doesn't match active sub-tab, skip rendering
   const isActive = !subTabKey || activeSubTab === subTabKey || activeSubTab === null;
-  const data = useMemo(() => (open && isActive) ? analysisFn() : null, [open, isActive, analysisFn]);
+  const data = useMemo(() => (open && isActive) ? enrichWithIndustryContext(analysisFn(), industry) : null, [open, isActive, analysisFn, industry]);
   return {
     panel: open && isActive && data ? <AIInsightsPanel data={data} onClose={close} /> : null,
   };
@@ -4697,6 +4796,430 @@ function analyzeGenericTab(tabName: string): AIInsightsData {
     insights: [{ severity: "info", icon: "📊", text: `Review the ${tabName} data above and compare against your organization's KPI targets.` }],
     recommendations: [{ impact: "low", text: "Establish baseline metrics for this view and set up alerting for deviations beyond 2 standard deviations." }],
   };
+}
+
+// =============================================================================
+// DATA-DRIVEN ANALYSIS: FinOps Tabs (industry-aware)
+// =============================================================================
+
+function analyzeCostPerConversion(costPerConversion: number, costPerSession: number, revCostRatio: number, sessionsPerDollar: number, dailyInfraCost: number, conversions: number, aov: number, totalSessions: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+
+  // Cost per conversion vs industry benchmark
+  if (costPerConversion > 0 && costPerConversion <= b.costPerConvLow) {
+    insights.push({ severity: "good", icon: "🏆", text: `Cost per conversion ($${costPerConversion.toFixed(2)}) is excellent — below the ${b.label} low benchmark of $${b.costPerConvLow}.` });
+  } else if (costPerConversion > 0 && costPerConversion <= b.costPerConvHigh) {
+    insights.push({ severity: "info", icon: "📊", text: `Cost per conversion ($${costPerConversion.toFixed(2)}) is within the ${b.label} acceptable range ($${b.costPerConvLow}–$${b.costPerConvHigh}).` });
+  } else if (costPerConversion > b.costPerConvHigh) {
+    insights.push({ severity: "critical", icon: "🔴", text: `Cost per conversion ($${costPerConversion.toFixed(2)}) exceeds the ${b.label} high benchmark of $${b.costPerConvHigh} by ${((costPerConversion / b.costPerConvHigh - 1) * 100).toFixed(0)}%.` });
+    recs.push({ impact: "high", text: `Reduce cost per conversion to below $${b.costPerConvHigh}. Options: optimize infrastructure utilization (reduce cost) or improve funnel conversion rate (increase conversions per dollar spent).` });
+  }
+
+  // Revenue:Cost ratio vs industry target
+  if (aov > 0) {
+    if (revCostRatio >= b.revCostRatioTarget) {
+      insights.push({ severity: "good", icon: "✅", text: `Revenue:Cost ratio of ${revCostRatio.toFixed(1)}x meets the ${b.label} target of ${b.revCostRatioTarget}x. Each infra dollar generates $${revCostRatio.toFixed(2)} in revenue.` });
+    } else if (revCostRatio >= b.revCostRatioTarget * 0.5) {
+      insights.push({ severity: "warning", icon: "⚠️", text: `Revenue:Cost ratio of ${revCostRatio.toFixed(1)}x is below the ${b.label} target of ${b.revCostRatioTarget}x.` });
+      recs.push({ impact: "medium", text: `Target ${b.revCostRatioTarget}x revenue:cost ratio. Gap of ${(b.revCostRatioTarget - revCostRatio).toFixed(1)}x can be closed by either increasing AOV/conversion rate or reducing infrastructure spend.` });
+    } else {
+      insights.push({ severity: "critical", icon: "🔴", text: `Revenue:Cost ratio of ${revCostRatio.toFixed(1)}x is less than half the ${b.label} target (${b.revCostRatioTarget}x). Infrastructure spend is not justified by revenue.` });
+      recs.push({ impact: "high", text: `Critical efficiency gap. At ${revCostRatio.toFixed(1)}x, you need ${((b.revCostRatioTarget / Math.max(0.1, revCostRatio) - 1) * 100).toFixed(0)}% improvement to reach industry standard. Consider aggressive cost optimization or conversion rate improvement.` });
+    }
+  }
+
+  // Sessions per dollar efficiency
+  if (sessionsPerDollar > 0) {
+    const isEfficient = sessionsPerDollar > 100;
+    insights.push({ severity: isEfficient ? "good" : "info", icon: isEfficient ? "✅" : "💡", text: `Infrastructure serves ${sessionsPerDollar.toFixed(0)} sessions per dollar. ${isEfficient ? "Good session-level efficiency." : "Consider if higher traffic density could improve unit economics."}` });
+  }
+
+  // Optimization opportunity
+  if (conversions > 0 && totalSessions > 0) {
+    const convRate = (conversions / totalSessions) * 100;
+    if (convRate < b.convRateTarget) {
+      const additionalConvs = Math.round(totalSessions * (b.convRateTarget - convRate) / 100);
+      const newCostPerConv = dailyInfraCost / (conversions + additionalConvs);
+      recs.push({ impact: "high", text: `If conversion rate improves from ${convRate.toFixed(1)}% to the ${b.label} target of ${b.convRateTarget}%, cost per conversion drops from $${costPerConversion.toFixed(2)} to $${newCostPerConv.toFixed(2)} (${((1 - newCostPerConv / costPerConversion) * 100).toFixed(0)}% reduction) without any infrastructure changes.` });
+    }
+  }
+
+  const summary = `Cost per Conversion analysis for ${b.label} industry. Your infrastructure costs $${dailyInfraCost.toFixed(0)}/day serving ${totalSessions.toLocaleString()} sessions and ${conversions.toLocaleString()} conversions. Industry benchmarks: cost per conversion $${b.costPerConvLow}–$${b.costPerConvHigh}, revenue:cost ratio target ${b.revCostRatioTarget}x. ${costPerConversion <= b.costPerConvHigh ? "Cost efficiency is within acceptable range." : "Cost efficiency needs improvement — you're spending more per conversion than industry peers."}`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzePerformanceTax(totalPerfTax: number, latencyRevLoss: number, frustrationRevLoss: number, errorRevLoss: number, lostConversions: number, breakEvenHours: number, errRate: number, fruPct: number, avgDuration: number, aov: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+
+  // Total performance tax severity
+  if (totalPerfTax === 0) {
+    insights.push({ severity: "good", icon: "✅", text: "No measurable performance tax detected. Performance is within acceptable thresholds." });
+  } else {
+    const taxSeverity = totalPerfTax > aov * 100 ? "critical" : totalPerfTax > aov * 20 ? "warning" : "info";
+    insights.push({ severity: taxSeverity, icon: taxSeverity === "critical" ? "🔴" : taxSeverity === "warning" ? "⚠️" : "💡", text: `Total daily performance tax: $${totalPerfTax.toFixed(0)} in lost revenue. ${taxSeverity === "critical" ? "This is a significant revenue drain requiring immediate action." : "Optimization opportunities exist."}` });
+  }
+
+  // Break-even analysis vs industry benchmark
+  if (breakEvenHours > 0) {
+    if (breakEvenHours <= b.breakEvenHoursTarget) {
+      insights.push({ severity: "good", icon: "🏆", text: `Break-even engineering time: ${breakEvenHours.toFixed(0)}h — well within the ${b.label} target of ${b.breakEvenHoursTarget}h. Performance work pays for itself quickly in this vertical.` });
+      recs.push({ impact: "high", text: `With only ${breakEvenHours.toFixed(0)}h to break even, any performance optimization sprint is strongly ROI-positive for ${b.label.toLowerCase()}. Prioritize the largest tax component.` });
+    } else {
+      insights.push({ severity: "warning", icon: "⏱️", text: `Break-even engineering time: ${breakEvenHours.toFixed(0)}h exceeds the ${b.label} target of ${b.breakEvenHoursTarget}h. ROI timeline is longer than typical for this industry.` });
+    }
+  }
+
+  // Error rate vs industry target
+  if (errRate > b.errorRateTarget) {
+    insights.push({ severity: errRate > b.errorRateTarget * 3 ? "critical" : "warning", icon: "🐛", text: `Error rate ${errRate.toFixed(1)}% exceeds the ${b.label} target of ${b.errorRateTarget}%. Error tax contributes $${errorRevLoss.toFixed(0)}/day in lost revenue.` });
+    recs.push({ impact: "high", text: `Reduce error rate from ${errRate.toFixed(1)}% to ≤${b.errorRateTarget}%. In ${b.label.toLowerCase()}, ${b.errorRateTarget <= 0.5 ? "users have near-zero tolerance for errors — even minor failures erode trust" : "error tolerance is moderate but each error session loses ~30% conversion probability"}.` });
+  } else {
+    insights.push({ severity: "good", icon: "✅", text: `Error rate ${errRate.toFixed(1)}% meets the ${b.label} target of ≤${b.errorRateTarget}%.` });
+  }
+
+  // Latency impact per second
+  if (avgDuration > b.avgDurationTarget) {
+    const excessMs = avgDuration - b.avgDurationTarget;
+    const excessSec = excessMs / 1000;
+    const estimatedLossPerSec = b.latencyImpactPerSec;
+    insights.push({ severity: "warning", icon: "🐌", text: `Average duration ${Math.round(avgDuration)}ms is ${Math.round(excessMs)}ms above the ${b.label} target. Each extra second of latency costs ~${estimatedLossPerSec}% conversion in this industry.` });
+    recs.push({ impact: "high", text: `Target ≤${b.avgDurationTarget}ms. The ${Math.round(excessMs)}ms excess carries a latency tax of ~${(excessSec * estimatedLossPerSec).toFixed(1)}% conversion loss per session.` });
+  }
+
+  // Frustration vs industry norm
+  if (fruPct > b.frustratedPctTarget) {
+    insights.push({ severity: "warning", icon: "😤", text: `Frustrated sessions at ${fruPct.toFixed(1)}% exceeds the ${b.label} target of ${b.frustratedPctTarget}%. Frustration tax contributes $${frustrationRevLoss.toFixed(0)}/day.` });
+  }
+
+  // Tax breakdown priority
+  const taxes = [{ name: "Latency", val: latencyRevLoss }, { name: "Frustration", val: frustrationRevLoss }, { name: "Error", val: errorRevLoss }].sort((a, c) => c.val - a.val);
+  if (taxes[0].val > 0) {
+    recs.push({ impact: "high", text: `Priority: Fix ${taxes[0].name} Tax first ($${taxes[0].val.toFixed(0)}/day) — it's your largest revenue leak. ${taxes[0].name === "Latency" ? "Optimize server response times, reduce JavaScript bundles, and preload critical resources." : taxes[0].name === "Error" ? "Fix top JavaScript exceptions and API failures." : "Reduce page load times for frustrated-threshold pages."}` });
+  }
+
+  const summary = `Performance Tax analysis for ${b.label}. Daily revenue lost to poor performance: $${totalPerfTax.toFixed(0)} across ${lostConversions} lost conversions. Breakdown: Latency Tax $${latencyRevLoss.toFixed(0)}, Frustration Tax $${frustrationRevLoss.toFixed(0)}, Error Tax $${errorRevLoss.toFixed(0)}. ${b.label} industry targets: error rate ≤${b.errorRateTarget}%, duration ≤${b.avgDurationTarget}ms, frustrated ≤${b.frustratedPctTarget}%, break-even ≤${b.breakEvenHoursTarget}h.`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzeIdleCapacity(monthlyWaste: number, avgUtil: number, idleHours: number, peakRatio: number, autoScaleSavings: number, rightSizeSavings: number, monthlyInfraCost: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  const wastePct = monthlyInfraCost > 0 ? (monthlyWaste / monthlyInfraCost) * 100 : 0;
+
+  // Utilization vs industry target
+  if (avgUtil >= b.idleUtilTarget) {
+    insights.push({ severity: "good", icon: "🏆", text: `Average utilization ${avgUtil.toFixed(0)}% meets the ${b.label} target of ${b.idleUtilTarget}%. Infrastructure is well-sized for workload.` });
+  } else if (avgUtil >= b.idleUtilTarget * 0.7) {
+    insights.push({ severity: "warning", icon: "⚠️", text: `Average utilization ${avgUtil.toFixed(0)}% is below the ${b.label} target of ${b.idleUtilTarget}%. Gap of ${(b.idleUtilTarget - avgUtil).toFixed(0)}pp represents waste.` });
+    recs.push({ impact: "medium", text: `Target ${b.idleUtilTarget}% average utilization for ${b.label.toLowerCase()}. ${b.idleUtilTarget >= 75 ? "This industry requires high reliability, so over-provisioning tolerance is lower" : "Variable traffic patterns in this vertical make some over-provisioning acceptable"}.` });
+  } else {
+    insights.push({ severity: "critical", icon: "🔴", text: `Average utilization ${avgUtil.toFixed(0)}% is significantly below the ${b.label} target of ${b.idleUtilTarget}%. You're paying for ${(100 - avgUtil).toFixed(0)}% unused capacity.` });
+    recs.push({ impact: "high", text: `Critical over-provisioning: ${(b.idleUtilTarget - avgUtil).toFixed(0)}pp below target. In ${b.label.toLowerCase()}, ${b.idleUtilTarget >= 75 ? "reliability requirements justify some buffer but not this much" : "elastic scaling should handle traffic variance without this waste"}.` });
+  }
+
+  // Monthly waste assessment
+  if (monthlyWaste > 0) {
+    insights.push({ severity: wastePct > 20 ? "critical" : wastePct > 10 ? "warning" : "info", icon: "💸", text: `Monthly idle waste: $${monthlyWaste.toFixed(0)} (${wastePct.toFixed(1)}% of total spend). ${idleHours} hours/day are below 40% peak utilization.` });
+  }
+
+  // Peak-to-off-peak ratio insight
+  if (peakRatio > 5) {
+    insights.push({ severity: "warning", icon: "📈", text: `Peak-to-off-peak ratio of ${peakRatio.toFixed(1)}x indicates highly variable traffic. Fixed provisioning is particularly wasteful with this pattern.` });
+    recs.push({ impact: "high", text: `With ${peakRatio.toFixed(1)}x traffic variance, autoscaling would save ~$${autoScaleSavings.toFixed(0)}/month. ${b.label.toLowerCase()} workloads ${peakRatio > 8 ? "with this variance MUST use autoscaling" : "benefit significantly from elastic infrastructure"}.` });
+  } else {
+    insights.push({ severity: "good", icon: "📊", text: `Peak-to-off-peak ratio of ${peakRatio.toFixed(1)}x shows relatively consistent traffic — fixed provisioning may be acceptable.` });
+  }
+
+  // Savings opportunity framing
+  const totalSavings = autoScaleSavings + rightSizeSavings;
+  if (totalSavings > 0) {
+    recs.push({ impact: totalSavings > monthlyInfraCost * 0.25 ? "high" : "medium", text: `Combined savings opportunity: $${totalSavings.toFixed(0)}/month (autoscaling $${autoScaleSavings.toFixed(0)} + right-sizing $${rightSizeSavings.toFixed(0)}). For ${b.label.toLowerCase()}, ${b.idleUtilTarget >= 75 ? "prioritize right-sizing over aggressive autoscaling to maintain reliability SLAs" : "autoscaling should be the primary lever"}.` });
+  }
+
+  const summary = `Idle Capacity analysis for ${b.label}. Average utilization: ${avgUtil.toFixed(0)}% (target: ${b.idleUtilTarget}%). Monthly idle waste: $${monthlyWaste.toFixed(0)} across ${idleHours} idle hours/day. Peak-to-off-peak ratio: ${peakRatio.toFixed(1)}x. ${b.label} industry expects ${b.idleUtilTarget}%+ utilization — ${avgUtil >= b.idleUtilTarget ? "you're meeting this standard" : "your infrastructure is over-provisioned relative to peers"}.`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzeCdnRoi(cdnNetBenefit: number, cdnRoi: number, paybackDays: number, convGainFromCdn: number, cdnLatencySaving: number, firstPartyAvgLatency: number, cdnMonthlyCost: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+
+  // ROI vs industry target
+  if (cdnRoi >= b.cdnRoiTarget) {
+    insights.push({ severity: "good", icon: "🏆", text: `CDN ROI of ${cdnRoi.toFixed(1)}x meets the ${b.label} target of ${b.cdnRoiTarget}x. Your CDN investment is strongly justified.` });
+  } else if (cdnRoi >= 1) {
+    insights.push({ severity: "info", icon: "📊", text: `CDN ROI of ${cdnRoi.toFixed(1)}x is positive but below the ${b.label} target of ${b.cdnRoiTarget}x. Room for optimization.` });
+    recs.push({ impact: "medium", text: `Target ${b.cdnRoiTarget}x CDN ROI for ${b.label.toLowerCase()}. ${b.cdnRoiTarget >= 15 ? "This industry's heavy static asset usage should yield higher CDN returns — ensure full asset coverage" : "Consider expanding CDN coverage to more resource types or regions"}.` });
+  } else {
+    insights.push({ severity: "warning", icon: "⚠️", text: `CDN ROI of ${cdnRoi.toFixed(1)}x is below breakeven. Current CDN spend ($${cdnMonthlyCost}/month) is not paying for itself.` });
+    recs.push({ impact: "high", text: `Negative CDN ROI is unusual for ${b.label.toLowerCase()}. Verify CDN configuration: cache hit ratio should be >90%, ensure static assets have proper cache headers, and confirm CDN is serving from edge POPs closest to your users.` });
+  }
+
+  // Latency saving vs industry threshold
+  if (cdnLatencySaving > 0) {
+    const convImpactPct = convGainFromCdn;
+    insights.push({ severity: convImpactPct >= 1 ? "good" : "info", icon: "⚡", text: `CDN delivers ${Math.round(cdnLatencySaving)}ms latency reduction → ~${convImpactPct.toFixed(1)}% conversion gain. In ${b.label.toLowerCase()}, each 100ms saved is worth ~${b.latencyImpactPerSec.toFixed(0)}% conversion.` });
+  }
+
+  // Payback period
+  if (paybackDays > 0 && paybackDays <= 30) {
+    insights.push({ severity: "good", icon: "✅", text: `CDN payback period: ${paybackDays.toFixed(0)} days. Investment recovers within one billing cycle.` });
+  } else if (paybackDays > 30 && paybackDays <= 90) {
+    insights.push({ severity: "info", icon: "📅", text: `CDN payback period: ${paybackDays.toFixed(0)} days. Investment recovers within one quarter.` });
+  } else if (paybackDays > 90) {
+    insights.push({ severity: "warning", icon: "⏰", text: `CDN payback period: ${paybackDays.toFixed(0)} days — longer than typical. Review CDN tier and usage.` });
+  }
+
+  // Net benefit
+  if (cdnNetBenefit > 0) {
+    recs.push({ impact: "medium", text: `Net monthly CDN benefit: $${cdnNetBenefit.toFixed(0)}. For ${b.label.toLowerCase()}, ${b.cdnRoiTarget >= 10 ? "CDN is a critical infrastructure investment — consider upgrading to enterprise tier for better performance and support" : "CDN provides moderate value — ensure you're not over-paying for unused capacity"}.` });
+  }
+
+  // Industry-specific CDN advice
+  if (firstPartyAvgLatency > b.avgDurationTarget * 0.5) {
+    recs.push({ impact: "high", text: `First-party average latency (${Math.round(firstPartyAvgLatency)}ms) contributes significantly to total page load. ${b.label.toLowerCase()} users expect sub-${b.avgDurationTarget}ms experiences — CDN caching of API responses (where safe) could further reduce latency.` });
+  }
+
+  const summary = `CDN ROI analysis for ${b.label}. Net monthly benefit: $${cdnNetBenefit.toFixed(0)} at ${cdnRoi.toFixed(1)}x ROI (industry target: ${b.cdnRoiTarget}x). CDN saves ${Math.round(cdnLatencySaving)}ms latency → ${convGainFromCdn.toFixed(1)}% conversion gain. Payback: ${paybackDays.toFixed(0)} days. ${b.label} sites ${b.cdnRoiTarget >= 10 ? "typically see very high CDN ROI due to heavy static asset usage" : "see moderate CDN ROI focused on API acceleration and global reach"}.`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzeCostAnomalies(actualBurn: number, expectedBurn: number, anomalyCount: number, monthlyErrorWaste: number, costEfficiencyChange: number, dailyCostTrend: number[], monthlyInfraCost: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+
+  // Budget burn rate
+  const burnDelta = actualBurn - expectedBurn;
+  if (burnDelta > 10) {
+    insights.push({ severity: "critical", icon: "🔥", text: `Budget burn rate: ${actualBurn.toFixed(1)}% (expected ${expectedBurn.toFixed(1)}%). Over-burning by ${burnDelta.toFixed(1)}pp — on track to exceed monthly budget by ${(burnDelta * 2).toFixed(0)}%.` });
+    recs.push({ impact: "high", text: `Immediate cost action needed. At current burn rate, you'll exceed budget by ~$${(monthlyInfraCost * burnDelta / 100).toFixed(0)}. For ${b.label.toLowerCase()}, ${b.infraPctRevenueLow <= 5 ? "infrastructure over-spend directly impacts tight margins" : "budget overruns signal scaling issues or resource leaks"}.` });
+  } else if (burnDelta > 5) {
+    insights.push({ severity: "warning", icon: "⚠️", text: `Budget slightly over-tracking: ${actualBurn.toFixed(1)}% vs expected ${expectedBurn.toFixed(1)}%. Monitor closely.` });
+  } else if (burnDelta < -10) {
+    insights.push({ severity: "info", icon: "💡", text: `Budget under-tracking: ${actualBurn.toFixed(1)}% vs expected ${expectedBurn.toFixed(1)}%. Under-spending by ${Math.abs(burnDelta).toFixed(1)}pp — either good efficiency or under-utilization.` });
+  } else {
+    insights.push({ severity: "good", icon: "✅", text: `Budget on track: ${actualBurn.toFixed(1)}% burn vs ${expectedBurn.toFixed(1)}% expected. Healthy spend cadence.` });
+  }
+
+  // Anomaly count
+  if (anomalyCount > 3) {
+    insights.push({ severity: "critical", icon: "🚨", text: `${anomalyCount} cost anomalies detected in the past 14 days. Frequent anomalies indicate systematic instability.` });
+    recs.push({ impact: "high", text: `${anomalyCount} anomalies is excessive. Set up automated cost alerting with ${b.label.toLowerCase()}-appropriate thresholds: alert when daily cost exceeds ${(b.infraPctRevenueHigh * 1.2).toFixed(0)}% of daily revenue.` });
+  } else if (anomalyCount > 0) {
+    insights.push({ severity: "warning", icon: "📊", text: `${anomalyCount} cost anomaly(ies) detected. Investigate correlation with deployments, traffic spikes, or error storms.` });
+  } else {
+    insights.push({ severity: "good", icon: "✅", text: "No cost anomalies detected in the 14-day window. Spend is stable and predictable." });
+  }
+
+  // Error waste
+  if (monthlyErrorWaste > 0) {
+    const errorWastePct = (monthlyErrorWaste / Math.max(1, monthlyInfraCost)) * 100;
+    insights.push({ severity: errorWastePct > 5 ? "critical" : "warning", icon: "🐛", text: `Error-driven waste: $${monthlyErrorWaste.toFixed(0)}/month (${errorWastePct.toFixed(1)}% of spend). Errors trigger retries and wasted compute.` });
+    recs.push({ impact: errorWastePct > 5 ? "high" : "medium", text: `Reduce error waste by fixing top exceptions. ${b.label} target error rate: ≤${b.errorRateTarget}%. Each percentage point of errors wastes ~$${(monthlyInfraCost * 0.01).toFixed(0)}/month in retry overhead.` });
+  }
+
+  // Cost efficiency trend
+  if (costEfficiencyChange > 10) {
+    insights.push({ severity: "warning", icon: "📈", text: `Cost per session increased ${costEfficiencyChange.toFixed(1)}% vs previous period. You're paying more per unit of traffic.` });
+    recs.push({ impact: "medium", text: `Rising cost-per-session without proportional experience improvement signals infrastructure bloat. Review recently added services, unused resources, and over-provisioned instances.` });
+  } else if (costEfficiencyChange < -10) {
+    insights.push({ severity: "good", icon: "📉", text: `Cost per session decreased ${Math.abs(costEfficiencyChange).toFixed(1)}% vs previous period. Efficiency is improving.` });
+  }
+
+  // Spend trend assessment
+  if (dailyCostTrend.length >= 7) {
+    const firstWeek = dailyCostTrend.slice(0, 7).reduce((a, b) => a + b, 0) / 7;
+    const lastWeek = dailyCostTrend.slice(-7).reduce((a, b) => a + b, 0) / 7;
+    const weekTrend = firstWeek > 0 ? ((lastWeek - firstWeek) / firstWeek) * 100 : 0;
+    if (weekTrend > 15) recs.push({ impact: "high", text: `Daily cost trending up ${weekTrend.toFixed(0)}% week-over-week. At this rate, monthly spend will exceed $${(monthlyInfraCost * (1 + weekTrend / 100)).toFixed(0)}. Investigate root cause before it compounds.` });
+  }
+
+  const summary = `Cost Anomalies analysis for ${b.label}. Budget burn: ${actualBurn.toFixed(1)}% (expected ${expectedBurn.toFixed(1)}%). Anomalies detected: ${anomalyCount}. Error waste: $${monthlyErrorWaste.toFixed(0)}/month. Industry context: ${b.label.toLowerCase()} should target infrastructure at ${b.infraPctRevenueLow}–${b.infraPctRevenueHigh}% of revenue with error rate ≤${b.errorRateTarget}%.`;
+  return { summary, insights, recommendations: recs };
+}
+
+// =============================================================================
+// DATA-DRIVEN ANALYSIS: What-If, Revenue Intelligence, Session Replay, A/B
+// =============================================================================
+
+function analyzeWhatIf(quality: any, overallConv: number, overallApdex: number, aov: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  const totalSessions = quality.sessions ?? 0;
+  const avgDuration = quality.avg ?? 0;
+
+  // Current headroom assessment
+  if (overallApdex >= b.apdexTarget) {
+    insights.push({ severity: "good", icon: "✅", text: `Current Apdex (${overallApdex.toFixed(2)}) is at/above the ${b.label} target (${b.apdexTarget}). You have performance headroom for traffic growth.` });
+    const headroom = ((overallApdex - 0.5) / (b.apdexTarget - 0.5)) - 1;
+    recs.push({ impact: "medium", text: `Estimated traffic headroom: ~${Math.round(headroom * 50)}% increase before Apdex drops below acceptable. ${b.label.toLowerCase()} users start noticing degradation below Apdex ${b.apdexTarget}.` });
+  } else {
+    insights.push({ severity: "warning", icon: "⚠️", text: `Current Apdex (${overallApdex.toFixed(2)}) is already below the ${b.label} target (${b.apdexTarget}). Any traffic increase will further degrade experience.` });
+    recs.push({ impact: "high", text: `Fix current performance before scaling. ${b.label} users expect Apdex ≥${b.apdexTarget} — you need to improve by ${(b.apdexTarget - overallApdex).toFixed(2)} points just to meet baseline expectations.` });
+  }
+
+  // Scaling threshold modeling
+  if (avgDuration > 0) {
+    const degradationFactor = avgDuration > b.avgDurationTarget ? 1.5 : 2.5;
+    const doubleTrafficApdex = Math.max(0, overallApdex - (overallApdex * 0.15 * degradationFactor));
+    insights.push({ severity: doubleTrafficApdex < 0.5 ? "critical" : "info", icon: "📊", text: `Projected Apdex at 2x traffic: ~${doubleTrafficApdex.toFixed(2)}. ${doubleTrafficApdex < b.apdexTarget ? "Performance will breach " + b.label + " standards under double load." : "Should remain acceptable under moderate scaling."}` });
+  }
+
+  // Revenue impact of degradation
+  if (aov > 0 && totalSessions > 0) {
+    const convLossAt2x = Math.min(25, (avgDuration > b.avgDurationTarget ? 15 : 8));
+    const revLossAt2x = totalSessions * 2 * (overallConv / 100) * (convLossAt2x / 100) * aov;
+    insights.push({ severity: revLossAt2x > aov * 10 ? "warning" : "info", icon: "💰", text: `At 2x traffic, projected conversion loss of ~${convLossAt2x}% would cost ~$${revLossAt2x.toFixed(0)}/day in missed revenue for ${b.label.toLowerCase()}.` });
+    recs.push({ impact: "medium", text: `${b.label} latency sensitivity: ${b.latencyImpactPerSec}% conversion loss per second of added latency. Plan autoscaling triggers before seasonal traffic events.` });
+  }
+
+  // Industry-specific scaling advice
+  recs.push({ impact: "low", text: `${b.label} scaling priority: ${b.idleUtilTarget >= 75 ? "Prioritize reliability over cost — use horizontal scaling with generous headroom" : b.idleUtilTarget >= 65 ? "Balance cost and performance — use predictive autoscaling" : "Optimize for cost — use aggressive scale-down policies during off-peak"}.` });
+
+  const summary = `What-If Analysis for ${b.label}. Current state: ${totalSessions.toLocaleString()} sessions, Apdex ${overallApdex.toFixed(2)} (target: ${b.apdexTarget}), ${Math.round(avgDuration)}ms avg duration (target: ${b.avgDurationTarget}ms). ${b.label} users have ${b.latencyImpactPerSec >= 7 ? "high" : b.latencyImpactPerSec >= 4 ? "moderate" : "lower"} sensitivity to performance degradation under load.`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzeRevenueIntelligence(quality: any, overallConv: number, aov: number, funnelCounts: number[], funnelCountsPrev: number[], steps: StepDef[], industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  const totalSessions = quality.sessions ?? 0;
+  const conversions = funnelCounts[funnelCounts.length - 1] ?? 0;
+  const prevConversions = funnelCountsPrev[funnelCountsPrev.length - 1] ?? 0;
+  const revenue = conversions * aov;
+  const prevRevenue = prevConversions * aov;
+  const errRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+  const avgDuration = quality.avg ?? 0;
+  const fruPct = quality.total > 0 ? (quality.frustrated / quality.total) * 100 : 0;
+
+  // Revenue trend
+  if (prevRevenue > 0) {
+    const revDelta = ((revenue - prevRevenue) / prevRevenue) * 100;
+    if (revDelta > 5) insights.push({ severity: "good", icon: "📈", text: `Revenue up ${revDelta.toFixed(1)}% vs previous period ($${revenue.toLocaleString()} vs $${prevRevenue.toLocaleString()}).` });
+    else if (revDelta < -5) { insights.push({ severity: "warning", icon: "📉", text: `Revenue down ${Math.abs(revDelta).toFixed(1)}% vs previous period. Lost $${Math.abs(revenue - prevRevenue).toLocaleString()}.` }); recs.push({ impact: "high", text: `Revenue decline of ${Math.abs(revDelta).toFixed(1)}% needs investigation. Check: conversion rate changes, traffic volume, AOV shifts, and performance degradation.` }); }
+    else insights.push({ severity: "info", icon: "📊", text: `Revenue stable (${revDelta > 0 ? "+" : ""}${revDelta.toFixed(1)}% change). $${revenue.toLocaleString()} in the current period.` });
+  }
+
+  // Revenue per session vs industry expectations
+  const revPerSession = totalSessions > 0 ? revenue / totalSessions : 0;
+  if (revPerSession > 0) {
+    insights.push({ severity: "info", icon: "💵", text: `Revenue per session: $${revPerSession.toFixed(2)}. ${b.label} target: $${(aov * b.convRateTarget / 100).toFixed(2)} (AOV × target conv rate).` });
+  }
+
+  // Performance tax breakdown
+  const excessLatencyMs = Math.max(0, avgDuration - b.avgDurationTarget);
+  const latencyTaxPct = Math.min(30, excessLatencyMs / 100);
+  const latencyTax = totalSessions * (overallConv / 100) * (latencyTaxPct / 100) * aov;
+  const frustrationTax = totalSessions * (fruPct / 100) * (overallConv / 100) * 0.5 * aov;
+  const errorTax = totalSessions * (errRate / 100) * (overallConv / 100) * 0.3 * aov;
+  const totalTax = latencyTax + frustrationTax + errorTax;
+
+  if (totalTax > 0) {
+    insights.push({ severity: totalTax > revenue * 0.1 ? "critical" : "warning", icon: "💸", text: `Performance tax: $${totalTax.toFixed(0)}/day lost revenue (${(totalTax / Math.max(1, revenue) * 100).toFixed(1)}% of current revenue). Latency: $${latencyTax.toFixed(0)}, Frustration: $${frustrationTax.toFixed(0)}, Errors: $${errorTax.toFixed(0)}.` });
+    const bestFix = latencyTax >= frustrationTax && latencyTax >= errorTax ? "latency reduction" : frustrationTax >= errorTax ? "frustration elimination" : "error fixing";
+    recs.push({ impact: "high", text: `Top revenue recovery: ${bestFix} could recover $${Math.max(latencyTax, frustrationTax, errorTax).toFixed(0)}/day. In ${b.label.toLowerCase()}, ${b.latencyImpactPerSec >= 7 ? "every 100ms of latency directly erodes revenue" : "reliability matters more than raw speed"}.` });
+  }
+
+  // Conversion rate vs industry
+  if (overallConv < b.convRateTarget) {
+    const convGap = b.convRateTarget - overallConv;
+    const revOpp = totalSessions * (convGap / 100) * aov;
+    recs.push({ impact: "high", text: `Conversion gap: ${overallConv.toFixed(1)}% vs ${b.label} target of ${b.convRateTarget}%. Closing this gap = ~$${revOpp.toFixed(0)}/day additional revenue.` });
+  }
+
+  // Funnel leakage by step
+  let worstLeakStep = "";
+  let worstLeakRev = 0;
+  for (let i = 1; i < funnelCounts.length; i++) {
+    const drop = funnelCounts[i - 1] - funnelCounts[i];
+    const leakRev = drop * (overallConv / 100) * aov;
+    if (leakRev > worstLeakRev) { worstLeakRev = leakRev; worstLeakStep = steps[i]?.label ?? `Step ${i + 1}`; }
+  }
+  if (worstLeakStep && worstLeakRev > 0) {
+    recs.push({ impact: "medium", text: `Biggest revenue leak: "${worstLeakStep}" loses ~$${worstLeakRev.toFixed(0)}/day potential revenue from drop-offs. ${b.label.toLowerCase()} best practice: reduce friction at this step through ${b.convRateTarget >= 5 ? "simplified forms, trust signals, and progress indicators" : "social proof, urgency cues, and clear value propositions"}.` });
+  }
+
+  const summary = `Revenue Intelligence for ${b.label}. Current revenue: $${revenue.toLocaleString()}/period from ${conversions.toLocaleString()} conversions at $${aov} AOV. Performance tax: $${totalTax.toFixed(0)}/day lost. ${b.label} targets: ${b.convRateTarget}% conversion, ≤${b.errorRateTarget}% errors, ≤${b.avgDurationTarget}ms duration. Revenue per session: $${revPerSession.toFixed(2)} (target: $${(aov * b.convRateTarget / 100).toFixed(2)}).`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzeSessionReplaySpotlight(quality: any, overallConv: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  const totalSessions = quality.sessions ?? 0;
+  const errRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+  const fruPct = quality.total > 0 ? (quality.frustrated / quality.total) * 100 : 0;
+
+  // Error sessions worth replaying
+  const errorSessions = Math.round(totalSessions * (errRate / 100));
+  if (errorSessions > 0) {
+    insights.push({ severity: errRate > b.errorRateTarget * 2 ? "critical" : "warning", icon: "🐛", text: `~${errorSessions.toLocaleString()} sessions experienced errors. ${b.label} standard: ≤${b.errorRateTarget}% error rate. ${errRate > b.errorRateTarget ? "Error sessions are above industry tolerance." : "Error rate is acceptable but review top errors."}` });
+    recs.push({ impact: "high", text: `Replay the top error sessions first. In ${b.label.toLowerCase()}, ${b.errorRateTarget <= 0.5 ? "even single errors can cause user churn — zero-tolerance debugging is expected" : "focus on errors that block conversion or data submission"}.` });
+  }
+
+  // Frustrated sessions for UX insights
+  if (fruPct > b.frustratedPctTarget) {
+    insights.push({ severity: "warning", icon: "😤", text: `${fruPct.toFixed(1)}% frustrated sessions (target: ≤${b.frustratedPctTarget}%). These replays reveal where users struggle.` });
+    recs.push({ impact: "medium", text: `Review frustrated session replays to identify UX friction. ${b.label} users ${b.frustratedPctTarget <= 5 ? "have low tolerance for poor experiences — frustration quickly leads to abandonment" : "may tolerate some friction but high frustration rates signal systemic UX issues"}.` });
+  } else {
+    insights.push({ severity: "good", icon: "✅", text: `Frustrated sessions at ${fruPct.toFixed(1)}% — within ${b.label} tolerance of ${b.frustratedPctTarget}%.` });
+  }
+
+  // Replay prioritization guidance
+  recs.push({ impact: "medium", text: `${b.label} replay priority: 1) Sessions with errors on conversion-critical pages, 2) Frustrated sessions with >3 rage clicks, 3) Bounced sessions from high-value traffic sources. Focus on sessions that represent your ${b.mobileShareExpected >= 60 ? "mobile-majority" : "mixed device"} audience.` });
+
+  // Conversion correlation
+  if (overallConv < b.convRateTarget) {
+    insights.push({ severity: "info", icon: "🎯", text: `Conversion below ${b.label} target (${overallConv.toFixed(1)}% vs ${b.convRateTarget}%). Session replays of drop-off moments can reveal the specific friction causing abandonment.` });
+  }
+
+  const summary = `Session Replay Spotlight for ${b.label}. ${totalSessions.toLocaleString()} sessions available for replay. Error rate: ${errRate.toFixed(1)}% (target: ≤${b.errorRateTarget}%), Frustrated: ${fruPct.toFixed(1)}% (target: ≤${b.frustratedPctTarget}%). ${b.label} replay strategy: ${b.errorRateTarget <= 0.5 ? "zero-tolerance error debugging — every error session matters" : "prioritize high-impact error clusters and frustrated conversion flows"}.`;
+  return { summary, insights, recommendations: recs };
+}
+
+function analyzeABComparison(quality: any, overallConv: number, overallApdex: number, industry: IndustryType): AIInsightsData {
+  const b = INDUSTRY_BENCHMARKS[industry];
+  const insights: InsightItem[] = [];
+  const recs: RecommendationItem[] = [];
+  const avgDuration = quality.avg ?? 0;
+  const errRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+
+  // Performance gap interpretation
+  insights.push({ severity: "info", icon: "📊", text: `${b.label} context: When comparing segments, differences >10% in conversion or >200ms in latency are typically significant. Smaller gaps may be noise.` });
+
+  // Industry-specific segment advice
+  if (b.mobileShareExpected >= 60) {
+    recs.push({ impact: "high", text: `${b.label} priority comparison: Desktop vs Mobile. With ~${b.mobileShareExpected}% mobile traffic expected, any mobile performance gap directly impacts majority of users. Mobile conversion should be within 80% of desktop.` });
+  } else {
+    recs.push({ impact: "medium", text: `${b.label} priority comparison: Browser performance gaps. With desktop-heavy traffic, focus on Chrome vs Safari vs Firefox to ensure consistent experience across the browser mix.` });
+  }
+
+  // Benchmark framing
+  if (overallApdex < b.apdexTarget) {
+    insights.push({ severity: "warning", icon: "⚠️", text: `Overall Apdex (${overallApdex.toFixed(2)}) is below ${b.label} target (${b.apdexTarget}). Segment comparison should identify which cohort is dragging down the average.` });
+    recs.push({ impact: "high", text: `Use A/B Comparison to find the underperforming segment. In ${b.label.toLowerCase()}, the worst-performing segment often has ${b.mobileShareExpected >= 55 ? "mobile-specific rendering issues or touch interaction bugs" : "legacy browser compatibility problems or slow API responses"}.` });
+  }
+
+  // Statistical significance guidance
+  recs.push({ impact: "low", text: `${b.label} statistical guidance: For reliable A/B results, each segment needs ≥${b.convRateTarget >= 5 ? "500" : b.convRateTarget >= 2 ? "2,000" : "5,000"} sessions (based on ${b.convRateTarget}% baseline conversion). Segments below this threshold may show unreliable differences.` });
+
+  // Duration benchmark for comparison
+  if (avgDuration > b.avgDurationTarget) {
+    insights.push({ severity: "info", icon: "⏱️", text: `Average duration (${Math.round(avgDuration)}ms) exceeds ${b.label} target (${b.avgDurationTarget}ms). Compare segments to find which cohort experiences the worst latency.` });
+  }
+
+  const summary = `A/B Comparison analysis for ${b.label}. Baseline metrics: Apdex ${overallApdex.toFixed(2)} (target: ${b.apdexTarget}), Conversion ${overallConv.toFixed(1)}% (target: ${b.convRateTarget}%), Duration ${Math.round(avgDuration)}ms (target: ${b.avgDurationTarget}ms). ${b.label} significance threshold: >10% conversion difference or >200ms latency gap indicates actionable segment disparity.`;
+  return { summary, insights, recommendations: recs };
 }
 
 // Sankey sub-tab analysis functions
@@ -9610,7 +10133,13 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
   const [pctChange, setPctChange] = useState(100);
   const [latencyImprovement, setLatencyImprovement] = useState(0);
   const [wiFunnelStyle, setWiFunnelStyle] = useState<FunnelStyle>(DEFAULT_FUNNEL_STYLE);
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("What-If Analysis"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const oc = funnelCounts.length >= 2 && funnelCounts[0] > 0 ? (funnelCounts[funnelCounts.length - 1] / funnelCounts[0]) * 100 : 0;
+    const sessions = funnelCounts[0] ?? 0;
+    let avgD = 0; stepMap.forEach((v: any) => { avgD += Number(v.avg ?? 0); }); if (stepMap.size > 0) avgD /= stepMap.size;
+    return analyzeWhatIf({ sessions, avg: avgD, total: sessions, errors: 0, frustrated: 0 }, oc, overallApdex, aov, industry);
+  }, [funnelCounts, stepMap, overallApdex, aov, industry]));
   if (isLoading) return <Loading />;
 
   const mult = 1 + pctChange / 100;
@@ -9861,7 +10390,8 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
 // TAB: Revenue Intelligence
 // ===========================================================================
 function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overallConv, overallConvPrev, overallApdex, quality, qualityPrev, isLoading, steps, aov, onDrillToForecast }: { funnelCounts: number[]; funnelCountsPrev: number[]; stepMap: Map<string, any>; overallConv: number; overallConvPrev: number; overallApdex: number; quality: any; qualityPrev: any; isLoading: boolean; steps: StepDef[]; aov: number; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Revenue Intelligence"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeRevenueIntelligence(quality, overallConv, aov, funnelCounts, funnelCountsPrev, steps, industry), [quality, overallConv, aov, funnelCounts, funnelCountsPrev, steps, industry]));
   if (isLoading) return <Loading />;
 
   if (aov <= 0) {
@@ -14242,8 +14772,9 @@ function SLOTrackerTab({ apdexTrend, cwvTrend, quality, overallApdex, overallCon
 // ===========================================================================
 // SESSION REPLAY SPOTLIGHT TAB
 // ===========================================================================
-function SessionReplaySpotlightTab({ data, isLoading, onDrillToForecast }: { data: any; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Session Replay Spotlight"), []));
+function SessionReplaySpotlightTab({ data, quality, overallConv, isLoading, onDrillToForecast }: { data: any; quality?: any; overallConv?: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeSessionReplaySpotlight(quality ?? { sessions: 0, total: 0, errors: 0, frustrated: 0 }, overallConv ?? 0, industry), [quality, overallConv, industry]));
   if (isLoading) return <Loading />;
 
   const sessions = (data.data?.records ?? []) as any[];
@@ -14390,7 +14921,14 @@ function ABComparisonTab({ segAData, segBData, segACwv, segBCwv, dimension, setD
 }) {
   const [customA, setCustomA] = useState(segA);
   const [customB, setCustomB] = useState(segB);
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("A/B Comparison"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const qA = segAData?.data?.records?.[0] ?? {};
+    const avgD = Number(qA.avg ?? qA.avgDuration ?? 0);
+    const total = Number(qA.total ?? qA.sessions ?? 0);
+    const errs = Number(qA.errors ?? 0);
+    return analyzeABComparison({ avg: avgD, total, errors: errs, frustrated: 0 }, overallConv ?? 0, 0.85, industry);
+  }, [segAData, overallConv, industry]));
 
   const applyPreset = (preset: typeof AB_PRESETS[number]) => {
     setDimension(preset.dimension);
@@ -15531,7 +16069,13 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData, 
 // =============================================================================
 
 function CostPerConversionTab({ funnelCounts, funnelCountsPrev, quality, qualityPrev, steps, aov, monthlyInfraCost, isLoading, onDrillToForecast }: { funnelCounts: number[]; funnelCountsPrev: number[]; quality: any; qualityPrev: any; steps: StepDef[]; aov: number; monthlyInfraCost: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Cost per Conversion"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const s = quality.sessions ?? 0; const c = funnelCounts[funnelCounts.length - 1] ?? 0;
+    const d = monthlyInfraCost / 30; const cpc = c > 0 ? d / c : 0; const cps = s > 0 ? d / s : 0;
+    const rcr = aov > 0 && cpc > 0 ? aov / cpc : 0; const spd = d > 0 ? s / d : 0;
+    return analyzeCostPerConversion(cpc, cps, rcr, spd, d, c, aov, s, industry);
+  }, [quality, funnelCounts, aov, monthlyInfraCost, industry]));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15644,7 +16188,21 @@ function CostPerConversionTab({ funnelCounts, funnelCountsPrev, quality, quality
 }
 
 function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, overallConvPrev, steps, aov, monthlyInfraCost, engineerHourlyRate, isLoading, onDrillToForecast }: { funnelCounts: number[]; quality: any; qualityPrev: any; overallConv: number; overallConvPrev: number; steps: StepDef[]; aov: number; monthlyInfraCost: number; engineerHourlyRate: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Performance Tax"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const s = quality.sessions ?? 0; const avg = quality.avg ?? 0;
+    const errR = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+    const fruP = quality.total > 0 ? (quality.frustrated / quality.total) * 100 : 0;
+    const top = funnelCounts[0] ?? s;
+    const excMs = Math.max(0, avg - 1000); const latPct = Math.min(30, excMs / 100);
+    const lostLat = Math.round(top * (overallConv / 100) * (latPct / 100));
+    const latRev = lostLat * aov;
+    const fruSes = Math.round(s * (fruP / 100)); const lostFru = Math.round(fruSes * (overallConv / 100) * 0.5); const fruRev = lostFru * aov;
+    const errSes = Math.round(s * (errR / 100)); const lostErr = Math.round(errSes * (overallConv / 100) * 0.3); const errRev = lostErr * aov;
+    const total = latRev + fruRev + errRev; const lostC = lostLat + lostFru + lostErr;
+    const beHrs = engineerHourlyRate > 0 && total > 0 ? total / engineerHourlyRate : 0;
+    return analyzePerformanceTax(total, latRev, fruRev, errRev, lostC, beHrs, errR, fruP, avg, aov, industry);
+  }, [quality, funnelCounts, overallConv, aov, engineerHourlyRate, industry]));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15744,7 +16302,19 @@ function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, ov
 }
 
 function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCostPerHour, isLoading, onDrillToForecast }: { quality: any; hostMetricsData: any; monthlyInfraCost: number; computeCostPerHour: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Idle Capacity"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const s = quality.sessions ?? 0;
+    const hourly = Array.from({ length: 24 }, (_, h) => { const base = s / 24; const pf = h >= 9 && h <= 17 ? 1.8 : h >= 6 && h <= 21 ? 1.2 : 0.3; return Math.round(base * pf * (0.9 + (((h * 7 + 3) % 11) / 11) * 0.2)); });
+    const peak = Math.max(...hourly); const offPeak = Math.min(...hourly.filter(t => t > 0));
+    const avg = hourly.reduce((a, b) => a + b, 0) / 24;
+    const idleH = hourly.filter(t => t < peak * 0.4).length;
+    const hourlyCost = monthlyInfraCost / 30 / 24; const waste = idleH * hourlyCost * 0.6;
+    const monthlyW = waste * 30; const avgU = peak > 0 ? (avg / peak) * 100 : 0;
+    const ratio = offPeak > 0 ? peak / offPeak : 1;
+    const autoSave = monthlyInfraCost * 0.35 * (idleH / 24); const rightSave = monthlyInfraCost * 0.2 * (1 - avgU / 100);
+    return analyzeIdleCapacity(monthlyW, avgU, idleH, ratio, autoSave, rightSave, monthlyInfraCost, industry);
+  }, [quality, monthlyInfraCost, industry]));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15874,7 +16444,21 @@ function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCo
 }
 
 function CdnRoiTab({ thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, overallConv, funnelCounts, isLoading, onDrillToForecast }: { thirdPartyData: any; quality: any; cdnMonthlyCost: number; costPerGb: number; aov: number; overallConv: number; funnelCounts: number[]; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("CDN ROI"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const s = quality.sessions ?? 0; const avg = quality.avg ?? 0;
+    const recs = thirdPartyData?.data?.records ?? [];
+    const resources = recs.map((r: any) => ({ avgLatency: Number(r.avg_duration ?? r.avg ?? r["Avg (ms)"] ?? 0), provider: String(r.provider ?? r.url_provider ?? "") }));
+    const fp = resources.filter((r: any) => r.provider !== "third_party");
+    const fpAvg = fp.length > 0 ? fp.reduce((a: number, r: any) => a + r.avgLatency, 0) / fp.length : avg;
+    const cdnSave = fpAvg * 0.6; const cGain = Math.min(5, cdnSave / 100);
+    const addRev = Math.round(s * (cGain / 100)) * aov;
+    const mpv = s * 30; const mGb = (mpv * 2500) / (1024 * 1024); const dataSave = mGb * costPerGb * 0.7;
+    const net = addRev + dataSave - cdnMonthlyCost;
+    const roi = cdnMonthlyCost > 0 ? (addRev + dataSave) / cdnMonthlyCost : 0;
+    const payback = cdnMonthlyCost > 0 && (addRev + dataSave) > 0 ? Math.round(cdnMonthlyCost / ((addRev + dataSave) / 30)) : 999;
+    return analyzeCdnRoi(net, roi, payback, cGain, cdnSave, fpAvg, cdnMonthlyCost, industry);
+  }, [thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, industry]));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15984,7 +16568,20 @@ function CdnRoiTab({ thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, ov
 }
 
 function CostAnomaliesTab({ quality, qualityPrev, funnelCounts, funnelCountsPrev, monthlyInfraCost, computeCostPerHour, aov, overallConv, isLoading, onDrillToForecast }: { quality: any; qualityPrev: any; funnelCounts: number[]; funnelCountsPrev: number[]; monthlyInfraCost: number; computeCostPerHour: number; aov: number; overallConv: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
-  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Cost Anomalies"), []));
+  const { industry } = useSettings();
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => {
+    const s = quality.sessions ?? 0; const ps = qualityPrev.sessions ?? 0;
+    const dc = monthlyInfraCost / 30;
+    const cps = s > 0 ? dc / s : 0; const pcps = ps > 0 ? dc / ps : 0;
+    const ceChange = pcps > 0 ? ((cps - pcps) / pcps) * 100 : 0;
+    const daysEl = 15; const expBurn = (daysEl / 30) * 100; const actBurn = 64.3;
+    const dailyC = Array.from({ length: 14 }, (_, i) => { const n = (((i * 7 + 3) % 11) / 11 - 0.5) * dc * 0.15; const sp = (i === 4 || i === 10) ? dc * 0.35 : 0; return dc + n + sp; });
+    const avgDC = dailyC.reduce((a, b) => a + b, 0) / dailyC.length;
+    const std = Math.sqrt(dailyC.reduce((a, c) => a + Math.pow(c - avgDC, 2), 0) / dailyC.length);
+    const anomCt = dailyC.filter(c => Math.abs((c - avgDC) / Math.max(1, std)) > 1.5).length;
+    const errW = (quality.errors ?? 0) > 0 ? ((quality.errors / Math.max(1, quality.total)) * dc * 0.3) * 30 : 0;
+    return analyzeCostAnomalies(actBurn, expBurn, anomCt, errW, ceChange, dailyC, monthlyInfraCost, industry);
+  }, [quality, qualityPrev, monthlyInfraCost, industry]));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
