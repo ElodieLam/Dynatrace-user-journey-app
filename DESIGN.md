@@ -14,14 +14,14 @@
 ### Notes
 
 - **Geographic stack** (`d3-geo` + `topojson-client` + `world-atlas` + `us-atlas`): These four libraries work together to render the interactive SVG world/US maps in the Geographic tab. Country/state shapes are stored as TopoJSON, converted to GeoJSON features, projected onto 2D coordinates, and rendered as SVG `<path>` elements. The helper file `ui/app/worldMapPaths.ts` provides ISO alpha-2 → numeric code mappings for correlating DQL geo data with atlas geometry IDs.
-- **react-router-dom**: Provides two routes — `/` (UserJourney, the 31-tab main experience) and `/journey` (ObservabilityJourney maturity model). The `BrowserRouter` uses `basename="ui"` to align with the Dynatrace app shell URL structure.
+- **react-router-dom**: Provides two routes — `/` (UserJourney, the 36-tab main experience) and `/journey` (ObservabilityJourney maturity model). The `BrowserRouter` uses `basename="ui"` to align with the Dynatrace app shell URL structure.
 - **react-intl**: Not imported directly by any application component. It is a peer dependency required by Strato form input components at runtime. Installed explicitly to satisfy peer resolution.
 
 ---
 
 ## Overview
 
-The User Journey & Experience App is a 31-tab frontend observability suite built as a Dynatrace Platform App, organized into 7 parent tab groups with nested sub-tabs. It provides comprehensive Real User Monitoring (RUM) analysis including funnel tracking, Web Vitals, geographic heatmaps, predictive forecasting, automated anomaly detection, and multidimensional radial performance exploration — all powered by DQL (Dynatrace Query Language).
+The User Journey & Experience App is a 36-tab frontend observability suite built as a Dynatrace Platform App, organized into 8 parent tab groups with nested sub-tabs. It provides comprehensive Real User Monitoring (RUM) analysis including funnel tracking, Web Vitals, geographic heatmaps, predictive forecasting, automated anomaly detection, and multidimensional radial performance exploration — all powered by DQL (Dynatrace Query Language).
 
 **Architecture**: Single-page React app using Strato Design System components, `@dynatrace-sdk/react-hooks` (`useDql`) for data fetching, and SVG-based custom visualizations. All queries are parameterized by a user-selectable frontend application, funnel step definitions, and timeframe.
 
@@ -29,7 +29,7 @@ The User Journey & Experience App is a 31-tab frontend observability suite built
 
 ## Tab Group Structure
 
-The 31 sub-tabs are organized into **7 parent tab groups** with nested Strato `<Tabs>` navigation:
+The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<Tabs>` navigation:
 
 | # | Parent Tab Group | Sub-Tabs |
 |---|---|---|
@@ -40,6 +40,7 @@ The 31 sub-tabs are organized into **7 parent tab groups** with nested Strato `<
 | 5 | **Intelligence & AI** | Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis |
 | 6 | **Engagement & Revenue** | Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison |
 | 7 | **Errors & Reliability** | Exceptions, Error Clustering, SLO Tracker |
+| 8 | **FinOps** | Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies |
 
 **Key architecture decisions**:
 - Parent tab groups and sub-tabs are independently reorderable and toggleable via Settings
@@ -1112,6 +1113,78 @@ fetch user.events, {periodStr}
 | summarize {metricSummarize}
 ```
 
+### 32. Cost per Conversion
+
+**Purpose**: Connect infrastructure spend to user outcomes by calculating the true cost of acquiring each conversion.
+
+**Key Features**:
+- Cost per session and cost per conversion metrics
+- Revenue:cost ratio and sessions-per-dollar efficiency
+- Per-step cost allocation proportional to session volume
+- Efficiency Scorecard: requests-per-dollar, sessions-per-dollar, Apdex-per-dollar, revenue-per-dollar-spent
+- Optimization Opportunities flagging expensive steps and low-efficiency scenarios
+- Uses Monthly Infrastructure Cost from Settings (default $100, divided by 30 for daily)
+
+---
+
+### 33. Performance Tax
+
+**Purpose**: Quantify revenue lost due to poor performance — slow pages, frustrated users, and errors.
+
+**Key Features**:
+- Three performance taxes: Latency Tax (~1% conversion loss per 100ms above 1s), Frustration Tax (50% lower conversion for frustrated users), Error Tax (30% lower conversion for error sessions)
+- Total lost conversions and break-even engineering time
+- Cost-per-millisecond calculations
+- ROI Scenarios table modeling specific improvements with projected revenue recovery
+- Engineering investment estimates using Engineer Hourly Rate from Settings
+
+---
+
+### 34. Idle Capacity
+
+**Purpose**: Detect infrastructure waste by analyzing traffic patterns against fixed provisioning costs.
+
+**Key Features**:
+- Idle hours identification (traffic < 40% of peak)
+- Monthly idle waste estimation
+- Average utilization and peak-to-off-peak ratio
+- Hourly utilization chart (red=idle, green=utilized)
+- Autoscaling savings estimate (~35% reduction)
+- Right-sizing savings estimate (~20% reduction)
+- Uses Compute Cost Per Hour from Settings
+
+---
+
+### 35. CDN ROI
+
+**Purpose**: Model the financial return of CDN investment by connecting latency reduction to conversion improvement.
+
+**Key Features**:
+- CDN latency savings model (60% reduction for static assets)
+- Conversion rate improvement calculation (~1% per 100ms saved)
+- Additional monthly revenue projection
+- Data transfer cost savings (CDN offloads ~70% of origin traffic)
+- Net monthly benefit after CDN costs
+- Payback period calculation
+- Origin vs CDN latency comparison
+- CDN Candidates table ranking high-latency resources by impact score (latency x volume)
+- Uses CDN Monthly Cost from Settings
+
+---
+
+### 36. Cost Anomalies
+
+**Purpose**: Detect unusual spending patterns and correlate them with traffic, errors, and deployment events.
+
+**Key Features**:
+- Statistical anomaly detection (z-score > 1.5 SD) on 14-day daily cost trend
+- Budget burn rate projection
+- Error-driven waste estimation (errors cause retries increasing compute without business value)
+- Cost efficiency delta vs. previous period
+- Spend vs Experience Matrix
+- Budget Forecast (end-of-month projection based on current burn rate)
+- Uses Monthly Infrastructure Cost and Cost Per GB from Settings
+
 ---
 
 ## Architecture Notes
@@ -1134,6 +1207,11 @@ fetch user.events, {periodStr}
 | Sankey Style | `uj-sankey-style` | Preferred Sankey rendering mode |
 | Map View | `uj-map-view` | Default map view (World/US) |
 | Average Order Value | `uj-average-order-value` | Revenue per conversion for What-If & Revenue Intelligence |
+| Monthly Infra Cost | `uj-monthly-infra-cost` | Monthly infrastructure spend for FinOps calculations (default $100) |
+| CDN Monthly Cost | `uj-cdn-monthly-cost` | Monthly CDN spend for CDN ROI analysis (default $100) |
+| Compute Cost/Hour | `uj-compute-cost-per-hour` | Hourly compute cost for Idle Capacity calculations (default $100) |
+| Cost Per GB | `uj-cost-per-gb` | Data transfer cost per GB for Cost Anomalies (default $100) |
+| Engineer Hourly Rate | `uj-engineer-hourly-rate` | Engineering cost per hour for Performance Tax ROI (default $100) |
 
 ### Key Constants
 
@@ -1217,6 +1295,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 
 | Date | Version | Changes |
 |------|---------|---------||
+| 2026-06-04 | 4.53.0 | **FinOps Tab Group — 5 New Sub-Tabs**: Added 8th parent tab group "FinOps" with 5 sub-tabs: Cost per Conversion (infrastructure spend per conversion, efficiency scorecard), Performance Tax (revenue lost to latency/frustration/errors with ROI scenarios), Idle Capacity (traffic pattern analysis detecting idle hours and autoscaling savings), CDN ROI (latency reduction → conversion improvement modeling with payback period), Cost Anomalies (z-score anomaly detection on daily cost trend with budget forecast). 5 new user-configurable cost settings in SettingsContext (Monthly Infra Cost, CDN Monthly Cost, Compute Cost/Hour, Cost Per GB, Engineer Hourly Rate) — all default to $100. Help panel, AI Insights descriptions, and DESIGN.md updated. App now has 36 sub-tabs across 8 parent groups. |
 | 2026-05-29 | 4.49.98 | **Forecast Modal — Multi-Model Popup Forecasting**: Clicking any KPI card now opens a full-screen `ForecastModal` popup (`ui/app/components/ForecastModal.tsx`) instead of navigating to the Predictive Forecasting tab. Modal displays historical sparkline data + 7-day forecast with confidence band in an interactive SVG chart. Users select from 6 forecasting models via dropdown: Holt-Winters (Double Exponential Smoothing), Triple Exponential Smoothing, Prophet (piecewise trend + Fourier seasonality), ARIMA(5,1,2), SARIMA(3,1,1)(1,1,1,m), and Linear Regression. Hover crosshair shows actual/forecast values with confidence interval. Click-outside or Close button dismisses. KpiCard `onDrillToForecast` prop changed from `() => void` to `(label, sparkline, color) => void`; cards only show clickable state when sparkline has ≥2 points. AI Assist recommendations updated to reference Forecast Modal. Help panel updated with new What's New entry and Tips section. |
 | 2026-05-28 | 4.49.94 | **KPI Cards — Sparklines, Comparison Arrows & Drill-to-Forecast**: Funnel Overview and Executive Summary KPI cards upgraded with inline sparklines (time-bucketed trend lines from `trendsSparklineQuery`/`trendsConvSparklineQuery`), period-over-period comparison arrows showing % delta vs. previous timeframe (`prevRawValue`), and one-click drill-to-forecast navigation (clicking a card navigates to the Predictive Forecasting tab). AI Assist (`analyzeFunnelOverview`, `analyzeTrends`) now proactively recommends drilling into Predictive Forecasting when negative trends are detected (low conversion, poor Apdex, rising errors). Help panel updated with What's New entry and tab description refresh. |
 | 2026-05-20 | 4.49.68 | **What-If Analysis — Infrastructure Headroom & Latency Improvement**: Added Latency Improvement slider (0-50%) simulating performance optimizations that reduce projected latency and partially offset conversion degradation. Added Infrastructure Headroom section using `dt.host.cpu.usage` and `dt.host.memory.usage` to assess whether hosts can sustain simulated traffic — shows projected CPU/memory, max sustainable increase before 85% threshold, gauge bars, and SUFFICIENT/AT RISK/CRITICAL verdict. |
