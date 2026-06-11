@@ -15721,21 +15721,12 @@ function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, ov
       </Flex>
 
       <SectionHeader title="Cost per Millisecond" />
-      <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
-        <Flex flexDirection="column" gap={8} style={{ minWidth: 500 }}>
-          <Flex justifyContent="space-between" alignItems="center">
-            <Text style={{ fontSize: 13 }}>Every <Strong>100ms</Strong> of latency above 1s costs:</Text>
-            <Strong style={{ color: RED, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(latencyRevLoss / Math.max(1, excessLatencyMs / 100))} / 100ms</Strong>
-          </Flex>
-          <Flex justifyContent="space-between" alignItems="center">
-            <Text style={{ fontSize: 13 }}>Every <Strong>1%</Strong> of error rate costs:</Text>
-            <Strong style={{ color: ORANGE, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(errorRevLoss / Math.max(1, errRate))} / 1%</Strong>
-          </Flex>
-          <Flex justifyContent="space-between" alignItems="center">
-            <Text style={{ fontSize: 13 }}>Every <Strong>1%</Strong> of frustrated sessions costs:</Text>
-            <Strong style={{ color: YELLOW, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(frustrationRevLoss / Math.max(1, fruPct))} / 1%</Strong>
-          </Flex>
-        </Flex>
+      <div className="uj-table-tile" style={{ padding: 16 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
+          <tr><td style={{ padding: "6px 0", fontSize: 13 }}>Every <Strong>100ms</Strong> of latency above 1s costs:</td><td style={{ padding: "6px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: RED, fontSize: 16 }}>{fmtCurrency(latencyRevLoss / Math.max(1, excessLatencyMs / 100))} / 100ms</Strong></td></tr>
+          <tr><td style={{ padding: "6px 0", fontSize: 13 }}>Every <Strong>1%</Strong> of error rate costs:</td><td style={{ padding: "6px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: ORANGE, fontSize: 16 }}>{fmtCurrency(errorRevLoss / Math.max(1, errRate))} / 1%</Strong></td></tr>
+          <tr><td style={{ padding: "6px 0", fontSize: 13 }}>Every <Strong>1%</Strong> of frustrated sessions costs:</td><td style={{ padding: "6px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: YELLOW, fontSize: 16 }}>{fmtCurrency(frustrationRevLoss / Math.max(1, fruPct))} / 1%</Strong></td></tr>
+        </tbody></table>
       </div>
 
       <SectionHeader title="ROI Scenarios — What If We Fix It?" />
@@ -15852,20 +15843,11 @@ function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCo
 
       <SectionHeader title="Cost Efficiency Comparison" />
       <div className="uj-table-tile" style={{ padding: 16 }}>
-        <Flex flexDirection="column" gap={12}>
-          <Flex justifyContent="space-between" alignItems="center">
-            <Text style={{ fontSize: 13 }}>Peak-hour cost per session:</Text>
-            <Strong style={{ color: GREEN }}>{fmtCurrency(peakCostPerSession)}</Strong>
-          </Flex>
-          <Flex justifyContent="space-between" alignItems="center">
-            <Text style={{ fontSize: 13 }}>Off-peak cost per session:</Text>
-            <Strong style={{ color: RED }}>{fmtCurrency(offPeakCostPerSession)}</Strong>
-          </Flex>
-          <Flex justifyContent="space-between" alignItems="center">
-            <Text style={{ fontSize: 13 }}>Off-peak inefficiency multiplier:</Text>
-            <Strong style={{ color: offPeakCostPerSession / Math.max(0.01, peakCostPerSession) > 3 ? RED : ORANGE }}>{(offPeakCostPerSession / Math.max(0.01, peakCostPerSession)).toFixed(1)}x more expensive</Strong>
-          </Flex>
-        </Flex>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
+          <tr><td style={{ padding: "6px 0", fontSize: 13 }}>Peak-hour cost per session:</td><td style={{ padding: "6px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: GREEN }}>{fmtCurrency(peakCostPerSession)}</Strong></td></tr>
+          <tr><td style={{ padding: "6px 0", fontSize: 13 }}>Off-peak cost per session:</td><td style={{ padding: "6px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: RED }}>{fmtCurrency(offPeakCostPerSession)}</Strong></td></tr>
+          <tr><td style={{ padding: "6px 0", fontSize: 13 }}>Off-peak inefficiency multiplier:</td><td style={{ padding: "6px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: offPeakCostPerSession / Math.max(0.01, peakCostPerSession) > 3 ? RED : ORANGE }}>{(offPeakCostPerSession / Math.max(0.01, peakCostPerSession)).toFixed(1)}x more expensive</Strong></td></tr>
+        </tbody></table>
       </div>
 
       <SectionHeader title="Recommendations" />
@@ -15954,18 +15936,18 @@ function CdnRoiTab({ thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, ov
       </Flex>
 
       <SectionHeader title="Revenue Impact Model" />
-      <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
-        <Flex flexDirection="column" gap={8} style={{ minWidth: 500 }}>
-          <Flex justifyContent="space-between"><Text>CDN latency reduction:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>-{Math.round(cdnLatencySaving)}ms (60% of {Math.round(firstPartyAvgLatency)}ms origin latency)</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Conversion rate improvement:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>+{fmtPct(convGainFromCdn)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Additional monthly conversions:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>+{fmtCount(additionalConversions * 30)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Additional monthly revenue:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>+{fmtCurrency(additionalRevenue * 30)}</Strong></Flex>
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", margin: "4px 0" }} />
-          <Flex justifyContent="space-between"><Text>Data transfer savings:</Text><Strong style={{ color: CYAN, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(cdnDataSavings)}/mo</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>CDN cost:</Text><Strong style={{ color: RED, whiteSpace: "nowrap", marginLeft: 12 }}>-{fmtCurrency(cdnMonthlyCost)}/mo</Strong></Flex>
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", margin: "4px 0" }} />
-          <Flex justifyContent="space-between"><Text style={{ fontWeight: 700 }}>Net monthly benefit:</Text><Strong style={{ color: cdnNetBenefit > 0 ? GREEN : RED, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(cdnNetBenefit * 30)}</Strong></Flex>
-        </Flex>
+      <div className="uj-table-tile" style={{ padding: 16 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>CDN latency reduction:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: GREEN }}>-{Math.round(cdnLatencySaving)}ms (60% of {Math.round(firstPartyAvgLatency)}ms origin latency)</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Conversion rate improvement:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: GREEN }}>+{fmtPct(convGainFromCdn)}</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Additional monthly conversions:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: GREEN }}>+{fmtCount(additionalConversions * 30)}</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Additional monthly revenue:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: GREEN }}>+{fmtCurrency(additionalRevenue * 30)}</Strong></td></tr>
+          <tr><td colSpan={2} style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "4px 0" }} /></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Data transfer savings:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: CYAN }}>{fmtCurrency(cdnDataSavings)}/mo</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>CDN cost:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: RED }}>-{fmtCurrency(cdnMonthlyCost)}/mo</Strong></td></tr>
+          <tr><td colSpan={2} style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "4px 0" }} /></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13, fontWeight: 700 }}>Net monthly benefit:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: cdnNetBenefit > 0 ? GREEN : RED, fontSize: 16 }}>{fmtCurrency(cdnNetBenefit * 30)}</Strong></td></tr>
+        </tbody></table>
       </div>
 
       <SectionHeader title="Origin vs CDN Comparison" />
@@ -16138,13 +16120,13 @@ function CostAnomaliesTab({ quality, qualityPrev, funnelCounts, funnelCountsPrev
 
       <SectionHeader title="Budget Forecast" />
       <div className="uj-table-tile" style={{ padding: 16 }}>
-        <Flex flexDirection="column" gap={8}>
-          <Flex justifyContent="space-between"><Text>Monthly budget:</Text><Strong>{fmtCurrency(monthlyInfraCost)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Spent to date ({daysElapsed} days):</Text><Strong style={{ color: actualBurn > expectedBurn * 1.1 ? RED : GREEN }}>{fmtCurrency(monthlyInfraCost * actualBurn / 100)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Expected at this point:</Text><Strong>{fmtCurrency(monthlyInfraCost * expectedBurn / 100)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Projected end-of-month:</Text><Strong style={{ color: (actualBurn / Math.max(1, daysElapsed) * 30) > 105 ? RED : GREEN }}>{fmtCurrency(monthlyInfraCost * (actualBurn / Math.max(1, daysElapsed)) * 30 / 100)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Over/Under budget:</Text><Strong style={{ color: actualBurn > expectedBurn ? RED : GREEN }}>{actualBurn > expectedBurn ? "+" : ""}{fmtCurrency(monthlyInfraCost * (actualBurn - expectedBurn) / 100)}</Strong></Flex>
-        </Flex>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Monthly budget:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong>{fmtCurrency(monthlyInfraCost)}</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Spent to date ({daysElapsed} days):</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: actualBurn > expectedBurn * 1.1 ? RED : GREEN }}>{fmtCurrency(monthlyInfraCost * actualBurn / 100)}</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Expected at this point:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong>{fmtCurrency(monthlyInfraCost * expectedBurn / 100)}</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Projected end-of-month:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: (actualBurn / Math.max(1, daysElapsed) * 30) > 105 ? RED : GREEN }}>{fmtCurrency(monthlyInfraCost * (actualBurn / Math.max(1, daysElapsed)) * 30 / 100)}</Strong></td></tr>
+          <tr><td style={{ padding: "4px 0", fontSize: 13 }}>Over/Under budget:</td><td style={{ padding: "4px 0", textAlign: "right", whiteSpace: "nowrap" }}><Strong style={{ color: actualBurn > expectedBurn ? RED : GREEN }}>{actualBurn > expectedBurn ? "+" : ""}{fmtCurrency(monthlyInfraCost * (actualBurn - expectedBurn) / 100)}</Strong></td></tr>
+        </tbody></table>
       </div>
     </Flex>
   );
