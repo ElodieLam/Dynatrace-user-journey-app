@@ -18,7 +18,7 @@ export const DEFAULT_FUNNEL_STEPS: StepDef[] = [
 ];
 
 export const DEFAULT_AOV = 1200;
-export const DEFAULT_MONTHLY_INFRA_COST = 100;
+export const DEFAULT_MONTHLY_INFRA_COST = 100000;
 export const DEFAULT_CDN_MONTHLY_COST = 100;
 export const DEFAULT_COMPUTE_COST_PER_HOUR = 100;
 export const DEFAULT_COST_PER_GB = 100;
