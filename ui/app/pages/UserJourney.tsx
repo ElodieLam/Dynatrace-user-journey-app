@@ -2157,7 +2157,7 @@ function useCountUp(target: number, duration = 800, delay = 0): number {
 
 function CountUpText({ value, delay = 0, suffix = "", ...props }: { value: number; delay?: number; suffix?: string } & React.SVGProps<SVGTextElement>) {
   const animated = useCountUp(value, 800, delay);
-  return <text {...props}>${fmtCount(animated)}{suffix}</text>;
+  return <text {...props}>{fmtCount(animated)}{suffix}</text>;
 }
 
 function FunnelChart({ steps, prevSteps, appEntityId, stepDefs, aov = 0 }: { steps: FunnelStep[]; prevSteps?: FunnelStep[]; appEntityId?: string; stepDefs: StepDef[]; aov?: number }) {
@@ -2249,7 +2249,7 @@ function FunnelChart({ steps, prevSteps, appEntityId, stepDefs, aov = 0 }: { ste
                 {countDelta >= 0 ? "\u25B2" : "\u25BC"} {Math.abs(countDeltaPct).toFixed(1)}% vs prev
               </text>
             )}
-            <text x={W - 10} y={midY - 8} textAnchor="end" fill={statusClr(step.overallConv)} fontSize="12" fontWeight="600">${fmtPct(step.overallConv)}</text>
+            <text x={W - 10} y={midY - 8} textAnchor="end" fill={statusClr(step.overallConv)} fontSize="12" fontWeight="600">{fmtPct(step.overallConv)}</text>
             <text x={W - 10} y={midY + 6} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize="10">overall</text>
             {i > 0 && (
               <>
@@ -2309,7 +2309,7 @@ function HorizontalBarFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[]; p
             {/* Count inside bar */}
             <CountUpText value={step.count} delay={stagger + 100} x={padL + Math.min(w - 8, Math.max(60, w / 2))} y={y + barH / 2 + 4} textAnchor="end" fill="rgba(255,255,255,0.9)" fontSize={13} fontWeight={700} />
             {/* Right side stats */}
-            <text x={W - padR + 8} y={y + 14} fill={statusClr(step.overallConv)} fontSize={11} fontWeight={600}>${fmtPct(step.overallConv)} overall</text>
+            <text x={W - padR + 8} y={y + 14} fill={statusClr(step.overallConv)} fontSize={11} fontWeight={600}>{fmtPct(step.overallConv)} overall</text>
             {i > 0 && (
               <text x={W - padR + 8} y={y + 30} fill={dropPct > 30 ? RED : YELLOW} fontSize={10}>{fmtPct(step.convFromPrev)} conv · {fmtPct(dropPct)} drop</text>
             )}
@@ -2381,7 +2381,7 @@ function StackedCohortFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[]; p
             <CountUpText value={step.count} delay={stagger + 100} x={x + colW / 2} y={padT + colH + 32} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={10} />
             {/* Conv % inside */}
             {fullH > 30 && (
-              <text x={x + colW / 2} y={yBase + fullH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={12} fontWeight={700}>${fmtPct(step.overallConv)}</text>
+              <text x={x + colW / 2} y={yBase + fullH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={12} fontWeight={700}>{fmtPct(step.overallConv)}</text>
             )}
             {/* Drop label between columns */}
             {droppedH > 14 && i < steps.length - 1 && (
@@ -2498,7 +2498,7 @@ function ElapsedTimeFunnel({ steps, prevSteps, stepMap, stepDefs }: { steps: Fun
             </circle>
             {/* Label */}
             <text x={x} y={y - 12} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={600}>{p.label}</text>
-            <text x={x} y={y + 18} textAnchor="middle" fill={color} fontSize={9} fontWeight={600}>${fmtPct(p.pctRemaining)}</text>
+            <text x={x} y={y + 18} textAnchor="middle" fill={color} fontSize={9} fontWeight={600}>{fmtPct(p.pctRemaining)}</text>
             {/* X-axis label */}
             <text x={x} y={H - padB + 16} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9}>{fmt(p.cumMs)}</text>
           </g>
@@ -2584,7 +2584,7 @@ function ComparisonSplitFunnel({ steps, prevSteps, aov }: { steps: FunnelStep[];
             {/* Left count */}
             <CountUpText value={step.count} delay={stagger + 100} x={cx - w / 2} y={y + stepH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={11} />
             {/* Right count */}
-            <text x={cx + pw / 2} y={y + stepH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={11}>${fmtCount(prevSteps[i].count)}</text>
+            <text x={cx + pw / 2} y={y + stepH / 2 + 4} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={11}>{fmtCount(prevSteps[i].count)}</text>
           </g>
         );
       })}
@@ -5188,7 +5188,7 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
           columns={[
             { id: "Step", header: "#", accessor: "Step", sortType: "number" as any },
             { id: "Action", header: "Step", accessor: "Action" },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P90 (ms)", header: "P90", accessor: "P90 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
@@ -5248,7 +5248,7 @@ function FunnelOverviewTab({ funnelCounts, funnelCountsPrev, overallConv, overal
                           )}
                         </Flex>
                         <Flex gap={12} flexWrap="wrap" alignItems="center">
-                          <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Sessions</Text><br/><Strong style={{ color: BLUE, fontSize: 14 }}>${fmtCount(sessions)}</Strong></div>
+                          <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Sessions</Text><br/><Strong style={{ color: BLUE, fontSize: 14 }}>{fmtCount(sessions)}</Strong></div>
                           <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Apdex</Text><br/><Strong style={{ color: apdexClr(apdex), fontSize: 14 }}>{apdex.toFixed(2)}</Strong></div>
                           <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Avg</Text><br/><Strong style={{ color: avg > 3000 ? RED : avg > 1000 ? YELLOW : GREEN, fontSize: 14 }}>{fmt(avg)}</Strong></div>
                           <div><Text style={{ fontSize: 11, opacity: 0.5 }}>P90</Text><br/><Strong style={{ color: p90 > 3000 ? RED : p90 > 1500 ? YELLOW : GREEN, fontSize: 14 }}>{fmt(p90)}</Strong></div>
@@ -5417,7 +5417,7 @@ function TrendsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, overa
           })}
           columns={[
             { id: "Step", header: "Step", accessor: "Step" },
-            { id: "Current", header: "Current", accessor: "Current", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
+            { id: "Current", header: "Current", accessor: "Current", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
             { id: "Previous", header: "Previous", accessor: "Previous", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.6 }}>{fmtCount(value)}</Text> },
             { id: "Change %", header: "Change", accessor: "Change %", sortType: "number" as any, cell: ({ value }: any) => {
               const color = Math.abs(value) < 1 ? "rgba(255,255,255,0.4)" : value >= 0 ? GREEN : RED;
@@ -5634,7 +5634,7 @@ function WebVitalsTab({ cwv: v, cwvByPage, cwvTrend, isLoading, appEntityId, onD
           <DataTable sortable resizable fullWidth data={pages.map((p: any) => ({ Page: p["pageName"] ?? "Unknown", "LCP (ms)": Number(p.lcp_avg ?? 0), CLS: Number(p.cls_avg ?? 0), "TTFB (ms)": Number(p.ttfb_avg ?? 0), "Load (ms)": Number(p.load_avg ?? 0) }))}
             columns={[
               { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => appEntityId ? <a href={vitalsUrl(appEntityId, value)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none" }} onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}>{value}</a> : <Text>{value}</Text> },
-              { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "lcp") }}>${fmt(value)}</Strong> },
+              { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "lcp") }}>{fmt(value)}</Strong> },
               { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "cls") }}>{value.toFixed(3)}</Strong> },
               { id: "TTFB (ms)", header: "TTFB", accessor: "TTFB (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: cwvClr(value, "ttfb") }}>{fmt(value)}</Strong> },
               { id: "Load (ms)", header: "Load End", accessor: "Load (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
@@ -5801,7 +5801,7 @@ function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, pageMap
 
             {/* Aggregate step metrics */}
             {renderMetricRow(step.label, met, undefined, true, spark, prevMet)}
-            {revenueAtRisk > 0 && <Flex gap={16} style={{ marginTop: 4 }}><div className="uj-metric-box"><Text className="uj-metric-label">Revenue at Risk</Text><Strong className="uj-metric-value" style={{ color: RED }}>${fmtCurrency(revenueAtRisk)}</Strong><Text style={{ fontSize: 13, opacity: 0.4 }}>{fmtCount(dropOff)} drop-offs</Text></div></Flex>}
+            {revenueAtRisk > 0 && <Flex gap={16} style={{ marginTop: 4 }}><div className="uj-metric-box"><Text className="uj-metric-label">Revenue at Risk</Text><Strong className="uj-metric-value" style={{ color: RED }}>{fmtCurrency(revenueAtRisk)}</Strong><Text style={{ fontSize: 13, opacity: 0.4 }}>{fmtCount(dropOff)} drop-offs</Text></div></Flex>}
 
             {/* Page-level drop-off funnel (for multi-page steps) */}
             {isMulti && pageMetricsList.length > 1 && (() => {
@@ -5820,7 +5820,7 @@ function StepDetailsTab({ stepMap, stepMapPrev, stepSparklines, pageMap, pageMap
                           <Text style={{ fontSize: 11, width: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{pm.id}</Text>
                           <div style={{ flex: 1, height: 18, background: "rgba(128,128,128,0.08)", borderRadius: 3, overflow: "hidden", position: "relative" }}>
                             <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
-                            <span style={{ position: "absolute", right: 6, top: 1, fontSize: 10, fontWeight: 600, opacity: 0.7 }}>${fmtCount(pm.metrics.total)}</span>
+                            <span style={{ position: "absolute", right: 6, top: 1, fontSize: 10, fontWeight: 600, opacity: 0.7 }}>{fmtCount(pm.metrics.total)}</span>
                           </div>
                           {j > 0 && <Text style={{ fontSize: 10, color: RED, fontWeight: 600, width: 50, textAlign: "right", flexShrink: 0 }}>−{fmtPct(dropPct)}</Text>}
                           {j === 0 && <Text style={{ fontSize: 10, color: GREEN, fontWeight: 600, width: 50, textAlign: "right", flexShrink: 0 }}>top</Text>}
@@ -6078,7 +6078,7 @@ function WorstSessionsTab({ data, isLoading, onDrillToForecast }: { data: any; i
                 ) : <Text>{value}</Text>;
               }},
               { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Text>{value}</Text> },
-              { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>${fmt(value)}</Text> },
+              { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
               { id: "Max (ms)", header: "Max Duration", accessor: "Max (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 10000 ? RED : value > 5000 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
               { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
               { id: "Frustrated", header: "Frustrated", accessor: "Frustrated", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
@@ -6268,7 +6268,7 @@ function JSErrorsTab({ data, prevData, isLoading, frontend, onDrillToForecast }:
 
                   {/* Metrics grid */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
-                    <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 18, color: severity }}>${fmtCount(occurrences)}</Strong></div>
+                    <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 18, color: severity }}>{fmtCount(occurrences)}</Strong></div>
                     <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>Sessions</Text><Strong style={{ display: "block", fontSize: 18, color: ORANGE }}>{fmtCount(affected)}</Strong></div>
                     <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>% of Total</Text><Strong style={{ display: "block", fontSize: 18 }}>{fmtPct(pctOfTotal)}</Strong></div>
                     <div><Text style={{ fontSize: 11, opacity: 0.5, whiteSpace: "nowrap" }}>First Seen</Text><Text style={{ display: "block", fontSize: 12 }}>{firstSeen}</Text></div>
@@ -6321,7 +6321,7 @@ function JSErrorsTab({ data, prevData, isLoading, frontend, onDrillToForecast }:
                       const cfg = value === "REGRESSION" ? STATUS_CONFIG.regression : value === "RECURRING" ? STATUS_CONFIG.recurring : STATUS_CONFIG.new;
                       return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: `${cfg.color}18`, color: cfg.color, fontWeight: 700 }}>{cfg.icon} {value}</span>;
                     }},
-                    { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 50 ? RED : ORANGE }}>${fmtCount(value)}</Strong> },
+                    { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 50 ? RED : ORANGE }}>{fmtCount(value)}</Strong> },
                     { id: "Affected Sessions", header: "Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                     { id: "Pages", header: "Pages", accessor: "Pages", cell: ({ value }: any) => <Text style={{ fontSize: 12, opacity: 0.6 }}>{value}</Text> },
                   ]}
@@ -6421,7 +6421,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend, onDrillToForeca
                         <Strong style={{ fontSize: 13, wordBreak: "break-word" }}>{target.length > 100 ? target.substring(0, 100) + "..." : target}</Strong>
                       </Flex>
                       <Flex gap={16} flexWrap="wrap">
-                        <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 32, color }}>${fmtCount(occ)}</Strong></div>
+                        <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Occurrences</Text><Strong style={{ display: "block", fontSize: 32, color }}>{fmtCount(occ)}</Strong></div>
                         <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Affected Sessions</Text><Strong style={{ display: "block", fontSize: 32, color: ORANGE }}>{fmtCount(affected)}</Strong></div>
                         <div><Text style={{ fontSize: 24, opacity: 0.5 }}>% of Total</Text><Strong style={{ display: "block", fontSize: 32 }}>{fmtPct(pctOfTotal)}</Strong></div>
                         <div><Text style={{ fontSize: 24, opacity: 0.5 }}>Page</Text><Text style={{ display: "block", fontSize: 26, color: BLUE }}>{page}</Text></div>
@@ -6516,7 +6516,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend, onDrillToForeca
                 { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <Strong style={{ color: value === "Rage" ? RED : ORANGE }}>{value}</Strong> },
                 { id: "Element", header: "Element", accessor: "Element" },
                 { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Text style={{ fontSize: 13, color: BLUE }}>{value}</Text> },
-                { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
+                { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
                 { id: "Affected Sessions", header: "Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Replay", header: "Replay", accessor: "_page", cell: ({ value, row }: any) => <a href={buildSessionsLink(value, row?.original?._type)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: CYAN, textDecoration: "none" }}>View ↗</a> },
               ]}
@@ -6859,7 +6859,7 @@ function PerfBudgetsTab({ quality, qualityPrev, overallApdex, overallApdexPrev, 
                     <div style={{ flex: 1, height: 12, borderRadius: 3, background: "rgba(128,128,128,0.04)", overflow: "hidden", position: "relative" }}>
                       <div style={{ height: "100%", width: `${barWidth}%`, background: apdexClr(apdex), borderRadius: 3, opacity: 0.7, transition: "width 0.3s ease" }} />
                     </div>
-                    <Text style={{ fontSize: 12, minWidth: 45, textAlign: "right", color: BLUE }}>${fmtCount(actions)}</Text>
+                    <Text style={{ fontSize: 12, minWidth: 45, textAlign: "right", color: BLUE }}>{fmtCount(actions)}</Text>
                     <Text style={{ fontSize: 12, minWidth: 35, textAlign: "right", fontWeight: 700, color: apdexClr(apdex) }}>{apdex.toFixed(2)}</Text>
                   </Flex>
                 );
@@ -6952,7 +6952,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData,
                     <span style={{ fontSize: 12, padding: "2px 6px", borderRadius: 4, background: `${apdexClr(c.apdex)}18`, color: apdexClr(c.apdex), fontWeight: 700 }}>{c.apdex.toFixed(2)}</span>
                   </Flex>
                   <Flex gap={12} flexWrap="wrap" style={{ marginBottom: 6 }}>
-                    <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Sessions</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: BLUE }}>${fmtCount(c.sessions)}</Text></div>
+                    <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Sessions</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: BLUE }}>{fmtCount(c.sessions)}</Text></div>
                     <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Avg</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: c.avgDur > 3000 ? RED : c.avgDur > 1000 ? YELLOW : GREEN }}>{fmt(c.avgDur)}</Text></div>
                     <div><Text style={{ fontSize: 13, opacity: 0.5 }}>Err%</Text><Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: c.errRate > 5 ? RED : c.errRate > 1 ? YELLOW : GREEN }}>{fmtPct(c.errRate)}</Text></div>
                   </Flex>
@@ -6998,7 +6998,7 @@ function GeoHeatmapTab({ data, isLoading, frontend, networkData, conversionData,
                   const cName = row?.original?.countryName;
                   return <a href={sessionsFilterUrl(frontend, cName)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value} ↗</a>;
                 }},
-                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Actions", header: "Actions", accessor: "Actions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
                 { id: "P90 (ms)", header: "P90", accessor: "P90 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 4000 ? RED : value > 2000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
@@ -7677,7 +7677,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                   const cName = row?.original?.countryName;
                   return <a href={sessionsFilterUrl(frontend, cName)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value} ↗</a>;
                 }},
-                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>${fmtCount(value)}</Text> },
+                { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>{fmtCount(value)}</Text> },
                 { id: "Avg Duration", header: "Avg Duration", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "avgDur" ? 700 : 400, color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
                 { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value), fontWeight: metric === "apdex" ? 700 : 400 }}>{value.toFixed(2)}</Strong> },
                 { id: "Error %", header: "Error %", accessor: "Error %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "errRate" ? 700 : 400, color: value > 5 ? RED : value > 1 ? YELLOW : GREEN }}>{fmtPct(value)}</Text> },
@@ -7854,7 +7854,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
                         const sName = row?.original?.stateName;
                         return <a href={sessionsFilterUrl(frontend, sName)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, textDecoration: "none", fontWeight: 600 }}>{value} ↗</a>;
                       }},
-                      { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>${fmtCount(value)}</Text> },
+                      { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "sessions" ? 700 : 400, color: metric === "sessions" ? BLUE : undefined }}>{fmtCount(value)}</Text> },
                       { id: "Avg Duration", header: "Avg Duration", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "avgDur" ? 700 : 400, color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
                       { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value), fontWeight: metric === "apdex" ? 700 : 400 }}>{value.toFixed(2)}</Strong> },
                       { id: "Error %", header: "Error %", accessor: "Error %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: metric === "errRate" ? 700 : 400, color: value > 5 ? RED : value > 1 ? YELLOW : GREEN }}>{fmtPct(value)}</Text> },
@@ -8383,13 +8383,13 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                               <Text style={{ fontSize: 13 }}>{t.name.length > 50 ? t.name.substring(0, 50) + "..." : t.name}</Text>
                             )}
                             {isFunnel && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 3, background: `${GREEN}18`, color: GREEN }}>funnel</span>}
-                            {tgtConvRate !== undefined && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: tgtConvRate > avgConv ? `${GREEN}12` : `${RED}12`, color: tgtConvRate > avgConv ? GREEN : RED, fontWeight: 600 }}>${fmtPct(tgtConvRate)}</span>}
+                            {tgtConvRate !== undefined && <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: tgtConvRate > avgConv ? `${GREEN}12` : `${RED}12`, color: tgtConvRate > avgConv ? GREEN : RED, fontWeight: 600 }}>{fmtPct(tgtConvRate)}</span>}
                           </Flex>
                           <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden", marginTop: 2 }}>
                             <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, opacity: 0.7 }} />
                           </div>
                         </div>
-                        <Text style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: "right" }}>${fmtCount(t.count)}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: "right" }}>{fmtCount(t.count)}</Text>
                         <Text style={{ fontSize: 12, opacity: 0.4, minWidth: 35, textAlign: "right" }}>{fmtPct(pct)}</Text>
                       </Flex>
                     );
@@ -8575,7 +8575,7 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
           }))}
           columns={[
             { id: "Step", header: "Step", accessor: "Step", cell: ({ value }: any) => <Strong>{value}</Strong> },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg Duration", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : GREEN }}>{fmt(value)}</Text> },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : GREEN }}>{value}</Strong> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
@@ -8608,7 +8608,7 @@ function AnomalyDetectionTab({ quality, qualityPrev, overallApdex, overallApdexP
                     <div style={{ flex: 1, height: 16, borderRadius: 4, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, opacity: 0.7 }} />
                     </div>
-                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right", color: BLUE }}>${fmtCount(actions)}</Text>
+                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right", color: BLUE }}>{fmtCount(actions)}</Text>
                     {errRate > 0 && <Text style={{ fontSize: 13, minWidth: 40, textAlign: "right", color: RED }}>{fmtPct(errRate)} err</Text>}
                   </Flex>
                 );
@@ -8748,7 +8748,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
       {aiPanel}
       <SectionHeader title="Conversion Attribution Analysis" />
-      <Text style={{ fontSize: 12, opacity: 0.5 }}>Identifies which factors (speed, device, browser, errors) most influence conversion success. Overall conversion: <Strong style={{ color: statusClr(overallConv) }}>${fmtPct(overallConv)}</Strong></Text>
+      <Text style={{ fontSize: 12, opacity: 0.5 }}>Identifies which factors (speed, device, browser, errors) most influence conversion success. Overall conversion: <Strong style={{ color: statusClr(overallConv) }}>{fmtPct(overallConv)}</Strong></Text>
 
       {/* Speed impact */}
       <SectionHeader title="Speed → Conversion Impact" />
@@ -8779,7 +8779,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
           <DataTable sortable resizable fullWidth data={devices.map((d) => ({ Device: d.name, Sessions: d.sessions, Converted: d.converted, "Conv %": d.convRate, Revenue: d.converted * aov, "Avg Duration": Math.round(d.avgDur), "Avg Errors": d.avgErr }))}
             columns={[
               { id: "Device", header: "Device", accessor: "Device", cell: ({ value }: any) => <Strong>{value}</Strong> },
-              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
               { id: "Converted", header: "Converted", accessor: "Converted", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: GREEN }}>{fmtCount(value)}</Strong> },
               { id: "Conv %", header: "Conv %", accessor: "Conv %", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: statusClr(value) }}>{fmtPct(value)}</Strong> },
               ...(aov > 0 ? [{ id: "Revenue", header: "Revenue", accessor: "Revenue", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>{fmtCurrency(value)}</Strong> }] : []),
@@ -8894,7 +8894,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
                       <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: `${severity}18`, color: severity, fontWeight: 700 }}>{infW.toFixed(1)}%</span>
                     </Flex>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                      <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Cond. Conv Rate</Text><Strong style={{ display: "block", fontSize: 14, color: statusClr(s.conditionalConvRate) }}>${fmtPct(s.conditionalConvRate)}</Strong></div>
+                      <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Cond. Conv Rate</Text><Strong style={{ display: "block", fontSize: 14, color: statusClr(s.conditionalConvRate) }}>{fmtPct(s.conditionalConvRate)}</Strong></div>
                       <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Drop-off</Text><Strong style={{ display: "block", fontSize: 14, color: s.dropOffRate > 30 ? RED : s.dropOffRate > 15 ? ORANGE : GREEN }}>{fmtPct(s.dropOffRate)}</Strong></div>
                       {aov > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Downstream Value</Text><Strong style={{ display: "block", fontSize: 13, color: CYAN }}>{fmtCurrency(s.downstreamValue)}</Strong></div>}
                       {aov > 0 && s.dropOffCost > 0 && <div><Text style={{ fontSize: 11, opacity: 0.5 }}>Drop-off Cost</Text><Strong style={{ display: "block", fontSize: 13, color: RED }}>−{fmtCurrency(s.dropOffCost)}</Strong></div>}
@@ -8928,7 +8928,7 @@ function ConversionAttributionTab({ data, overallConv, isLoading, aov, funnelCou
                 { id: "Position-Based", header: "Position", accessor: "Position-Based", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ fontWeight: value > 20 ? 700 : 400 }}>{value}%</Text> },
                 { id: "Time-Decay", header: "Time-Decay", accessor: "Time-Decay", sortType: "number" as any, cell: ({ value }: any) => <Text>{value}%</Text> },
                 { id: "Influence-Based", header: "Influence", accessor: "Influence-Based", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{value}%</Strong> },
-                ...(aov > 0 ? [{ id: "Revenue Credit", header: "Revenue Credit", accessor: "Revenue Credit", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>${fmtCurrency(value)}</Strong> }] : []),
+                ...(aov > 0 ? [{ id: "Revenue Credit", header: "Revenue Credit", accessor: "Revenue Credit", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: CYAN }}>{fmtCurrency(value)}</Strong> }] : []),
               ]} />
             </div>
 
@@ -9061,7 +9061,7 @@ function ExecutiveSummaryTab({ quality, qualityPrev, overallApdex, overallApdexP
     const bottleneckHtml = worstStep && worstStep.dropOff > 10 ? `
       <div style="margin:20px 0;padding:14px 18px;border-left:4px solid ${worstStep.dropOff > 40 ? "#C21930" : worstStep.dropOff > 20 ? "#FF832B" : "#FCD53F"};background:#f8f8fa;border-radius:6px">
         <strong>Biggest Bottleneck: ${worstStep.from} → ${worstStep.to}</strong>
-        <div style="font-size:12px;color:#666;margin-top:4px">${fmtPct(worstStep.dropOff)} drop-off rate. ${worstStep.dropOff > 40 ? "Critical friction point — requires immediate attention." : "Significant abandonment — consider UX optimization."}</div>
+        <div style="font-size:12px;color:#666;margin-top:4px">{fmtPct(worstStep.dropOff)} drop-off rate. ${worstStep.dropOff > 40 ? "Critical friction point — requires immediate attention." : "Significant abandonment — consider UX optimization."}</div>
       </div>` : "";
 
     const gradeRows = gradeMetrics.map(m => {
@@ -9259,7 +9259,7 @@ ${bottleneckHtml}
             <span style={{ fontSize: 18 }}>{worstStep.dropOff > 40 ? "🔴" : worstStep.dropOff > 20 ? "🟠" : "🟡"}</span>
             <div>
               <Strong style={{ fontSize: 13 }}>Biggest Bottleneck: {worstStep.from} → {worstStep.to}</Strong>
-              <Text style={{ display: "block", fontSize: 13, opacity: 0.6 }}>${fmtPct(worstStep.dropOff)} drop-off rate. {worstStep.dropOff > 40 ? "Critical friction point — requires immediate attention." : "Significant abandonment — consider UX optimization."}</Text>
+              <Text style={{ display: "block", fontSize: 13, opacity: 0.6 }}>{fmtPct(worstStep.dropOff)} drop-off rate. {worstStep.dropOff > 40 ? "Critical friction point — requires immediate attention." : "Significant abandonment — consider UX optimization."}</Text>
             </div>
           </Flex>
         </div>
@@ -9383,7 +9383,7 @@ function SegmentationTab({ devices, browsers, geos, osVersions, isLoading, aov =
           </Flex>
           <Text>
             {worstCohort.apdex < 0.85
-              ? <>Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>${fmtCount(worstCohort.sessions)}</Strong> sessions.{worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}</>
+              ? <>Worst-performing cohort: <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions.{worstCohort.apdex < 0.5 ? " This segment is experiencing critical performance issues and likely has significantly lower conversion." : " This segment underperforms compared to others — investigate for targeted optimization."}</>
               : <>Your relative weakest cohort is <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.label}</Strong> ({worstCohort.dimension}) — Apdex <Strong style={{ color: apdexClr(worstCohort.apdex) }}>{worstCohort.apdex.toFixed(2)}</Strong> across <Strong>{fmtCount(worstCohort.sessions)}</Strong> sessions. All segments are healthy, but this one has the most room for improvement.</>
             }
           </Text>
@@ -9488,7 +9488,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
         {dropOffs.map((d, i) => (
           <div key={i} className="uj-dropoff-card">
             <Flex alignItems="center" gap={8}><Text style={{ fontSize: 24 }}>{d.from}</Text><span style={{ color: RED, fontSize: 32 }}>→</span><Text style={{ fontSize: 24 }}>{d.to}</Text></Flex>
-            <Heading level={3} style={{ color: RED, margin: "8px 0 4px" }}>${fmtCount(d.lost)} lost</Heading>
+            <Heading level={3} style={{ color: RED, margin: "8px 0 4px" }}>{fmtCount(d.lost)} lost</Heading>
             <Text style={{ fontSize: 24, opacity: 0.6 }}>{fmtPct(d.pctLost)} abandonment</Text>
             {aov > 0 && d.lostRevenue > 0 && <Text style={{ fontSize: 24, color: RED, fontWeight: 600, marginTop: 4 }}>~{fmtCurrency(d.lostRevenue)} revenue at risk</Text>}
             <div className="uj-dropoff-bar"><div className="uj-dropoff-bar-fill" style={{ width: `${100 - d.pctLost}%` }} /></div>
@@ -9501,7 +9501,7 @@ function ErrorsTab({ errors, funnelCounts, isLoading, steps, aov, stepDropData }
           <DataTable sortable resizable fullWidth data={errors.map((e: any) => ({ Step: e.step_tag ?? "Unknown", Errors: Number(e.error_count ?? 0), "Affected Sessions": Number(e.affected_sessions ?? 0) }))} columns={[
             { id: "Step", header: "Step", accessor: "Step" },
             { id: "Errors", header: "Errors", accessor: "Errors", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{value}</Strong> },
-            { id: "Affected Sessions", header: "Affected Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "Affected Sessions", header: "Affected Sessions", accessor: "Affected Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
           ]} />
         )}
       </div>
@@ -9627,7 +9627,7 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
         </div>
         <div className={`uj-impact-card ${projConv < currConvRate ? "uj-impact-negative" : "uj-impact-positive"}`}>
           <Text className="uj-metric-label">Conversion Impact</Text>
-          <Strong style={{ color: RED, fontSize: 32 }}>${fmtPct(currConvRate)} → {fmtPct(projConv)}</Strong>
+          <Strong style={{ color: RED, fontSize: 32 }}>{fmtPct(currConvRate)} → {fmtPct(projConv)}</Strong>
         </div>
       </Flex>
 
@@ -9640,7 +9640,7 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
             <KpiCard label="Net Revenue Change" value={`${revenueDelta >= 0 ? "+" : ""}${fmtCurrency(revenueDelta)}`} color={revenueDelta >= 0 ? GREEN : RED} rawValue={revenueDelta} prevRawValue={syntheticPrev(revenueDelta, "Net Revenue Change")} sparkline={syntheticSparkline(revenueDelta, 8, "Net Revenue Change")} onDrillToForecast={onDrillToForecast} />
             <div className={`uj-impact-card uj-impact-negative`}>
               <Text className="uj-metric-label">Conv Degradation Loss</Text>
-              <Strong className="uj-metric-value" style={{ color: RED }}>${fmtCurrency(convLossRevenue)}</Strong>
+              <Strong className="uj-metric-value" style={{ color: RED }}>{fmtCurrency(convLossRevenue)}</Strong>
               <Text style={{ fontSize: 13, opacity: 0.5 }}>Revenue lost vs. ideal (no conv drop)</Text>
             </div>
           </Flex>
@@ -9784,8 +9784,8 @@ function WhatIfTab({ funnelCounts, stepMap, overallApdex, isLoading, steps, aov,
           })}
           columns={[
             { id: "Step", header: "Step", accessor: "Step" },
-            { id: "Curr Sessions", header: "Curr", accessor: "Curr Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
-            { id: "Proj Sessions", header: `Proj (+${pctChange}%)`, accessor: "Proj Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>${fmtCount(value)}</Strong> },
+            { id: "Curr Sessions", header: "Curr", accessor: "Curr Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
+            { id: "Proj Sessions", header: `Proj (+${pctChange}%)`, accessor: "Proj Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{fmtCount(value)}</Strong> },
             { id: "Curr Avg", header: "Curr Avg", accessor: "Curr Avg", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "Proj Avg", header: "Proj Avg", accessor: "Proj Avg", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 3000 ? RED : value > 1000 ? YELLOW : BLUE }}>{fmt(value)}</Strong> },
             { id: "Curr P90", header: "Curr P90", accessor: "Curr P90", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
@@ -9908,7 +9908,7 @@ function RevenueIntelligenceTab({ funnelCounts, funnelCountsPrev, stepMap, overa
           }))}
           columns={[
             { id: "Transition", header: "Transition", accessor: "Transition" },
-            { id: "DroppedSessions", header: "Dropped", accessor: "DroppedSessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "DroppedSessions", header: "Dropped", accessor: "DroppedSessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "DropRate", header: "Drop %", accessor: "DropRate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 40 ? RED : value > 20 ? YELLOW : GREEN }}>{fmtPct(value)}</Strong> },
             { id: "LostRevenue", header: "Est. Lost Revenue", accessor: "LostRevenue", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: RED }}>{fmtCurrency(value)}</Strong> },
           ]}
@@ -10829,7 +10829,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
       <div style={{ marginTop: 12, padding: "12px 16px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid " + BLUE }}>
         <Flex alignItems="center" gap={8} style={{ marginBottom: 8 }}>
           <Strong style={{ fontSize: 13 }}>{focusLabel}</Strong>
-          <Text style={{ fontSize: 12, opacity: 0.5 }}>${fmtCount(labelSessions)} sessions</Text>
+          <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(labelSessions)} sessions</Text>
           {isFunnelPage(focusLabel) && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 3, background: "rgba(255,215,0,0.12)", border: "1px solid rgba(255,215,0,0.3)", color: "#FFD700", fontWeight: 700 }}>★ Funnel</span>}
           <button onClick={() => setFocusLabel(null)} style={{ marginLeft: "auto", background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "rgba(255,255,255,0.6)", cursor: "pointer", padding: "2px 8px", fontSize: 12 }}>Clear</button>
         </Flex>
@@ -10838,7 +10838,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <Text style={{ fontSize: 12, opacity: 0.5 }}>Inbound ({labelInbound.length}):</Text>
             <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
               {labelInbound.slice(0, 8).map((l, i) => (
-                <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{truncLabel(l.label, 30)} <Strong style={{ color: CYAN }}>${fmtCount(l.value)}</Strong></a>
+                <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{truncLabel(l.label, 30)} <Strong style={{ color: CYAN }}>{fmtCount(l.value)}</Strong>{fmtCount(n)}</a>
               ))}
             </Flex>
           </div>
@@ -10849,7 +10849,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
               {labelOutbound.slice(0, 8).map((l, i) => {
                 const outFunnel = !isFunnelPage(l.label);
-                return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{outFunnel ? "↗ " : ""}{truncLabel(l.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>${fmtCount(l.value)}</Strong></a>;
+                return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{outFunnel ? "↗ " : ""}{truncLabel(l.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>{fmtCount(l.value)}</Strong></a>;
               })}
             </Flex>
           </div>
@@ -11040,7 +11040,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
         <div style={{ marginTop: 12, padding: "12px 16px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: `3px solid ${SANKEY_COLORS[focusNode.depth % SANKEY_COLORS.length]}` }}>
           <Flex alignItems="center" gap={8} style={{ marginBottom: 8 }}>
             <Strong style={{ fontSize: 13 }}>{focusNode.label}</Strong>
-            <Text style={{ fontSize: 12, opacity: 0.5 }}>${fmtCount(focusSessions)} sessions</Text>
+            <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(focusSessions)} sessions</Text>
             <button onClick={() => setFocusNodeId(null)} style={{ marginLeft: "auto", background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "rgba(255,255,255,0.6)", cursor: "pointer", padding: "2px 8px", fontSize: 12 }}>Clear</button>
           </Flex>
           {/* Funnel status badge */}
@@ -11055,7 +11055,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
               <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
                 {focusInbound.sort((a, b) => b.value - a.value).slice(0, 6).map((l, i) => {
                   const src = nodes.find(n => n.id === l.source)!;
-                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, src.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${src.label}` : src.label}>{truncLabel(src.label, 30)} <Strong style={{ color: CYAN }}>${fmtCount(l.value)}</Strong></a>;
+                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, src.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${src.label}` : src.label}>{truncLabel(src.label, 30)} <Strong style={{ color: CYAN }}>{fmtCount(l.value)}</Strong></a>;
                 })}
               </Flex>
             </div>
@@ -11067,7 +11067,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                 {focusOutbound.sort((a, b) => b.value - a.value).slice(0, 6).map((l, i) => {
                   const tgt = nodes.find(n => n.id === l.target)!;
                   const outFunnel = !isFunnelPage(tgt.label);
-                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, tgt.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${tgt.label}` : tgt.label}>{outFunnel ? "↗ " : ""}{truncLabel(tgt.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>${fmtCount(l.value)}</Strong></a>;
+                  return <a key={i} href={appEntityId ? vitalsUrl(appEntityId, tgt.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default", border: outFunnel ? "1px solid rgba(194,25,48,0.2)" : "none" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = outFunnel ? "rgba(194,25,48,0.1)" : "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${tgt.label}` : tgt.label}>{outFunnel ? "↗ " : ""}{truncLabel(tgt.label, 30)} <Strong style={{ color: outFunnel ? RED : GREEN }}>{fmtCount(l.value)}</Strong></a>;
                 })}
               </Flex>
             </div>
@@ -11201,7 +11201,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             return (
               <g key={`edge-${i}`} style={{ transition: "opacity 0.2s" }}>
                 <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={SANKEY_COLORS[i % SANKEY_COLORS.length]} strokeWidth={thickness} strokeOpacity={edgeOpacity} markerEnd="url(#arrowhead)" />
-                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={9} fontWeight={600}>${fmtCount(e.value)}</text>}
+                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={9} fontWeight={600}>{fmtCount(e.value)}</text>}
               </g>
             );
           })}
@@ -11223,7 +11223,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                   <title>{buildLabelTooltip(n.label)}</title>
                 </circle>
                 <text x={pos.x} y={pos.y - 3} textAnchor="middle" fill="white" fontSize={8} fontWeight={600} opacity={labelVis}>{isExit ? "⛔ " : inFunnel ? "★ " : ""}{truncLabel(n.label, 14)}</text>
-                <text x={pos.x} y={pos.y + 10} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={8} opacity={labelVis}>${fmtCount(n.totalValue)}</text>
+                <text x={pos.x} y={pos.y + 10} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={8} opacity={labelVis}>{fmtCount(n.totalValue)}</text>
               </g>
             );
           })}
@@ -11430,7 +11430,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             return (
               <g key={`sme-${i}`} style={{ transition: "opacity 0.2s" }}>
                 <path d={`M${x1},${y1} Q${midX},${midY} ${x2},${y2}`} fill="none" stroke={color} strokeWidth={thickness} markerEnd="url(#sm-arrow)" />
-                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY - 2} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={9} fontWeight={700}>${fmtCount(e.value)}</text>}
+                {(!hasLabelFocus || edgeConnected) && <text x={midX} y={midY - 2} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={9} fontWeight={700}>{fmtCount(e.value)}</text>}
               </g>
             );
           })}
@@ -11452,7 +11452,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                   <title>{buildLabelTooltip(n.label)}</title>
                 </rect>
                 <text x={pos.x} y={pos.y - 4} textAnchor="middle" fill="white" fontSize={10} fontWeight={700} opacity={labelVis}>{isExit ? "Exit" : (inFunnel ? "★ " : "") + truncLabel(n.label, 14)}</text>
-                <text x={pos.x} y={pos.y + 12} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={9} opacity={labelVis}>${fmtCount(n.value)} sessions</text>
+                <text x={pos.x} y={pos.y + 12} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={9} opacity={labelVis}>{fmtCount(n.value)} sessions</text>
               </g>
             );
           })}
@@ -11596,7 +11596,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           {hasChordFocus && (
             <>
               <text x={cx} y={cy - 8} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={12} fontWeight={700}>{truncLabel(labels[selectedChordIdx], 24)}</text>
-              <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={10}>${fmtCount(arcs[selectedChordIdx].total)} connections</text>
+              <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={10}>{fmtCount(arcs[selectedChordIdx].total)} connections</text>
             </>
           )}
         </svg>
@@ -11841,7 +11841,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           )}
 
           <SectionHeader title="Page Health Scorecard" />
-          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pageHealth.slice(0, 20).map(p => ({ Page: p.label.substring(0, 40), Funnel: p.isFunnel ? "★ Yes" : "No", Health: p.healthScore, Sessions: p.sessions, "LCP (ms)": p.lcp > 0 ? Math.round(p.lcp) : null, CLS: p.cls > 0 ? p.cls : null, "INP (ms)": p.inp > 0 ? Math.round(p.inp) : null, Errors: `${p.errors}\t${p.label}`, Issues: p.issues.join(", ") || "None" }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Funnel", header: "Funnel", accessor: "Funnel", cell: ({ value }: any) => <Text style={{ color: value === "★ Yes" ? "#FFD700" : "inherit", fontWeight: value === "★ Yes" ? 700 : 400 }}>{value}</Text> }, { id: "Health", header: "Health", accessor: "Health", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 70 ? "rgba(13,156,41,0.15)" : value >= 40 ? "rgba(184,134,11,0.15)" : "rgba(194,25,48,0.15)", color: value >= 70 ? GREEN : value >= 40 ? YELLOW : RED, fontWeight: 700, textAlign: "center" }}>{value}/100</span> }, { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> }, { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "lcp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "cls"), fontWeight: 600 }}>{value.toFixed(3)}</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "INP (ms)", header: "INP", accessor: "INP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "inp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "Errors", header: "Errors", accessor: "Errors", cell: ({ value }: any) => { const [cnt, pg] = String(value).split("\t"); const n = Number(cnt); return n > 0 ? <a href={`${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=now-2h%3Bnow&sort=affected_users%3Adescending&perspective=impact#filtering=${encodeURIComponent(`"Frontend" = "${frontend}" "(Web) Page Name" = "${pg}"`)}`} target="_blank" rel="noopener noreferrer" style={{ color: RED, fontWeight: 700, textDecoration: "none" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">${fmtCount(n)}</a> : <Text style={{ opacity: 0.3 }}>0</Text>; } }, { id: "Issues", header: "Issues", accessor: "Issues", cell: ({ value }: any) => <Text style={{ fontSize: 11, color: value === "None" ? GREEN : RED }}>{value}</Text> } ]} /></div>
+          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pageHealth.slice(0, 20).map(p => ({ Page: p.label.substring(0, 40), Funnel: p.isFunnel ? "★ Yes" : "No", Health: p.healthScore, Sessions: p.sessions, "LCP (ms)": p.lcp > 0 ? Math.round(p.lcp) : null, CLS: p.cls > 0 ? p.cls : null, "INP (ms)": p.inp > 0 ? Math.round(p.inp) : null, Errors: `${p.errors}\t${p.label}`, Issues: p.issues.join(", ") || "None" }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Funnel", header: "Funnel", accessor: "Funnel", cell: ({ value }: any) => <Text style={{ color: value === "★ Yes" ? "#FFD700" : "inherit", fontWeight: value === "★ Yes" ? 700 : 400 }}>{value}</Text> }, { id: "Health", header: "Health", accessor: "Health", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 70 ? "rgba(13,156,41,0.15)" : value >= 40 ? "rgba(184,134,11,0.15)" : "rgba(194,25,48,0.15)", color: value >= 70 ? GREEN : value >= 40 ? YELLOW : RED, fontWeight: 700, textAlign: "center" }}>{value}/100</span> }, { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> }, { id: "LCP (ms)", header: "LCP", accessor: "LCP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "lcp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "CLS", header: "CLS", accessor: "CLS", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "cls"), fontWeight: 600 }}>{value.toFixed(3)}</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "INP (ms)", header: "INP", accessor: "INP (ms)", sortType: "number" as any, cell: ({ value }: any) => value != null ? <span style={{ color: cwvClr(value, "inp"), fontWeight: 600 }}>{value}ms</span> : <Text style={{ opacity: 0.3 }}>—</Text> }, { id: "Errors", header: "Errors", accessor: "Errors", cell: ({ value }: any) => { const [cnt, pg] = String(value).split("\t"); const n = Number(cnt); return n > 0 ? <a href={`${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=now-2h%3Bnow&sort=affected_users%3Adescending&perspective=impact#filtering=${encodeURIComponent(`"Frontend" = "${frontend}" "(Web) Page Name" = "${pg}"`)}`} target="_blank" rel="noopener noreferrer" style={{ color: RED, fontWeight: 700, textDecoration: "none" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">{fmtCount(n)}</a> : <Text style={{ opacity: 0.3 }}>0</Text>; } }, { id: "Issues", header: "Issues", accessor: "Issues", cell: ({ value }: any) => <Text style={{ fontSize: 11, color: value === "None" ? GREEN : RED }}>{value}</Text> } ]} /></div>
 
           <SectionHeader title="Top Transitions" />
           <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={links.slice(0, 30).map((l) => { const srcNode = nodes.find(n => n.id === l.source)!; const tgtNode = nodes.find(n => n.id === l.target)!; return { From: srcNode.label.substring(0, 40), To: tgtNode.label.substring(0, 40), Sessions: l.value, "% of Total": totalSessions > 0 ? (l.value / totalSessions) * 100 : 0 }; })} columns={[ { id: "From", header: "From", accessor: "From", cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> }, { id: "To", header: "To", accessor: "To", cell: ({ value }: any) => <Text>{value}</Text> }, { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> }, { id: "% of Total", header: "% of Total", accessor: "% of Total", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtPct(value)}</Text> } ]} /></div>
@@ -11861,7 +11861,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
           </Flex>
 
           <SectionHeader title="Path Differentiators — Pages that distinguish converted from abandoned" />
-          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={conversionPaths.differentiators.map(d => ({ Page: d.page.substring(0, 40), "Converted %": d.convPct, "Abandoned %": d.abandPct, "Diff (pp)": d.diff }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Converted %", header: "In Converted", accessor: "Converted %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: GREEN, fontWeight: 600 }}>${fmtPct(value)}</span> }, { id: "Abandoned %", header: "In Abandoned", accessor: "Abandoned %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: RED, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Diff (pp)", header: "Difference", accessor: "Diff (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : value < 0 ? GREEN : "inherit" }}>{value > 0 ? "+" : ""}{value.toFixed(1)}pp</Strong> } ]} /></div>
+          <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={conversionPaths.differentiators.map(d => ({ Page: d.page.substring(0, 40), "Converted %": d.convPct, "Abandoned %": d.abandPct, "Diff (pp)": d.diff }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Converted %", header: "In Converted", accessor: "Converted %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: GREEN, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Abandoned %", header: "In Abandoned", accessor: "Abandoned %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: RED, fontWeight: 600 }}>{fmtPct(value)}</span> }, { id: "Diff (pp)", header: "Difference", accessor: "Diff (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 0 ? RED : value < 0 ? GREEN : "inherit" }}>{value > 0 ? "+" : ""}{value.toFixed(1)}pp</Strong> } ]} /></div>
 
           <Flex gap={20}>
             <div style={{ flex: 1 }}>
@@ -11986,7 +11986,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
               )}
 
               <SectionHeader title="Page Frequency Changes — Biggest shifts in navigation patterns" />
-              <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathTrends.pageTrends.map(t => ({ Page: t.page.substring(0, 40), "Current %": t.currPct, "Previous %": t.prevPct, "Change (pp)": t.delta, "Current Count": t.currCount, "Previous Count": t.prevCount }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Current %", header: "Current %", accessor: "Current %", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtPct(value)}</Text> }, { id: "Previous %", header: "Previous %", accessor: "Previous %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtPct(value)}</Text> }, { id: "Change (pp)", header: "Change", accessor: "Change (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: Math.abs(value) > 5 ? (value > 0 ? ORANGE : GREEN) : "inherit" }}>{value > 0 ? "▲" : value < 0 ? "▼" : "—"} {Math.abs(value).toFixed(1)}pp</Strong> }, { id: "Current Count", header: "Curr #", accessor: "Current Count", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> }, { id: "Previous Count", header: "Prev #", accessor: "Previous Count", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtCount(value)}</Text> } ]} /></div>
+              <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathTrends.pageTrends.map(t => ({ Page: t.page.substring(0, 40), "Current %": t.currPct, "Previous %": t.prevPct, "Change (pp)": t.delta, "Current Count": t.currCount, "Previous Count": t.prevCount }))} columns={[ { id: "Page", header: "Page", accessor: "Page", cell: ({ value }: any) => <Strong>{value}</Strong> }, { id: "Current %", header: "Current %", accessor: "Current %", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtPct(value)}</Text> }, { id: "Previous %", header: "Previous %", accessor: "Previous %", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtPct(value)}</Text> }, { id: "Change (pp)", header: "Change", accessor: "Change (pp)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: Math.abs(value) > 5 ? (value > 0 ? ORANGE : GREEN) : "inherit" }}>{value > 0 ? "▲" : value < 0 ? "▼" : "—"} {Math.abs(value).toFixed(1)}pp</Strong> }, { id: "Current Count", header: "Curr #", accessor: "Current Count", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> }, { id: "Previous Count", header: "Prev #", accessor: "Previous Count", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtCount(value)}</Text> } ]} /></div>
 
               <SectionHeader title="Transition Changes — Biggest shifts in page-to-page navigation" />
               <div className="uj-table-tile"><DataTable sortable resizable fullWidth data={pathTrends.transitionTrends.map(t => ({ Transition: t.transition.length > 60 ? t.transition.substring(0, 60) + "…" : t.transition, Current: t.currCount, Previous: t.prevCount, Change: t.delta }))} columns={[ { id: "Transition", header: "Transition", accessor: "Transition", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{value}</Text> }, { id: "Current", header: "Current", accessor: "Current", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> }, { id: "Previous", header: "Previous", accessor: "Previous", sortType: "number" as any, cell: ({ value }: any) => <Text style={{ opacity: 0.5 }}>{fmtCount(value)}</Text> }, { id: "Change", header: "Change", accessor: "Change", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: Math.abs(value) > 3 ? (value > 0 ? ORANGE : GREEN) : "inherit" }}>{value > 0 ? "+" : ""}{fmtCount(value)}</Strong> } ]} /></div>
@@ -12042,7 +12042,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
                     <rect x={130 + lostW} y={y} width={recW} height={24} rx={4} fill={GREEN} fillOpacity={0.3} stroke={GREEN} strokeWidth={0.5} strokeOpacity={0.4}>
                       <title>{`Recovered: ${fmtCount(d.recovered)} users`}</title>
                     </rect>
-                    <text x={130 + barW + 8} y={y + 10} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>${fmtCount(d.total)}</text>
+                    <text x={130 + barW + 8} y={y + 10} fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight={700}>{fmtCount(d.total)}</text>
                     <text x={130 + barW + 8} y={y + 22} fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtPct(d.recoveryRate)} recovered · {fmtPct(d.convRate)} converted</text>
                   </g>
                 );
@@ -12273,7 +12273,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
               { id: "Median (s)", header: "Median", accessor: "Median (s)", sortType: "number" as any, cell: ({ value }: any) => <span style={{ color: value > 30 ? RED : value > 10 ? YELLOW : GREEN, fontWeight: 700 }}>{value}s</span> },
               { id: "Avg (s)", header: "Average", accessor: "Avg (s)", sortType: "number" as any, cell: ({ value }: any) => <Strong>{value}s</Strong> },
               { id: "P90 (s)", header: "P90", accessor: "P90 (s)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}s</Strong> },
-              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+              { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             ]} /></div>
 
             <div className="uj-table-tile" style={{ padding: 16 }}>
@@ -12451,7 +12451,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
               </Flex>
               <Flex gap={16} style={{ marginBottom: 6 }}>
                 <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Conversion</Text><Strong style={{ display: "block", fontSize: 14, color: RED }}>{s.convRate.toFixed(1)}%</Strong></div>
-                <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Avg Duration</Text><Strong style={{ display: "block", fontSize: 14, color: s.isLatencySpike ? RED : BLUE }}>${fmt(s.avgDuration)}</Strong></div>
+                <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Avg Duration</Text><Strong style={{ display: "block", fontSize: 14, color: s.isLatencySpike ? RED : BLUE }}>{fmt(s.avgDuration)}</Strong></div>
                 <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Error Rate</Text><Strong style={{ display: "block", fontSize: 14, color: s.isErrorSurge ? RED : GREEN }}>{s.errorRate.toFixed(1)}%</Strong></div>
                 <div><Text style={{ fontSize: 12, opacity: 0.5 }}>Confidence</Text><Strong style={{ display: "block", fontSize: 14, color: s.confidence > 60 ? ORANGE : BLUE }}>{s.confidence}%</Strong></div>
               </Flex>
@@ -12514,7 +12514,7 @@ function RootCauseCorrelationTab({ hourlyData, stepDropData, quality, qualityPre
           }))}
           columns={[
             { id: "Hour", header: "Hour", accessor: "Hour" },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: statusClr(value) }}>{fmtPct(value)}</Strong> },
             { id: "Avg Duration", header: "Avg Dur", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P90 Duration", header: "P90 Dur", accessor: "P90 Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 4000 ? RED : value > 2000 ? YELLOW : GREEN }}>{fmt(value)}</Strong> },
@@ -13111,7 +13111,7 @@ function PredictiveForecastingTab({ trendData, apdexTrendData, vitalsTrendData, 
           })}
           columns={[
             { id: "Day", header: "Day", accessor: "Day", cell: ({ value }: any) => <Text style={{ fontSize: 12 }}>{value}</Text> },
-            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Apdex", header: "Apdex", accessor: "Apdex", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: apdexClr(value) }}>{value.toFixed(2)}</Strong> },
             { id: "Conv Rate", header: "Conv %", accessor: "Conv Rate", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: statusClr(value) }}>{fmtPct(value)}</Strong> },
             { id: "Avg Duration", header: "Avg Dur", accessor: "Avg Duration", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
@@ -13345,7 +13345,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
           <div key={sc.step} className="uj-anomaly-card" style={{ borderLeftColor: BLUE, minWidth: 280, flex: 1 }}>
             <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
               <Strong style={{ fontSize: 13 }}>{sc.step}</Strong>
-              <Text style={{ fontSize: 12, opacity: 0.5 }}>${fmtCount(sc.totalResources)} resources</Text>
+              <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtCount(sc.totalResources)} resources</Text>
             </Flex>
             {sc.types.length === 0 ? (
               <Text style={{ fontSize: 13, opacity: 0.4 }}>No resource data</Text>
@@ -13357,7 +13357,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
                     <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
                       <div style={{ height: "100%", width: `${Math.min((t.totalDur / Math.max(sc.totalTime, 1)) * 100, 100)}%`, background: typeClr(t.type), borderRadius: 3, opacity: 0.7 }} />
                     </div>
-                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right" }}>${fmt(t.avgDur)}</Text>
+                    <Text style={{ fontSize: 12, minWidth: 50, textAlign: "right" }}>{fmt(t.avgDur)}</Text>
                     <Text style={{ fontSize: 13, opacity: 0.4, minWidth: 30 }}>{fmtCount(t.count)}</Text>
                   </Flex>
                 ))}
@@ -13398,7 +13398,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
                 <rect x={450} y={y - 8} width={Math.max(p50W, 2)} height={12} rx={2} fill={color} opacity={0.6} />
                 {/* Type badge */}
                 <text x={412} y={y + 3} fill={color} fontSize={8} fontWeight={600}>{r.type}</text>
-                <text x={620} y={y + 4} fill="rgba(128,128,128,0.7)" fontSize={9}>${fmtCount(r.count)}</text>
+                <text x={620} y={y + 4} fill="rgba(128,128,128,0.7)" fontSize={9}>{fmtCount(r.count)}</text>
                 <text x={670} y={y + 4} fill={r.p90Dur > 1000 ? RED : r.p90Dur > 500 ? ORANGE : GREEN} fontSize={9} fontWeight={600}>{fmt(r.p90Dur)}</text>
               </g>
             );
@@ -13425,7 +13425,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
             { id: "Step", header: "Step", accessor: "Step", cell: ({ value }: any) => <Text style={{ fontSize: 13 }}>{value}</Text> },
             { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${typeClr(value)}20`, color: typeClr(value), fontWeight: 600 }}>{value}</span> },
             { id: "Resource", header: "Resource", accessor: "Resource", cell: ({ value }: any) => <Text style={{ fontSize: 12, wordBreak: "break-all" as const }}>{value}</Text> },
-            { id: "Count", header: "Count", accessor: "Count", sortType: "number" as any, cell: ({ value }: any) => <Text>${fmtCount(value)}</Text> },
+            { id: "Count", header: "Count", accessor: "Count", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
             { id: "Avg (ms)", header: "Avg", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P50 (ms)", header: "P50", accessor: "P50 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmt(value)}</Text> },
             { id: "P90 (ms)", header: "P90", accessor: "P90 (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 1000 ? RED : value > 500 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
@@ -13491,7 +13491,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
               { id: "#", header: "#", accessor: "#", cell: ({ value }: any) => <Strong style={{ color: BLUE }}>{value}</Strong> },
               { id: "Resource", header: "Resource", accessor: "Resource", cell: ({ value }: any) => <Text style={{ fontSize: 12, wordBreak: "break-all" as const }}>{value}</Text> },
               { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${typeClr(value)}20`, color: typeClr(value), fontWeight: 600 }}>{value}</span> },
-              { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>${fmt(value)}</Strong> },
+              { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
               { id: "Step", header: "Step", accessor: "Step" },
               { id: "Time", header: "Time", accessor: "Time", cell: ({ value }: any) => <Text style={{ fontSize: 12, opacity: 0.6 }}>{value}</Text> },
               { id: "Session", header: "Session", accessor: "Session", cell: ({ value, rowData }: any) => { const sid = value; const rawTs = rowData?._rawTs; return sid ? <a href={sessionReplayUrl(sid, rawTs)} target="_blank" rel="noopener noreferrer" style={{ color: BLUE, fontSize: 12, textDecoration: "none" }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open session">{sid.slice(0, 8)}...</a> : <Text style={{ opacity: 0.3 }}>{"\u2014"}</Text>; } },
@@ -13540,7 +13540,7 @@ function ResourceWaterfallTab({ waterfallData, byStepData, sessionDrillData, isL
                     { id: "#", header: "#", accessor: "#" },
                     { id: "Resource", header: "Resource", accessor: "Resource", cell: ({ value }: any) => <Text style={{ fontSize: 12, wordBreak: "break-all" as const }}>{value}</Text> },
                     { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: `${typeClr(value)}20`, color: typeClr(value), fontWeight: 600 }}>{value}</span> },
-                    { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>${fmt(value)}</Strong> },
+                    { id: "Duration", header: "Duration", accessor: "Duration", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 2000 ? RED : value > 1000 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
                     { id: "Step", header: "Step", accessor: "Step" },
                     { id: "Time", header: "Time", accessor: "Time", cell: ({ value }: any) => <Text style={{ fontSize: 12, opacity: 0.6 }}>{value}</Text> },
                   ]} />
@@ -13790,7 +13790,7 @@ function ChangeIntelligenceTab({ deployData, impactData, quality, qualityPrev, o
                     <div>
                       <Text style={{ fontSize: 26, opacity: 0.5 }}>Avg Duration</Text>
                       <Flex gap={6} alignItems="baseline">
-                        <Text style={{ fontSize: 32, opacity: 0.6 }}>${fmt(d.before.avgDur)}</Text>
+                        <Text style={{ fontSize: 32, opacity: 0.6 }}>{fmt(d.before.avgDur)}</Text>
                         <Text style={{ fontSize: 28, opacity: 0.4 }}>→</Text>
                         <Strong style={{ fontSize: 44, color: d.durDelta <= 0 ? GREEN : RED }}>{fmt(d.after.avgDur)}</Strong>
                         <Text style={{ fontSize: 26, color: d.durDelta <= 0 ? GREEN : RED }}>{d.durDelta > 0 ? "▲" : "▼"}{Math.abs(d.durDelta).toFixed(1)}%</Text>
@@ -14660,7 +14660,7 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
           {/* Y-axis left (Sessions) */}
           {sessYTicks.map((v, i) => {
             const y = PAD.top + iH - (i / (sessYTicks.length - 1)) * iH;
-            return <g key={`sy${i}`}><line x1={PAD.left - 4} y1={y} x2={PAD.left} y2={y} stroke="rgba(255,255,255,0.2)" /><text x={PAD.left - 8} y={y + 3} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize={9}>${fmtCount(v)}</text>{i > 0 && <line x1={PAD.left} y1={y} x2={PAD.left + iW} y2={y} stroke="rgba(255,255,255,0.05)" />}</g>;
+            return <g key={`sy${i}`}><line x1={PAD.left - 4} y1={y} x2={PAD.left} y2={y} stroke="rgba(255,255,255,0.2)" /><text x={PAD.left - 8} y={y + 3} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize={9}>{fmtCount(v)}</text>{i > 0 && <line x1={PAD.left} y1={y} x2={PAD.left + iW} y2={y} stroke="rgba(255,255,255,0.05)" />}</g>;
           })}
           {/* Y-axis right (Conv %) */}
           {convYTicks.map((v, i) => {
@@ -14787,7 +14787,7 @@ function CohortRetentionTab({ retentionData, sessionData, engagementData, isLoad
           const longSess = records.filter((r: any) => Number(r.avg_dur ?? 0) >= p75Dur);
           if (longSess.length >= 3) {
             const cr = (longSess.filter((r: any) => r.converted === true || r.converted === "true" || Number(r.converted ?? 0) > 0).length / longSess.length) * 100;
-            cohorts.push({ name: `Long Sessions (>${fmt(p75Dur)})`, description: "Sessions in the top 25% by duration — indicates research/comparison behavior", sessions: longSess.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: YELLOW });
+            cohorts.push({ name: `Long Sessions (>{fmt(p75Dur)})`, description: "Sessions in the top 25% by duration — indicates research/comparison behavior", sessions: longSess.length, convRate: cr, lift: baseConvRate > 0 ? cr / baseConvRate : 0, color: YELLOW });
           }
         }
 
@@ -14991,7 +14991,7 @@ function SessionEngagementTab({ data, isLoading, steps, aov, overallConv, onDril
       <Flex gap={16} flexWrap="wrap">
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 200, textAlign: "center" }}>
           <Text style={{ fontSize: 12, opacity: 0.5, display: "block" }}>🟢 High (≥70)</Text>
-          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>${fmtPct(highConvRate)}</Heading>
+          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>{fmtPct(highConvRate)}</Heading>
           <Text style={{ fontSize: 11, opacity: 0.5 }}>{fmtCount(highEngagement.length)} sessions</Text>
         </div>
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 200, textAlign: "center" }}>
@@ -15160,7 +15160,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend, onDrillToFore
       <Flex gap={16} flexWrap="wrap">
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 280, textAlign: "center" }}>
           <Text style={{ fontSize: 12, opacity: 0.5, display: "block" }}>🏠 First-Party</Text>
-          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>${fmtCount(firstParty.reduce((a, d) => a + d.reqCount, 0))} requests</Heading>
+          <Heading level={2} style={{ color: GREEN, margin: "8px 0" }}>{fmtCount(firstParty.reduce((a, d) => a + d.reqCount, 0))} requests</Heading>
           <Text style={{ fontSize: 12, opacity: 0.5 }}>{fmtBytes(firstPartyBytes)} · {Math.round(avgFirstPartyDur)}ms avg</Text>
         </div>
         <div className="uj-table-tile" style={{ padding: 16, flex: 1, minWidth: 280, textAlign: "center" }}>
@@ -15252,7 +15252,7 @@ function ThirdPartyImpactTab({ data, cwvData, isLoading, frontend, onDrillToFore
                 { id: "#", header: "#", accessor: "#" },
                 { id: "Domain", header: "Domain", accessor: "Domain", cell: ({ value }: any) => <Strong style={{ fontSize: 12 }}>{value}</Strong> },
                 { id: "Type", header: "Type", accessor: "Type", cell: ({ value }: any) => <Text style={{ fontSize: 11 }}>{value}</Text> },
-                { id: "Avg (ms)", header: "Avg Latency", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 500 ? RED : value > 200 ? ORANGE : GREEN }}>${fmt(value)}</Strong> },
+                { id: "Avg (ms)", header: "Avg Latency", accessor: "Avg (ms)", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: value > 500 ? RED : value > 200 ? ORANGE : GREEN }}>{fmt(value)}</Strong> },
                 { id: "Requests", header: "Requests", accessor: "Requests", sortType: "number" as any, cell: ({ value }: any) => <Text>{fmtCount(value)}</Text> },
                 { id: "Impact", header: "Impact", accessor: "Impact", cell: ({ value }: any) => <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: `${RED}15`, color: RED, fontWeight: 700 }}>{value}</span> },
               ]} /></div>
@@ -15412,7 +15412,7 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData, 
         "Sample Message": c.sampleMessage.substring(0, 80),
       }))} columns={[
         { id: "Error Name", header: "Error Name", accessor: "Error Name", cell: ({ value, rowData }: any) => { const filter = encodeURIComponent(`"Frontend" = "${frontend}" "Error Name" = "${String(value)}"`); const url = `${ENV_URL}/ui/apps/dynatrace.error.inspector/explorer?tf=${tfParam()}&sort=affected_users%3Adescending&perspective=impact#filtering=${filter}`; return <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: RED, textDecoration: "none", fontWeight: 600 }} onMouseEnter={(e: any) => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={(e: any) => (e.currentTarget.style.textDecoration = "none")} title="Open in Error Inspector">{String(value).substring(0, 35)}</a>; } },
-        { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>${fmtCount(value)}</Strong> },
+        { id: "Occurrences", header: "Count", accessor: "Occurrences", sortType: "number" as any, cell: ({ value }: any) => <Strong>{fmtCount(value)}</Strong> },
         { id: "Sessions", header: "Sessions", accessor: "Sessions", sortType: "number" as any, cell: ({ value }: any) => <Strong style={{ color: PURPLE }}>{fmtCount(value)}</Strong> },
         { id: "Impact %", header: "Impact %", accessor: "Impact %", sortType: "number" as any, cell: ({ value }: any) => <span style={{ display: "inline-block", width: "100%", padding: "2px 8px", borderRadius: 4, background: value >= 20 ? "rgba(194,25,48,0.15)" : value >= 5 ? "rgba(184,134,11,0.15)" : "rgba(128,128,128,0.1)", color: value >= 20 ? RED : value >= 5 ? YELLOW : "inherit", fontWeight: 700, textAlign: "center" }}>{value}%</span> },
         { id: "Sample Message", header: "Sample", accessor: "Sample Message", cell: ({ value }: any) => <Text style={{ fontSize: 11, opacity: 0.6 }}>{value}</Text> },
