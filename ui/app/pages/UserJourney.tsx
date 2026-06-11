@@ -10838,7 +10838,7 @@ function SankeyTab({ data, isLoading, appEntityId, chartStyle, onStyleChange, st
             <Text style={{ fontSize: 12, opacity: 0.5 }}>Inbound ({labelInbound.length}):</Text>
             <Flex gap={6} flexWrap="wrap" style={{ marginTop: 2 }}>
               {labelInbound.slice(0, 8).map((l, i) => (
-                <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{truncLabel(l.label, 30)} <Strong style={{ color: CYAN }}>{fmtCount(l.value)}</Strong>{fmtCount(n)}</a>
+                <a key={i} href={appEntityId ? vitalsUrl(appEntityId, l.label) : '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "inherit", textDecoration: "none", cursor: appEntityId ? "pointer" : "default" }} onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.18)")} onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")} title={appEntityId ? `Open in Vitals: ${l.label}` : l.label}>{truncLabel(l.label, 30)} <Strong style={{ color: CYAN }}>{fmtCount(l.value)}</Strong></a>
               ))}
             </Flex>
           </div>
