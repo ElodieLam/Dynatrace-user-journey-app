@@ -118,7 +118,7 @@ const TAB_KEYS = [
   "Third-Party Impact", "Error Clustering",
   "Hyperlyzer",
   "Cost per Conversion", "Performance Tax", "Idle Capacity", "CDN ROI", "Cost Anomalies",
-  "Right-Sizing", "Cost per Transaction", "Cloud Waste", "Scaling Efficiency", "Environment Parity", "SLO Cost Trade-offs", "Tag Allocation", "Observability ROI",
+  "Right-Sizing", "Cost per Transaction", "Cloud Waste", "Scaling Efficiency", "SLO Cost Trade-offs", "Tag Allocation", "Observability ROI",
 ] as const;
 type TabKey = typeof TAB_KEYS[number];
 
@@ -134,7 +134,7 @@ const TAB_GROUPS: TabGroupDef[] = [
   { label: "Intelligence & AI", subTabs: ["Anomaly Detection", "Root Cause Correlation", "Predictive Forecasting", "Change Intelligence", "What-If Analysis"] },
   { label: "Engagement & Revenue", subTabs: ["Segmentation", "Cohort Retention", "Session Engagement", "Revenue Intelligence", "A/B Comparison"] },
   { label: "Errors & Reliability", subTabs: ["Exceptions", "Error Clustering", "SLO Tracker"] },
-  { label: "FinOps", subTabs: ["Cost per Conversion", "Performance Tax", "Idle Capacity", "CDN ROI", "Cost Anomalies", "Right-Sizing", "Cost per Transaction", "Cloud Waste", "Scaling Efficiency", "Environment Parity", "SLO Cost Trade-offs", "Tag Allocation", "Observability ROI"] },
+  { label: "FinOps", subTabs: ["Cost per Conversion", "Performance Tax", "Idle Capacity", "CDN ROI", "Cost Anomalies", "Right-Sizing", "Cost per Transaction", "Cloud Waste", "Scaling Efficiency", "SLO Cost Trade-offs", "Tag Allocation", "Observability ROI"] },
 ];
 type ParentTabKey = typeof TAB_GROUPS[number]["label"];
 const PARENT_TAB_KEYS: ParentTabKey[] = TAB_GROUPS.map(g => g.label);
@@ -2639,7 +2639,6 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Cost per Transaction</Strong>: Breaks down infrastructure cost per user session and per service request, revealing which services deliver the best ROI and where spend is disproportionate to business value</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Cloud Waste</Strong>: Aggregates idle resources, orphaned volumes, over-provisioned instances, and unused reservations into a single waste score with severity-ranked remediation actions</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Scaling Efficiency</Strong>: Measures how well autoscaling responds to demand — identifies under-scaled services causing latency and over-scaled services burning budget during low-traffic periods</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Environment Parity</Strong>: Compares non-production environment costs against production, flagging environments that cost disproportionately more than their traffic justifies</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>SLO Cost Trade-offs</Strong>: Models the cost of each additional "nine" of availability — shows diminishing returns and helps find the optimal SLO tier balancing reliability against infrastructure spend</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Tag Allocation</Strong>: Tracks cost allocation compliance by team/cost-center tags, identifies untagged resources and teams exceeding budgets, enabling accurate showback/chargeback</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Observability ROI</Strong>: Quantifies the return on observability investment — compares monitoring costs against incident prevention value, MTTR reduction, and proactive issue detection savings</Paragraph>
@@ -2658,7 +2657,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 1, 2026</Paragraph>
             <Paragraph><Strong>Tab Groups — Nested Parent Tabs with Sub-Tabs</Strong></Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>8 Parent Tab Groups</Strong>: 44 sub-tabs organized into logical groups — Funnel &amp; Conversion, Executive Summary, User Experience, Navigation &amp; Flows, Intelligence &amp; AI, Engagement &amp; Revenue, Errors &amp; Reliability, and FinOps</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>8 Parent Tab Groups</Strong>: 43 sub-tabs organized into logical groups — Funnel &amp; Conversion, Executive Summary, User Experience, Navigation &amp; Flows, Intelligence &amp; AI, Engagement &amp; Revenue, Errors &amp; Reliability, and FinOps</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Hierarchical Settings</Strong>: Toggle visibility and drag-to-reorder at both the parent group level and individual sub-tab level. Expand groups in Settings with ▸/▾ to access sub-tab controls</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>AI Insights — Sub-Tab Aware</Strong>: The AI Insights panel now automatically adapts to the active sub-tab, showing contextual analysis for whichever view you're currently on</Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Persisted per user</Strong>: Parent tab order, parent visibility, sub-tab order, and sub-tab visibility all persist independently via Dynatrace App State</Paragraph>
@@ -2890,7 +2889,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Intelligence &amp; AI</Strong>: Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Engagement &amp; Revenue</Strong>: Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Errors &amp; Reliability</Strong>: Exceptions, Error Clustering, SLO Tracker</Paragraph>
-        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>FinOps</Strong>: Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, Environment Parity, SLO Cost Trade-offs, Tag Allocation, Observability ROI</Paragraph>
+        <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>FinOps</Strong>: Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, SLO Cost Trade-offs, Tag Allocation, Observability ROI</Paragraph>
         <Paragraph><Strong>Hiding a parent group</Strong> hides all its sub-tabs. Hiding individual sub-tabs within a visible group removes only those sub-tabs. Hiding a tab does not affect data collection, only display.</Paragraph>
         <Paragraph><Strong>Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. Selecting a different app immediately re-queries all data and updates the Pages / Identifiers dropdowns for the new app.</Paragraph>
         <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the selected app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
@@ -3878,7 +3877,6 @@ export function UserJourney() {
             case "Cost per Transaction": content = <CostPerTransactionTab quality={quality} qualityPrev={qualityPrev} funnelCounts={funnelCounts} monthlyInfraCost={monthlyInfraCost} computeCostPerHour={computeCostPerHour} aov={aov} overallConv={overallConv} isLoading={isLoading} onDrillToForecast={openForecast} />; break;
             case "Cloud Waste": content = <CloudWasteTab hostMetricsData={hostMetricsData} monthlyInfraCost={monthlyInfraCost} computeCostPerHour={computeCostPerHour} isLoading={isLoading || hostMetricsData.isLoading} onDrillToForecast={openForecast} />; break;
             case "Scaling Efficiency": content = <ScalingEfficiencyTab quality={quality} qualityPrev={qualityPrev} hostMetricsData={hostMetricsData} monthlyInfraCost={monthlyInfraCost} computeCostPerHour={computeCostPerHour} isLoading={isLoading || hostMetricsData.isLoading} onDrillToForecast={openForecast} />; break;
-            case "Environment Parity": content = <EnvironmentParityTab monthlyInfraCost={monthlyInfraCost} isLoading={isLoading} onDrillToForecast={openForecast} />; break;
             case "SLO Cost Trade-offs": content = <SloCostTradeoffsTab quality={quality} monthlyInfraCost={monthlyInfraCost} computeCostPerHour={computeCostPerHour} isLoading={isLoading} onDrillToForecast={openForecast} />; break;
             case "Tag Allocation": content = <TagAllocationTab monthlyInfraCost={monthlyInfraCost} isLoading={isLoading} onDrillToForecast={openForecast} />; break;
             case "Observability ROI": content = <ObservabilityRoiTab quality={quality} monthlyInfraCost={monthlyInfraCost} isLoading={isLoading} onDrillToForecast={openForecast} />; break;

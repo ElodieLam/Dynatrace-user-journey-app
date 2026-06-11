@@ -40,7 +40,7 @@ The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<
 | 5 | **Intelligence & AI** | Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis |
 | 6 | **Engagement & Revenue** | Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison |
 | 7 | **Errors & Reliability** | Exceptions, Error Clustering, SLO Tracker |
-| 8 | **FinOps** | Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, Environment Parity, SLO Cost Trade-offs, Tag Allocation, Observability ROI |
+| 8 | **FinOps** | Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, SLO Cost Trade-offs, Tag Allocation, Observability ROI |
 
 **Key architecture decisions**:
 - Parent tab groups and sub-tabs are independently reorderable and toggleable via Settings
@@ -1239,20 +1239,7 @@ fetch user.events, {periodStr}
 
 ---
 
-### 41. Environment Parity
-
-**Purpose**: Compare non-production environment costs against production, flagging environments that cost disproportionately more than their traffic justifies.
-
-**Key Features**:
-- Environment comparison table (Production, Staging, Dev, QA, DR)
-- Cost vs. traffic ratio analysis per environment
-- Non-production to production cost ratio
-- Per-environment right-sizing savings potential
-- Uses Monthly Infrastructure Cost from Settings
-
----
-
-### 42. SLO Cost Trade-offs
+### 41. SLO Cost Trade-offs
 
 **Purpose**: Model the cost of each additional "nine" of availability — shows diminishing returns and helps find the optimal SLO tier.
 
@@ -1266,7 +1253,7 @@ fetch user.events, {periodStr}
 
 ---
 
-### 43. Tag Allocation
+### 42. Tag Allocation
 
 **Purpose**: Track cost allocation compliance by team/cost-center tags, identify untagged resources and teams exceeding budgets.
 
@@ -1279,7 +1266,7 @@ fetch user.events, {periodStr}
 
 ---
 
-### 44. Observability ROI
+### 43. Observability ROI
 
 **Purpose**: Quantify the return on observability investment — compare monitoring costs against incident prevention value and MTTR reduction.
 
