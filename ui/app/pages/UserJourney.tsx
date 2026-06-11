@@ -93,7 +93,7 @@ const TIMEFRAME_OPTIONS = [
   { label: "2 hours", value: 0.083 },
   { label: "6 hours", value: 0.25 },
   { label: "12 hours", value: 0.5 },
-  { label: "1 day", value: 1 },
+  { label: "24 hours", value: 1 },
   { label: "2 days", value: 2 },
   { label: "3 days", value: 3 },
   { label: "7 days", value: 7 },
@@ -169,7 +169,7 @@ const CWV = {
 // at module scope so `periodClause` can emit absolute ISO timestamps, and so
 // query strings change when the user shifts the window (driving useDql refetch).
 let CURRENT_ANCHOR_MS: number | null = null;
-let CURRENT_TIMEFRAME_DAYS: number = 0.083;
+let CURRENT_TIMEFRAME_DAYS: number = 1;
 export function setQueryAnchorMs(ms: number | null) { CURRENT_ANCHOR_MS = ms; }
 export function setCurrentTimeframeDays(d: number) { CURRENT_TIMEFRAME_DAYS = d; }
 
@@ -3515,7 +3515,7 @@ export function UserJourney() {
           <Strong style={{ fontSize: 12 }}>Timeframe</Strong>
           <div style={{ minWidth: 280 }}>
             <TimeframeSelector
-              value={timeframeRaw ?? { from: "now()-2h", to: "now()" }}
+              value={timeframeRaw ?? { from: "now()-24h", to: "now()" }}
               onChange={(tf) => {
                 setTimeframeRaw(tf);
                 const d = timeframeToDays(tf);
