@@ -2,6 +2,14 @@
    User Journey & Experience — Styles
    ============================================================ */
 
+/* Override Strato Tab panel overflow to prevent content clipping */
+[role="tabpanel"] {
+  overflow: visible !important;
+}
+[role="tabpanel"] > div {
+  overflow: visible !important;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -415,7 +423,6 @@
   background: rgba(128, 128, 128, 0.04);
   border: 1px solid rgba(128, 128, 128, 0.15);
   border-radius: 12px;
-  overflow: hidden;
   width: 100%;
 }
 .uj-table-tile [role="cell"],

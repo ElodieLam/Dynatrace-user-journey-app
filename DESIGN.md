@@ -40,7 +40,7 @@ The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<
 | 5 | **Intelligence & AI** | Anomaly Detection, Root Cause Correlation, Predictive Forecasting, Change Intelligence, What-If Analysis |
 | 6 | **Engagement & Revenue** | Segmentation, Cohort Retention, Session Engagement, Revenue Intelligence, A/B Comparison |
 | 7 | **Errors & Reliability** | Exceptions, Error Clustering, SLO Tracker |
-| 8 | **FinOps** | Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies |
+| 8 | **FinOps** | Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, Environment Parity, SLO Cost Trade-offs, Tag Allocation, Observability ROI |
 
 **Key architecture decisions**:
 - Parent tab groups and sub-tabs are independently reorderable and toggleable via Settings
@@ -1184,6 +1184,112 @@ fetch user.events, {periodStr}
 - Spend vs Experience Matrix
 - Budget Forecast (end-of-month projection based on current burn rate)
 - Uses Monthly Infrastructure Cost and Cost Per GB from Settings
+
+---
+
+### 37. Right-Sizing
+
+**Purpose**: Identify over-provisioned hosts by comparing actual CPU/memory utilization against allocated capacity, with per-host savings estimates.
+
+**Key Features**:
+- Fleet-wide right-sizing opportunity assessment (over-provisioned count, total savings potential)
+- Per-host analysis with current tier, recommended tier, average/peak CPU & memory utilization
+- Risk classification (low/medium) based on peak utilization headroom
+- Savings breakdown per host with implementation priority
+- Uses Host Metrics data and Monthly Infrastructure Cost from Settings
+
+---
+
+### 38. Cost per Transaction
+
+**Purpose**: Break down infrastructure cost per user session and per service request, revealing which services deliver the best ROI.
+
+**Key Features**:
+- Cost per session and cost per conversion calculations
+- Revenue per dollar of infrastructure spend
+- Per-service cost/revenue breakdown identifying highest and lowest ROI services
+- Cost efficiency trending (current vs previous period)
+- Uses Monthly Infrastructure Cost, AOV, and conversion data from Settings
+
+---
+
+### 39. Cloud Waste
+
+**Purpose**: Aggregate idle resources, orphaned volumes, over-provisioned instances, and unused reservations into a single waste score.
+
+**Key Features**:
+- Categorized waste items with severity classification (high/medium/low)
+- Per-category monthly cost impact and remediation actions
+- Total waste percentage of infrastructure spend
+- Severity-ranked remediation priority list
+- Uses Monthly Infrastructure Cost from Settings
+
+---
+
+### 40. Scaling Efficiency
+
+**Purpose**: Measure how well autoscaling responds to demand — identifies under-scaled services causing latency and over-scaled services burning budget.
+
+**Key Features**:
+- Hourly scaling event timeline showing under-scaled and over-scaled periods
+- Under-scale latency impact quantification
+- Over-scale waste cost per hour
+- Scaling score (0-100) measuring responsiveness
+- Uses Compute Cost Per Hour from Settings
+
+---
+
+### 41. Environment Parity
+
+**Purpose**: Compare non-production environment costs against production, flagging environments that cost disproportionately more than their traffic justifies.
+
+**Key Features**:
+- Environment comparison table (Production, Staging, Dev, QA, DR)
+- Cost vs. traffic ratio analysis per environment
+- Non-production to production cost ratio
+- Per-environment right-sizing savings potential
+- Uses Monthly Infrastructure Cost from Settings
+
+---
+
+### 42. SLO Cost Trade-offs
+
+**Purpose**: Model the cost of each additional "nine" of availability — shows diminishing returns and helps find the optimal SLO tier.
+
+**Key Features**:
+- SLO tier comparison (99.0% through 99.99%) with cost multipliers
+- Downtime minutes per month at each tier
+- Revenue at risk vs. cost of achieving each tier
+- Marginal cost per nine of availability
+- Current SLO tier identification and optimal tier recommendation
+- Uses Monthly Infrastructure Cost and revenue data from Settings
+
+---
+
+### 43. Tag Allocation
+
+**Purpose**: Track cost allocation compliance by team/cost-center tags, identify untagged resources and teams exceeding budgets.
+
+**Key Features**:
+- Per-team spend vs. budget tracking with over/under indicators
+- Untagged resource percentage and cost exposure
+- Budget variance alerts for teams exceeding allocation
+- Cost center rollup for showback/chargeback reporting
+- Uses Monthly Infrastructure Cost from Settings
+
+---
+
+### 44. Observability ROI
+
+**Purpose**: Quantify the return on observability investment — compare monitoring costs against incident prevention value and MTTR reduction.
+
+**Key Features**:
+- Total observability cost breakdown (APM, infrastructure, logs, synthetics, RUM)
+- Observability cost as percentage of infrastructure spend
+- ROI calculation: incidents detected × avg incident cost × prevention rate
+- MTTR reduction value quantification
+- False positive rate impact on team productivity
+- Uses Monthly Infrastructure Cost and session data from Settings
 
 ---
 
