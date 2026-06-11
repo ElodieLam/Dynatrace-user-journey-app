@@ -218,7 +218,7 @@ function timeframeAnchorMs(tf: Timeframe | null): number | null {
 function fmt(v: number | undefined): string { if (v == null || isNaN(v)) return "N/A"; return v >= 1000 ? (v / 1000).toFixed(2) + " s" : v.toFixed(0) + " ms"; }
 function fmtCount(v: number | undefined): string { if (v == null) return "0"; if (v >= 1e6) return (v / 1e6).toFixed(1) + "M"; if (v >= 1e3) return (v / 1e3).toFixed(1) + "k"; return Math.round(v).toLocaleString(); }
 function fmtPct(v: number | undefined): string { return (v == null || isNaN(v)) ? "0.0%" : v.toFixed(1) + "%"; }
-function fmtCurrency(v: number | undefined): string { if (v == null || isNaN(v)) return "$0.00"; if (Math.abs(v) >= 1e6) return (v < 0 ? "-" : "") + "$" + (Math.abs(v) / 1e6).toFixed(2) + "M"; if (Math.abs(v) >= 1e3) return (v < 0 ? "-" : "") + "$" + (Math.abs(v) / 1e3).toFixed(1) + "k"; return (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2); }
+function fmtCurrency(v: number | undefined): string { if (v == null || isNaN(v)) return "$0.00"; if (Math.abs(v) >= 1e6) return (v < 0 ? "-" : "") + "$" + (Math.abs(v) / 1e6).toFixed(2) + "M"; if (Math.abs(v) >= 1e3) return (v < 0 ? "-" : "") + "$" + (Math.abs(v) / 1e3).toFixed(1) + "k"; if (Math.abs(v) > 0 && Math.abs(v) < 0.01) return (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(4); return (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2); }
 function formatHourKey(d: Date): string { return d.toISOString().substring(0, 13).replace("T", " ") + ":00"; }
 function statusClr(pct: number): string { return pct >= 80 ? GREEN : pct >= 50 ? YELLOW : RED; }
 function apdexClr(a: number): string { return a >= 0.85 ? GREEN : a >= 0.7 ? YELLOW : a >= 0.5 ? ORANGE : RED; }
@@ -15531,6 +15531,7 @@ function ErrorClusteringTab({ data, trendData, isLoading, frontend, deployData, 
 // =============================================================================
 
 function CostPerConversionTab({ funnelCounts, funnelCountsPrev, quality, qualityPrev, steps, aov, monthlyInfraCost, isLoading, onDrillToForecast }: { funnelCounts: number[]; funnelCountsPrev: number[]; quality: any; qualityPrev: any; steps: StepDef[]; aov: number; monthlyInfraCost: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Cost per Conversion"), []));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15559,23 +15560,28 @@ function CostPerConversionTab({ funnelCounts, funnelCountsPrev, quality, quality
     return { label: step.label, sessions: count, allocatedCost, costPerConv: costPerStepConv, share: stepShare * 100 };
   });
 
-  // Sparkline: simulate daily cost-per-conversion trend
-  const sparkCpc = Array.from({ length: 8 }, (_, i) => costPerConversion * (0.85 + Math.random() * 0.3));
-  const sparkSessions = Array.from({ length: 8 }, (_, i) => sessionsPerDollar * (0.9 + Math.random() * 0.2));
+  // Sparkline: simulate daily cost-per-conversion trend (deterministic)
+  const sparkCpc = Array.from({ length: 8 }, (_, i) => costPerConversion * (0.85 + (((i * 7 + 3) % 11) / 11) * 0.3));
+  const sparkCps = Array.from({ length: 8 }, (_, i) => costPerSession * (0.85 + (((i * 5 + 2) % 9) / 9) * 0.3));
+  const sparkRatio = Array.from({ length: 8 }, (_, i) => costEfficiencyRatio * (0.9 + (((i * 3 + 1) % 7) / 7) * 0.2));
+  const sparkSessions = Array.from({ length: 8 }, (_, i) => sessionsPerDollar * (0.9 + (((i * 4 + 5) % 8) / 8) * 0.2));
+  const sparkConv = Array.from({ length: 8 }, (_, i) => conversions * (0.85 + (((i * 6 + 4) % 10) / 10) * 0.3));
+  const sparkRev = Array.from({ length: 8 }, (_, i) => conversions * aov * (0.85 + (((i * 2 + 7) % 9) / 9) * 0.3));
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
+      {aiPanel}
       <Flex gap={16} flexWrap="wrap">
         <KpiCard label="Cost per Conversion" value={fmtCurrency(costPerConversion)} color={RED} rawValue={costPerConversion} prevRawValue={prevCostPerConversion || undefined} sparkline={sparkCpc} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Cost per Session" value={fmtCurrency(costPerSession)} color={ORANGE} rawValue={costPerSession} prevRawValue={prevCostPerSession || undefined} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Revenue:Cost Ratio" value={costEfficiencyRatio.toFixed(1) + "x"} color={costEfficiencyRatio > 5 ? GREEN : costEfficiencyRatio > 2 ? YELLOW : RED} rawValue={costEfficiencyRatio} prevRawValue={prevCostEfficiencyRatio || undefined} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Cost per Session" value={fmtCurrency(costPerSession)} color={ORANGE} rawValue={costPerSession} prevRawValue={prevCostPerSession || undefined} sparkline={sparkCps} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Revenue:Cost Ratio" value={costEfficiencyRatio.toFixed(1) + "x"} color={costEfficiencyRatio > 5 ? GREEN : costEfficiencyRatio > 2 ? YELLOW : RED} rawValue={costEfficiencyRatio} prevRawValue={prevCostEfficiencyRatio || undefined} sparkline={sparkRatio} higherIsBetter onDrillToForecast={onDrillToForecast} />
         <KpiCard label="Sessions per Dollar" value={fmtCount(Math.round(sessionsPerDollar))} color={BLUE} rawValue={sessionsPerDollar} prevRawValue={prevSessionsPerDollar || undefined} sparkline={sparkSessions} higherIsBetter onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Daily Infra Cost" value={fmtCurrency(dailyInfraCost)} color={"rgba(128,128,128,0.7)"} rawValue={dailyInfraCost} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Daily Conversions" value={fmtCount(conversions)} color={GREEN} rawValue={conversions} prevRawValue={prevConversions || undefined} higherIsBetter onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Daily Revenue" value={fmtCurrency(conversions * aov)} color={BLUE} rawValue={conversions * aov} prevRawValue={(prevConversions * aov) || undefined} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Daily Infra Cost" value={fmtCurrency(dailyInfraCost)} color={"rgba(128,128,128,0.7)"} rawValue={dailyInfraCost} sparkline={sparkCpc} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Daily Conversions" value={fmtCount(conversions)} color={GREEN} rawValue={conversions} prevRawValue={prevConversions || undefined} sparkline={sparkConv} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Daily Revenue" value={fmtCurrency(conversions * aov)} color={BLUE} rawValue={conversions * aov} prevRawValue={(prevConversions * aov) || undefined} sparkline={sparkRev} higherIsBetter onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Cost Allocation by Funnel Step" />
@@ -15638,6 +15644,7 @@ function CostPerConversionTab({ funnelCounts, funnelCountsPrev, quality, quality
 }
 
 function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, overallConvPrev, steps, aov, monthlyInfraCost, engineerHourlyRate, isLoading, onDrillToForecast }: { funnelCounts: number[]; quality: any; qualityPrev: any; overallConv: number; overallConvPrev: number; steps: StepDef[]; aov: number; monthlyInfraCost: number; engineerHourlyRate: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Performance Tax"), []));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15676,15 +15683,19 @@ function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, ov
     { label: "CDN optimization (50ms savings)", convGain: 0.5, revGain: latencyRevLoss * 0.1, investCost: monthlyInfraCost * 0.1 },
   ];
 
-  const sparkTax = Array.from({ length: 8 }, (_, i) => totalPerfTax * (0.8 + Math.random() * 0.4));
+  const sparkTax = Array.from({ length: 8 }, (_, i) => totalPerfTax * (0.8 + (((i * 7 + 2) % 10) / 10) * 0.4));
+  const sparkLostConv = Array.from({ length: 8 }, (_, i) => totalLostConversions * (0.8 + (((i * 5 + 3) % 9) / 9) * 0.4));
+  const sparkBreakEven = Array.from({ length: 8 }, (_, i) => breakEvenHours * (0.85 + (((i * 3 + 4) % 8) / 8) * 0.3));
+  const sparkRevRisk = Array.from({ length: 8 }, (_, i) => (aov > 0 ? (totalPerfTax / Math.max(1, funnelCounts[funnelCounts.length - 1] * aov)) * 100 : 0) * (0.85 + (((i * 6 + 1) % 7) / 7) * 0.3));
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
+      {aiPanel}
       <Flex gap={16} flexWrap="wrap">
         <KpiCard label="Total Performance Tax" value={fmtCurrency(totalPerfTax)} color={RED} rawValue={totalPerfTax} sparkline={sparkTax} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Lost Conversions" value={fmtCount(totalLostConversions)} color={ORANGE} rawValue={totalLostConversions} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Break-Even Fix Time" value={Math.round(breakEvenHours) + "h"} color={BLUE} rawValue={breakEvenHours} onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Revenue at Risk" value={fmtPct(aov > 0 ? (totalPerfTax / Math.max(1, funnelCounts[funnelCounts.length - 1] * aov)) * 100 : 0)} color={RED} rawValue={aov > 0 ? (totalPerfTax / Math.max(1, funnelCounts[funnelCounts.length - 1] * aov)) * 100 : 0} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Lost Conversions" value={fmtCount(totalLostConversions)} color={ORANGE} rawValue={totalLostConversions} sparkline={sparkLostConv} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Break-Even Fix Time" value={Math.round(breakEvenHours) + "h"} color={BLUE} rawValue={breakEvenHours} sparkline={sparkBreakEven} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Revenue at Risk" value={fmtPct(aov > 0 ? (totalPerfTax / Math.max(1, funnelCounts[funnelCounts.length - 1] * aov)) * 100 : 0)} color={RED} rawValue={aov > 0 ? (totalPerfTax / Math.max(1, funnelCounts[funnelCounts.length - 1] * aov)) * 100 : 0} sparkline={sparkRevRisk} inverted onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Tax Breakdown" />
@@ -15710,19 +15721,19 @@ function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, ov
       </Flex>
 
       <SectionHeader title="Cost per Millisecond" />
-      <div className="uj-table-tile" style={{ padding: 16 }}>
-        <Flex flexDirection="column" gap={8}>
+      <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
+        <Flex flexDirection="column" gap={8} style={{ minWidth: 500 }}>
           <Flex justifyContent="space-between" alignItems="center">
             <Text style={{ fontSize: 13 }}>Every <Strong>100ms</Strong> of latency above 1s costs:</Text>
-            <Strong style={{ color: RED, fontSize: 16 }}>{fmtCurrency(latencyRevLoss / Math.max(1, excessLatencyMs / 100))} / 100ms</Strong>
+            <Strong style={{ color: RED, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(latencyRevLoss / Math.max(1, excessLatencyMs / 100))} / 100ms</Strong>
           </Flex>
           <Flex justifyContent="space-between" alignItems="center">
             <Text style={{ fontSize: 13 }}>Every <Strong>1%</Strong> of error rate costs:</Text>
-            <Strong style={{ color: ORANGE, fontSize: 16 }}>{fmtCurrency(errorRevLoss / Math.max(1, errRate))} / 1%</Strong>
+            <Strong style={{ color: ORANGE, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(errorRevLoss / Math.max(1, errRate))} / 1%</Strong>
           </Flex>
           <Flex justifyContent="space-between" alignItems="center">
             <Text style={{ fontSize: 13 }}>Every <Strong>1%</Strong> of frustrated sessions costs:</Text>
-            <Strong style={{ color: YELLOW, fontSize: 16 }}>{fmtCurrency(frustrationRevLoss / Math.max(1, fruPct))} / 1%</Strong>
+            <Strong style={{ color: YELLOW, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(frustrationRevLoss / Math.max(1, fruPct))} / 1%</Strong>
           </Flex>
         </Flex>
       </div>
@@ -15742,6 +15753,7 @@ function PerformanceTaxTab({ funnelCounts, quality, qualityPrev, overallConv, ov
 }
 
 function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCostPerHour, isLoading, onDrillToForecast }: { quality: any; hostMetricsData: any; monthlyInfraCost: number; computeCostPerHour: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Idle Capacity"), []));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15750,7 +15762,8 @@ function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCo
   const hourlyTraffic = Array.from({ length: 24 }, (_, h) => {
     const base = totalSessions / 24;
     const peakFactor = h >= 9 && h <= 17 ? 1.8 : h >= 6 && h <= 21 ? 1.2 : 0.3;
-    return Math.round(base * peakFactor * (0.9 + Math.random() * 0.2));
+    const jitter = 0.9 + (((h * 7 + 3) % 11) / 11) * 0.2;
+    return Math.round(base * peakFactor * jitter);
   });
   const peakTraffic = Math.max(...hourlyTraffic);
   const offPeakTraffic = Math.min(...hourlyTraffic.filter(t => t > 0));
@@ -15780,14 +15793,18 @@ function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCo
     const util = peakTraffic > 0 ? t / peakTraffic : 0;
     return hourlyCost * (1 - util);
   });
+  const sparkUtil = hourlyUtil.slice(0, 8);
+  const sparkIdleH = Array.from({ length: 8 }, (_, i) => idleHours * (0.9 + (((i * 5 + 2) % 7) / 7) * 0.2));
+  const sparkPeakRatio = Array.from({ length: 8 }, (_, i) => (peakTraffic / Math.max(1, offPeakTraffic)) * (0.9 + (((i * 3 + 4) % 6) / 6) * 0.2));
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
+      {aiPanel}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Monthly Idle Waste" value={fmtCurrency(monthlyWaste)} color={RED} rawValue={monthlyWaste} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Avg Utilization" value={fmtPct(avgUtil)} color={avgUtil > 70 ? GREEN : avgUtil > 40 ? YELLOW : RED} rawValue={avgUtil} higherIsBetter onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Idle Hours/Day" value={idleHours + "h"} color={idleHours > 8 ? RED : idleHours > 4 ? ORANGE : GREEN} rawValue={idleHours} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Peak:Off-Peak Ratio" value={(peakTraffic / Math.max(1, offPeakTraffic)).toFixed(1) + "x"} color={BLUE} rawValue={peakTraffic / Math.max(1, offPeakTraffic)} onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Monthly Idle Waste" value={fmtCurrency(monthlyWaste)} color={RED} rawValue={monthlyWaste} sparkline={sparkWaste} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Avg Utilization" value={fmtPct(avgUtil)} color={avgUtil > 70 ? GREEN : avgUtil > 40 ? YELLOW : RED} rawValue={avgUtil} sparkline={sparkUtil} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Idle Hours/Day" value={idleHours + "h"} color={idleHours > 8 ? RED : idleHours > 4 ? ORANGE : GREEN} rawValue={idleHours} sparkline={sparkIdleH} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Peak:Off-Peak Ratio" value={(peakTraffic / Math.max(1, offPeakTraffic)).toFixed(1) + "x"} color={BLUE} rawValue={peakTraffic / Math.max(1, offPeakTraffic)} sparkline={sparkPeakRatio} onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Hourly Cost Efficiency" />
@@ -15875,6 +15892,7 @@ function IdleCapacityTab({ quality, hostMetricsData, monthlyInfraCost, computeCo
 }
 
 function CdnRoiTab({ thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, overallConv, funnelCounts, isLoading, onDrillToForecast }: { thirdPartyData: any; quality: any; cdnMonthlyCost: number; costPerGb: number; aov: number; overallConv: number; funnelCounts: number[]; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("CDN ROI"), []));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15920,27 +15938,33 @@ function CdnRoiTab({ thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, ov
     .sort((a: any, b: any) => b.reqCount * b.avgLatency - a.reqCount * a.avgLatency)
     .slice(0, 10);
 
+  const sparkBenefit = Array.from({ length: 8 }, (_, i) => cdnNetBenefit * (0.9 + (((i * 5 + 2) % 8) / 8) * 0.2));
+  const sparkRoi = Array.from({ length: 8 }, (_, i) => cdnRoi * (0.9 + (((i * 3 + 4) % 7) / 7) * 0.2));
+  const sparkPayback = Array.from({ length: 8 }, (_, i) => paybackDays * (0.85 + (((i * 7 + 1) % 9) / 9) * 0.3));
+  const sparkConvGain = Array.from({ length: 8 }, (_, i) => convGainFromCdn * (0.85 + (((i * 4 + 6) % 10) / 10) * 0.3));
+
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
+      {aiPanel}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="CDN Net Benefit" value={fmtCurrency(cdnNetBenefit)} color={cdnNetBenefit > 0 ? GREEN : RED} rawValue={cdnNetBenefit} higherIsBetter onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="CDN ROI" value={cdnRoi.toFixed(1) + "x"} color={cdnRoi > 3 ? GREEN : cdnRoi > 1 ? YELLOW : RED} rawValue={cdnRoi} higherIsBetter onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Payback Period" value={paybackDays + " days"} color={paybackDays < 14 ? GREEN : paybackDays < 30 ? YELLOW : RED} rawValue={paybackDays} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Conv. Gain from Speed" value={"+" + fmtPct(convGainFromCdn)} color={GREEN} rawValue={convGainFromCdn} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="CDN Net Benefit" value={fmtCurrency(cdnNetBenefit)} color={cdnNetBenefit > 0 ? GREEN : RED} rawValue={cdnNetBenefit} sparkline={sparkBenefit} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="CDN ROI" value={cdnRoi.toFixed(1) + "x"} color={cdnRoi > 3 ? GREEN : cdnRoi > 1 ? YELLOW : RED} rawValue={cdnRoi} sparkline={sparkRoi} higherIsBetter onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Payback Period" value={paybackDays + " days"} color={paybackDays < 14 ? GREEN : paybackDays < 30 ? YELLOW : RED} rawValue={paybackDays} sparkline={sparkPayback} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Conv. Gain from Speed" value={"+" + fmtPct(convGainFromCdn)} color={GREEN} rawValue={convGainFromCdn} sparkline={sparkConvGain} higherIsBetter onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Revenue Impact Model" />
-      <div className="uj-table-tile" style={{ padding: 16 }}>
-        <Flex flexDirection="column" gap={8}>
-          <Flex justifyContent="space-between"><Text>CDN latency reduction:</Text><Strong style={{ color: GREEN }}>-{Math.round(cdnLatencySaving)}ms (60% of {Math.round(firstPartyAvgLatency)}ms origin latency)</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Conversion rate improvement:</Text><Strong style={{ color: GREEN }}>+{fmtPct(convGainFromCdn)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Additional monthly conversions:</Text><Strong style={{ color: GREEN }}>+{fmtCount(additionalConversions * 30)}</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>Additional monthly revenue:</Text><Strong style={{ color: GREEN }}>+{fmtCurrency(additionalRevenue * 30)}</Strong></Flex>
+      <div className="uj-table-tile" style={{ padding: 16, overflowX: "auto" }}>
+        <Flex flexDirection="column" gap={8} style={{ minWidth: 500 }}>
+          <Flex justifyContent="space-between"><Text>CDN latency reduction:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>-{Math.round(cdnLatencySaving)}ms (60% of {Math.round(firstPartyAvgLatency)}ms origin latency)</Strong></Flex>
+          <Flex justifyContent="space-between"><Text>Conversion rate improvement:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>+{fmtPct(convGainFromCdn)}</Strong></Flex>
+          <Flex justifyContent="space-between"><Text>Additional monthly conversions:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>+{fmtCount(additionalConversions * 30)}</Strong></Flex>
+          <Flex justifyContent="space-between"><Text>Additional monthly revenue:</Text><Strong style={{ color: GREEN, whiteSpace: "nowrap", marginLeft: 12 }}>+{fmtCurrency(additionalRevenue * 30)}</Strong></Flex>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", margin: "4px 0" }} />
-          <Flex justifyContent="space-between"><Text>Data transfer savings:</Text><Strong style={{ color: CYAN }}>{fmtCurrency(cdnDataSavings)}/mo</Strong></Flex>
-          <Flex justifyContent="space-between"><Text>CDN cost:</Text><Strong style={{ color: RED }}>-{fmtCurrency(cdnMonthlyCost)}/mo</Strong></Flex>
+          <Flex justifyContent="space-between"><Text>Data transfer savings:</Text><Strong style={{ color: CYAN, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(cdnDataSavings)}/mo</Strong></Flex>
+          <Flex justifyContent="space-between"><Text>CDN cost:</Text><Strong style={{ color: RED, whiteSpace: "nowrap", marginLeft: 12 }}>-{fmtCurrency(cdnMonthlyCost)}/mo</Strong></Flex>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", margin: "4px 0" }} />
-          <Flex justifyContent="space-between"><Text style={{ fontWeight: 700 }}>Net monthly benefit:</Text><Strong style={{ color: cdnNetBenefit > 0 ? GREEN : RED, fontSize: 16 }}>{fmtCurrency(cdnNetBenefit * 30)}</Strong></Flex>
+          <Flex justifyContent="space-between"><Text style={{ fontWeight: 700 }}>Net monthly benefit:</Text><Strong style={{ color: cdnNetBenefit > 0 ? GREEN : RED, fontSize: 16, whiteSpace: "nowrap", marginLeft: 12 }}>{fmtCurrency(cdnNetBenefit * 30)}</Strong></Flex>
         </Flex>
       </div>
 
@@ -15978,6 +16002,7 @@ function CdnRoiTab({ thirdPartyData, quality, cdnMonthlyCost, costPerGb, aov, ov
 }
 
 function CostAnomaliesTab({ quality, qualityPrev, funnelCounts, funnelCountsPrev, monthlyInfraCost, computeCostPerHour, aov, overallConv, isLoading, onDrillToForecast }: { quality: any; qualityPrev: any; funnelCounts: number[]; funnelCountsPrev: number[]; monthlyInfraCost: number; computeCostPerHour: number; aov: number; overallConv: number; isLoading: boolean; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+  const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeGenericTab("Cost Anomalies"), []));
   if (isLoading) return <Loading />;
 
   const totalSessions = quality.sessions ?? 0;
@@ -15995,15 +16020,15 @@ function CostAnomaliesTab({ quality, qualityPrev, funnelCounts, funnelCountsPrev
   // Budget burn rate model (assume monthly budget = monthlyInfraCost)
   const daysElapsed = 15; // mid-month approximation
   const expectedBurn = (daysElapsed / 30) * 100;
-  const actualBurn = 52 + Math.random() * 15; // simulated: slightly over/under
+  const actualBurn = 64.3; // simulated: slightly over
   const burnRateStatus = actualBurn > expectedBurn * 1.1 ? "over" : actualBurn < expectedBurn * 0.9 ? "under" : "on-track";
 
-  // Anomaly detection: generate simulated daily cost data
+  // Anomaly detection: generate simulated daily cost data (deterministic)
   const dailyCosts = Array.from({ length: 14 }, (_, i) => {
     const base = dailyCost;
-    const noise = (Math.random() - 0.5) * dailyCost * 0.15;
+    const noise = (((i * 7 + 3) % 11) / 11 - 0.5) * dailyCost * 0.15;
     // Inject anomaly on day 5 and 11
-    const spike = (i === 4 || i === 10) ? dailyCost * (0.3 + Math.random() * 0.2) : 0;
+    const spike = (i === 4 || i === 10) ? dailyCost * (0.3 + (((i * 5 + 2) % 9) / 9) * 0.2) : 0;
     return base + noise + spike;
   });
   const avgDailyCost = dailyCosts.reduce((a, b) => a + b, 0) / dailyCosts.length;
@@ -16030,13 +16055,19 @@ function CostAnomaliesTab({ quality, qualityPrev, funnelCounts, funnelCountsPrev
   const spendTrend = costEfficiencyChange > 5 ? "increasing" : costEfficiencyChange < -5 ? "decreasing" : "stable";
   const experienceTrend = (quality.avg ?? 0) < (qualityPrev.avg ?? Infinity) ? "improving" : "degrading";
 
+  const sparkBurn = Array.from({ length: 8 }, (_, i) => actualBurn * (0.85 + (((i * 5 + 3) % 8) / 8) * 0.3));
+  const sparkAnomalies = dailyCosts.slice(0, 8).map(c => Math.abs((c - avgDailyCost) / Math.max(1, stdDev)));
+  const sparkErrorWaste = Array.from({ length: 8 }, (_, i) => monthlyErrorWaste * (0.8 + (((i * 7 + 1) % 9) / 9) * 0.4));
+  const sparkEfficiency = Array.from({ length: 8 }, (_, i) => costEfficiencyChange * (0.9 + (((i * 4 + 2) % 6) / 6) * 0.2));
+
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
+      {aiPanel}
       <Flex gap={16} flexWrap="wrap">
-        <KpiCard label="Budget Burn Rate" value={fmtPct(actualBurn)} color={burnRateStatus === "over" ? RED : burnRateStatus === "under" ? CYAN : GREEN} rawValue={actualBurn} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Cost Anomalies (14d)" value={String(anomalies.length)} color={anomalies.length > 2 ? RED : anomalies.length > 0 ? ORANGE : GREEN} rawValue={anomalies.length} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Error-Driven Waste" value={fmtCurrency(monthlyErrorWaste) + "/mo"} color={monthlyErrorWaste > dailyCost ? RED : ORANGE} rawValue={monthlyErrorWaste} inverted onDrillToForecast={onDrillToForecast} />
-        <KpiCard label="Cost Efficiency Δ" value={(costEfficiencyChange >= 0 ? "+" : "") + fmtPct(costEfficiencyChange)} color={costEfficiencyChange > 10 ? RED : costEfficiencyChange > 0 ? ORANGE : GREEN} rawValue={costEfficiencyChange} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Budget Burn Rate" value={fmtPct(actualBurn)} color={burnRateStatus === "over" ? RED : burnRateStatus === "under" ? CYAN : GREEN} rawValue={actualBurn} sparkline={sparkBurn} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Cost Anomalies (14d)" value={String(anomalies.length)} color={anomalies.length > 2 ? RED : anomalies.length > 0 ? ORANGE : GREEN} rawValue={anomalies.length} sparkline={sparkAnomalies} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Error-Driven Waste" value={fmtCurrency(monthlyErrorWaste) + "/mo"} color={monthlyErrorWaste > dailyCost ? RED : ORANGE} rawValue={monthlyErrorWaste} sparkline={sparkErrorWaste} inverted onDrillToForecast={onDrillToForecast} />
+        <KpiCard label="Cost Efficiency Δ" value={(costEfficiencyChange >= 0 ? "+" : "") + fmtPct(costEfficiencyChange)} color={costEfficiencyChange > 10 ? RED : costEfficiencyChange > 0 ? ORANGE : GREEN} rawValue={costEfficiencyChange} sparkline={sparkEfficiency} inverted onDrillToForecast={onDrillToForecast} />
       </Flex>
 
       <SectionHeader title="Daily Cost Trend (14 days)" />
