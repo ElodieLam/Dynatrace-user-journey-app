@@ -2994,15 +2994,17 @@ function funnelDiscoveryQuery(apps: string[]): string {
   const appFilter = apps.length === 1
     ? `frontend.name == "${apps[0]}"`
     : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+  // Track page visit order within sessions per app — sort by timestamp to preserve navigation sequence
   return `fetch user.events, from: now()-7d
 | filter ${appFilter}
 | filter isNotNull(view.name) and view.name != ""
-| fieldsAdd pageName = view.name
-| summarize pages = collectDistinct(pageName), by: {dt.rum.session.id}
-| expand page_seq = pages
-| fieldsRemove pages
-| summarize session_count = count(), by: {page_seq}
-| sort session_count desc
+| sort timestamp asc
+| summarize pages = collectArray(view.name), app = first(frontend.name), by: {dt.rum.session.id}
+| fieldsAdd pageCount = arraySize(pages)
+| filter pageCount >= 3
+| fieldsAdd step1 = pages[0], step2 = pages[1], step3 = pages[2], step4 = if(pageCount >= 4, pages[3], else:""), step5 = if(pageCount >= 5, pages[4], else:"")
+| summarize sessions = count(), by: {app, step1, step2, step3, step4, step5}
+| sort sessions desc
 | limit 50`;
 }
 
@@ -3023,73 +3025,46 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
   const discoveryData = useDql({ query: runDiscovery ? funnelDiscoveryQuery(discoveryApps) : "fetch user.events | limit 0" });
   const discoveryRecords = discoveryData.data?.records ?? [];
 
-  // Build candidate funnels from top pages — group into sequences of 3-5 steps
-  const candidates = useMemo<{ steps: StepDef[]; sessions: number }[]>(() => {
+  // Build candidate funnels from actual sequential page paths in sessions, grouped per app
+  const candidates = useMemo<{ steps: StepDef[]; sessions: number; app: string }[]>(() => {
     if (!runDiscovery || discoveryRecords.length === 0) return [];
-    // Get top pages sorted by frequency
-    const pageFreq: { page: string; count: number }[] = (discoveryRecords as any[]).map(r => ({
-      page: r['page_seq'] ?? '',
-      count: Number(r['session_count'] ?? 0),
-    })).filter(p => p.page && p.count > 0);
 
-    if (pageFreq.length < 3) return [];
+    const results: { steps: StepDef[]; sessions: number; app: string }[] = [];
+    const seen = new Set<string>(); // dedup candidates by app+step sequence
 
-    // Build candidate funnels: sliding windows of 3, 4, and 5 consecutive top pages
-    const results: { steps: StepDef[]; sessions: number }[] = [];
-    const topPages = pageFreq.slice(0, 20);
+    for (const rec of discoveryRecords as any[]) {
+      const sessions = Number(rec['sessions'] ?? 0);
+      if (sessions === 0) continue;
+      const app = (rec['app'] as string) || frontend;
+      const pagePath: string[] = [];
+      for (let i = 1; i <= 5; i++) {
+        const p = rec[`step${i}`];
+        if (p && typeof p === "string" && p.trim()) pagePath.push(p.trim());
+      }
+      // Deduplicate consecutive same-page entries (e.g. reload)
+      const deduped = pagePath.filter((p, i) => i === 0 || p !== pagePath[i - 1]);
+      if (deduped.length < 3) continue;
 
-    // Strategy: Group top pages into potential funnels based on URL hierarchy
-    // Sort by URL path depth to find natural progression
-    const sorted = [...topPages].sort((a, b) => {
-      const depthA = (a.page.match(/\//g) || []).length;
-      const depthB = (b.page.match(/\//g) || []).length;
-      return depthA - depthB;
-    });
+      const key = `${app}→${deduped.join("→")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-    // Build one funnel from top 4-5 pages by depth progression
-    const funnelPages = sorted.slice(0, Math.min(5, sorted.length));
-    if (funnelPages.length >= 3) {
       results.push({
-        steps: funnelPages.map((p, i) => ({
-          label: p.page.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
-          identifiers: [p.page],
+        app,
+        steps: deduped.map((p, i) => ({
+          label: p.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
+          identifiers: [p],
           type: "view" as const,
-          app: discoveryApps[0] || frontend,
+          app,
         })),
-        sessions: Math.min(...funnelPages.map(p => p.count)),
+        sessions,
       });
-    }
 
-    // Also try sequential top-3 as a simpler funnel
-    if (topPages.length >= 3) {
-      const top3 = topPages.slice(0, 3);
-      results.push({
-        steps: top3.map((p, i) => ({
-          label: p.page.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
-          identifiers: [p.page],
-          type: "view" as const,
-          app: discoveryApps[0] || frontend,
-        })),
-        sessions: Math.min(...top3.map(p => p.count)),
-      });
-    }
-
-    // Top 4 by frequency
-    if (topPages.length >= 4) {
-      const top4 = topPages.slice(0, 4);
-      results.push({
-        steps: top4.map((p, i) => ({
-          label: p.page.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
-          identifiers: [p.page],
-          type: "view" as const,
-          app: discoveryApps[0] || frontend,
-        })),
-        sessions: Math.min(...top4.map(p => p.count)),
-      });
+      if (results.length >= 10) break; // Cap at 10 candidates
     }
 
     return results;
-  }, [runDiscovery, discoveryRecords, discoveryApps, frontend]);
+  }, [runDiscovery, discoveryRecords, frontend]);
 
   const handleApply = (idx: number) => {
     setNamingIdx(idx);
@@ -3132,7 +3107,7 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
       {candidates.map((c, idx) => (
         <div key={idx} style={{ marginBottom: 10, padding: "10px 12px", background: "rgba(128,128,128,0.04)", borderRadius: 8, border: "1px solid rgba(128,128,128,0.15)" }}>
           <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 6 }}>
-            <Text style={{ fontSize: 12, fontWeight: 600 }}>Candidate {idx + 1} — {c.steps.length} steps ({c.sessions.toLocaleString()} sessions) <span style={{ fontWeight: 400, opacity: 0.6 }}>from {discoveryApps.join(", ")}</span></Text>
+            <Text style={{ fontSize: 12, fontWeight: 600 }}>Candidate {idx + 1} — {c.steps.length} steps ({c.sessions.toLocaleString()} sessions) <span style={{ fontWeight: 400, opacity: 0.6 }}>from {c.app}</span></Text>
             {funnels.length < MAX_FUNNELS && namingIdx !== idx && (
               <button onClick={() => handleApply(idx)} style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid rgba(69,137,255,0.4)", background: "rgba(69,137,255,0.1)", color: BLUE, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
             )}
@@ -3756,7 +3731,7 @@ export function UserJourney() {
           </div>
           <div>
             <Heading level={3} style={{ margin: 0 }}>User Journey & Experience</Heading>
-            <Text style={{ fontSize: 12, opacity: 0.6 }}>{funnels[activeFunnelIndex]?.name ?? frontend}</Text>
+            <Text style={{ fontSize: 12, opacity: 0.6 }}>{[...new Set(steps.map(s => s.app).filter(Boolean))].join(", ") || frontend}</Text>
           </div>
         </Flex>
         <Flex alignItems="center" gap={12}>
@@ -3807,7 +3782,7 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.56.1</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.56.3</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
