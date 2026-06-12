@@ -8938,6 +8938,7 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 // ===========================================================================
 function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeNavigationPaths(data, [], steps), [data, steps]));
+  const [selectedFlow, setSelectedFlow] = useState<{ src: string; tgt: string } | null>(null);
   if (isLoading) return <Loading />;
 
   const paths = (data.data?.records ?? []) as any[];
@@ -9149,6 +9150,29 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               }
             });
             const maxLinkVal = Math.max(...links.map(l => l.value), 1);
+            const sortedLinks = [...links].sort((a, b) => b.value - a.value).slice(0, 40);
+
+            // Compute highlighted nodes/links for the selected flow path
+            const highlightedNodes = new Set<string>();
+            const highlightedLinkIndices = new Set<number>();
+            if (selectedFlow) {
+              highlightedNodes.add(selectedFlow.src);
+              highlightedNodes.add(selectedFlow.tgt);
+              // BFS upstream from src
+              const upQ = [selectedFlow.src]; const seenUp = new Set<string>([selectedFlow.src]);
+              while (upQ.length > 0) {
+                const pg = upQ.shift()!;
+                for (const l of links) { if (l.tgt === pg && !seenUp.has(l.src)) { seenUp.add(l.src); highlightedNodes.add(l.src); upQ.push(l.src); } }
+              }
+              // BFS downstream from tgt
+              const downQ = [selectedFlow.tgt]; const seenDown = new Set<string>([selectedFlow.tgt]);
+              while (downQ.length > 0) {
+                const pg = downQ.shift()!;
+                for (const l of links) { if (l.src === pg && !seenDown.has(l.tgt)) { seenDown.add(l.tgt); highlightedNodes.add(l.tgt); downQ.push(l.tgt); } }
+              }
+              sortedLinks.forEach((l, i) => { if (highlightedNodes.has(l.src) && highlightedNodes.has(l.tgt)) highlightedLinkIndices.add(i); });
+            }
+            const hasFocus = selectedFlow !== null;
 
             // Compute vertical offsets for link attachment points
             const srcOffsets = new Map<string, number>();
@@ -9159,10 +9183,10 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             const linkColors = [BLUE, CYAN, PURPLE, GREEN, ORANGE, YELLOW];
 
             return (
-              <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%" }}>
-                <svg width={W} height={H} style={{ display: "block", minWidth: W }}>
+              <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%", position: "relative" }}>
+                <svg width={W} height={H} style={{ display: "block", minWidth: W, cursor: hasFocus ? "pointer" : "default" }} onClick={() => setSelectedFlow(null)}>
                   {/* Links */}
-                  {links.sort((a, b) => b.value - a.value).slice(0, 40).map((link, i) => {
+                  {sortedLinks.map((link, i) => {
                     const sp = nodePos.get(link.src); const tp = nodePos.get(link.tgt);
                     if (!sp || !tp) return null;
                     const thickness = Math.max(2, (link.value / maxLinkVal) * 18);
@@ -9173,10 +9197,18 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const x1 = sp.x + nodeW; const x2 = tp.x;
                     const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
                     const color = linkColors[i % linkColors.length];
+                    const isSelected = hasFocus && link.src === selectedFlow!.src && link.tgt === selectedFlow!.tgt;
+                    const isHighlighted = !hasFocus || highlightedLinkIndices.has(i);
+                    const strokeOpacity = hasFocus ? (isHighlighted ? (isSelected ? 0.9 : 0.55) : 0.05) : 0.35;
                     return (
                       <path key={i} d={`M${x1},${srcY} C${cx1},${srcY} ${cx2},${tgtY} ${x2},${tgtY}`}
-                        fill="none" stroke={color} strokeWidth={thickness} strokeOpacity={0.35}
-                      />
+                        fill="none" stroke={color} strokeWidth={isSelected ? thickness * 1.4 : thickness}
+                        strokeOpacity={strokeOpacity}
+                        style={{ cursor: "pointer", transition: "stroke-opacity 0.2s" }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedFlow(prev => prev?.src === link.src && prev?.tgt === link.tgt ? null : { src: link.src, tgt: link.tgt }); }}
+                      >
+                        <title>{`${link.src} → ${link.tgt}: ${fmtCount(link.value)} transitions`}</title>
+                      </path>
                     );
                   })}
                   {/* Nodes */}
@@ -9185,8 +9217,10 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const conv = convMap.get(name);
                     const borderColor = isFunnel ? GREEN : BLUE;
                     const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
+                    const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
+                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : 1;
                     return (
-                      <g key={name}>
+                      <g key={name} style={{ opacity: nodeOpacity, transition: "opacity 0.2s" }}>
                         <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6}
                           fill="rgba(128,128,128,0.1)" stroke={borderColor} strokeWidth={isFunnel ? 2.5 : 1.5} strokeOpacity={0.8} />
                         <text x={pos.x + 10} y={pos.y + 20} fontSize={12} fill={borderColor} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
@@ -9201,6 +9235,16 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     );
                   })}
                 </svg>
+                {hasFocus && (
+                  <button
+                    onClick={() => setSelectedFlow(null)}
+                    style={{ position: "absolute", bottom: 20, right: 20, background: "rgba(20,20,20,0.92)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 6, color: "rgba(255,255,255,0.85)", cursor: "pointer", padding: "6px 16px", fontSize: 13, fontWeight: 600, backdropFilter: "blur(4px)", zIndex: 10, transition: "background 0.15s" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.25)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,20,20,0.92)")}
+                  >
+                    Clear Selection
+                  </button>
+                )}
               </div>
             );
           })()}
