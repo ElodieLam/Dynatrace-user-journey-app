@@ -1607,7 +1607,7 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
 | fieldsAdd converted = isNotNull(c.conv_flag)
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
-    conv_sessions = countDistinctIf(dt.rum.session.id, converted == true),
+    conv_sessions = countDistinct(if(converted == true, dt.rum.session.id)),
     by: {pageName}
 | fieldsAdd conv_rate = if(total_sessions > 0, toDouble(conv_sessions) / toDouble(total_sessions) * 100.0, else: 0.0)
 | filter total_sessions >= 3
@@ -1693,13 +1693,13 @@ function utmAttributionQuery(days: number, frontend: string, steps: StepDef[]): 
   const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
-| fieldsAdd utm_source = coalesce(stringKey(custom_properties, "utm_source"), stringKey(custom_properties, "utmSource"), "direct")
-| fieldsAdd utm_medium = coalesce(stringKey(custom_properties, "utm_medium"), stringKey(custom_properties, "utmMedium"), "none")
-| fieldsAdd utm_campaign = coalesce(stringKey(custom_properties, "utm_campaign"), stringKey(custom_properties, "utmCampaign"), "none")
+| fieldsAdd utm_source = coalesce(custom_properties.utm_source, custom_properties.utmSource, "direct")
+| fieldsAdd utm_medium = coalesce(custom_properties.utm_medium, custom_properties.utmMedium, "none")
+| fieldsAdd utm_campaign = coalesce(custom_properties.utm_campaign, custom_properties.utmCampaign, "none")
 | fieldsAdd is_conv = ${lastStep}
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
-    conv_sessions = countDistinctIf(dt.rum.session.id, is_conv == true),
+    conv_sessions = countDistinct(if(is_conv == true, dt.rum.session.id)),
     by: {utm_source, utm_medium, utm_campaign}
 | fieldsAdd conv_rate = if(total_sessions > 0, toDouble(conv_sessions) / toDouble(total_sessions) * 100.0, else: 0.0)
 | sort total_sessions desc
