@@ -6956,7 +6956,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend, onDrillToForeca
 
   // Gen3 User Sessions link with filter
   const buildSessionsLink = (page: string, clickType: string) => {
-    const baseUrl = ENV_URL || "https://guu84124.apps.dynatrace.com";
+    const baseUrl = ENV_URL || "https://wle98114.apps.dynatrace.com";
     // Filter: application name + has rage/dead click + specific page
     const filters: string[] = [];
     if (frontend) filters.push(`useraction.application="${frontend}"`);
@@ -6967,7 +6967,7 @@ function ClickIssuesTab({ data, isLoading, replayData, frontend, onDrillToForeca
   };
 
   const buildSessionIdLink = (sessionId: string) => {
-    const baseUrl = ENV_URL || "https://guu84124.apps.dynatrace.com";
+    const baseUrl = ENV_URL || "https://wle98114.apps.dynatrace.com";
     return `${baseUrl}/ui/apps/dynatrace.classic.session.segmentation/#useraction;sid=${sessionId}`;
   };
 

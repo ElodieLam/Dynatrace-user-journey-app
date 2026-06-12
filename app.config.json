@@ -1,6 +1,6 @@
 {
   "$schema": "./.dt-app/app.config.schema.json",
-  "environmentUrl": "https://guu84124.apps.dynatrace.com",
+  "environmentUrl": "https://wle98114.apps.dynatrace.com",
   "app": {
     "name": "User Journey & Experience",
     "version": "4.54.1",

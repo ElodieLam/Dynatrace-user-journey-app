@@ -1,8 +1,17 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# dt-app local files
 .dt-app/
 *.tsbuildinfo
 
 # Temp PNGs (Outlook, Toast, Windows screenshots)
 /*.png
 !screenshot.png
+
+# Environment & secrets
+.env
+.vscode/mcp.json
