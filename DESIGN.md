@@ -23,7 +23,7 @@
 
 The User Journey & Experience App is a 36-tab frontend observability suite built as a Dynatrace Platform App, organized into 8 parent tab groups with nested sub-tabs. It provides comprehensive Real User Monitoring (RUM) analysis including funnel tracking, Web Vitals, geographic heatmaps, predictive forecasting, automated anomaly detection, and multidimensional radial performance exploration — all powered by DQL (Dynatrace Query Language).
 
-**Architecture**: Single-page React app using Strato Design System components, `@dynatrace-sdk/react-hooks` (`useDql`) for data fetching, and SVG-based custom visualizations. All queries are parameterized by a user-selectable frontend application, funnel step definitions, and timeframe.
+**Architecture**: Single-page React app using Strato Design System components, `@dynatrace-sdk/react-hooks` (`useDql`) for data fetching, and SVG-based custom visualizations. All queries are parameterized by funnel step definitions (each with its own app assignment), a default frontend application, and timeframe. Funnels can span multiple apps — step-scoped queries use `in(frontend.name, {"app1", "app2"})` when the funnel references more than one application.
 
 ---
 
@@ -67,6 +67,22 @@ The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<
 - **Direction-aware narratives**: Explains whether a positive or inverse relationship exists and what it means in context (e.g. "when Sessions rises, Error Rate tends to worsen")
 - Minimum 3 sparkline data points required for meaningful correlation computation
 
+### Cross-App Funnels — Per-Step Application Assignment
+
+**Purpose**: Allow funnel steps to span multiple Dynatrace frontend applications (e.g. marketing site → checkout app → post-purchase portal).
+
+**Implementation** (`ui/app/SettingsContext.tsx`, `ui/app/pages/UserJourney.tsx`):
+- **`StepDef` type** extended: `{ label: string; identifiers: string[]; type: "view" | "request"; app?: string }` — optional `app` field overrides the default frontend for that step
+- **Default frontend**: The top-level "Default Frontend Application" setting serves as the fallback when a step has no explicit `app`
+- **`frontendFilter(steps, fallback)` helper**: Computes the DQL filter clause — returns `frontend.name == "X"` for single-app funnels or `in(frontend.name, {"X", "Y"})` for multi-app funnels
+- **`uniqueApps(steps, fallback)` helper**: Extracts the distinct set of apps referenced across all steps
+- **Settings UI**: Each step has its own Application dropdown. New steps inherit the previous step's app. Steps assigned to a different app show a "(different app)" indicator in purple
+- **Pages/Identifiers**: The page dropdown for each step shows only pages from that step's assigned app (fetched via `availablePagesMultiAppQuery` which retrieves pages for all referenced apps in a single query, then the UI filters client-side by step app)
+- **Backward compatible**: Saved step definitions without an `app` field automatically inherit the default frontend app. Migration logic in `SettingsProvider` preserves `app` when present
+- **AI Insights**: When a funnel spans multiple apps, the AI panel surfaces a cross-app insight noting the architecture and advising on session correlation verification
+
+**Query impact**: All ~37 step-scoped query functions now use `${frontendFilter(steps, frontend)}` instead of `frontend.name == "${frontend}"`. Non-step queries (Sankey, CWV, Session Replay) continue using the default frontend.
+
 ---
 
 ## Tab Reference
@@ -93,7 +109,7 @@ The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<
 ```dql
 -- sessionFlowQuery: Strict sequential funnel progression
 fetch user.events, from: now() - {timeframe}
-| filter frontend.name == "{frontend}"
+| filter {frontendFilter}  -- frontend.name == "X" (single app) or in(frontend.name, {"X","Y"}) (multi-app)
 | filter {anyStepFilter}
 | fieldsAdd step_tag = coalesce(if(view.name == "/home", "Home"), if(view.name == "/search", "Search"), ..., "other")
 | summarize steps = collectDistinct(step_tag), by: {dt.rum.session.id}
@@ -104,7 +120,7 @@ fetch user.events, from: now() - {timeframe}
 ```dql
 -- stepMetricsQuery: Per-step Apdex + duration percentiles
 fetch user.events, from: now() - {timeframe}
-| filter frontend.name == "{frontend}"
+| filter {frontendFilter}  -- derived from per-step app assignments
 | filter {stepFilters}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000
 | fieldsAdd step_tag = {stepTagExpr}
@@ -115,7 +131,7 @@ fetch user.events, from: now() - {timeframe}
 ```dql
 -- sessionQualityQuery: Overall quality metrics
 fetch user.events, from: now() - {timeframe}
-| filter frontend.name == "{frontend}"
+| filter {frontendFilter}
 | filter {anyStepFilter}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000
 | fieldsAdd satisfaction = if(dur_ms <= 3000, "satisfied", else: if(dur_ms <= 12000, "tolerating", else: "frustrated"))

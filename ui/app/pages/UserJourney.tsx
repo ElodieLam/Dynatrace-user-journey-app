@@ -329,6 +329,20 @@ function sessionReplayUrl(sessionId: string, startTs?: string): string {
   return `${ENV_URL}/ui/apps/dynatrace.users.sessions/session-viewer/${sessionId}/${ts}?tf=${tfParam()}&perspective=general#filtering=${encodeURIComponent(`ID = *"${sessionId.substring(0, 6)}"*`)}`;
 }
 
+/** Build a DQL filter clause for potentially multiple frontend apps across steps.
+ *  Returns `frontend.name == "X"` for single app, `in(frontend.name, {"X","Y"})` for multiple. */
+function frontendFilter(steps: StepDef[], fallback: string): string {
+  const apps = [...new Set(steps.map(s => s.app || fallback).filter(Boolean))];
+  if (apps.length === 0) return `frontend.name == "${fallback}"`;
+  if (apps.length === 1) return `frontend.name == "${apps[0]}"`;
+  return `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+}
+
+/** Collect unique app names from steps (with fallback). */
+function uniqueApps(steps: StepDef[], fallback: string): string[] {
+  return [...new Set(steps.map(s => s.app || fallback).filter(Boolean))];
+}
+
 function appEntityQuery(frontend: string): string {
   return `fetch dt.entity.application
 | filter entity.name == "${frontend}"
@@ -351,6 +365,20 @@ function availablePagesQuery(frontend: string): string {
 | summarize count = count(), by: {view.name}
 | sort count desc
 | limit 300
+| fieldsRemove count`;
+}
+
+/** Fetch pages for multiple apps — returns app + page pairs. */
+function availablePagesMultiAppQuery(apps: string[]): string {
+  if (apps.length === 0) return `fetch user.events | limit 0`;
+  const filter = apps.length === 1
+    ? `frontend.name == "${apps[0]}"`
+    : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+  return `fetch user.events, from: now()-7d
+| filter ${filter} and isNotNull(view.name) and view.name != ""
+| summarize count = count(), by: {frontend.name, view.name}
+| sort count desc
+| limit 500
 | fieldsRemove count`;
 }
 
@@ -651,7 +679,7 @@ function sessionFlowQuery(days: number, frontend: string, steps: StepDef[], prev
   }).join(",\n");
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | summarize steps = collectDistinct(step_tag), by: {dt.rum.session.id}
@@ -667,7 +695,7 @@ function stepMetricsQuery(days: number, frontend: string, steps: StepDef[], nonc
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${tagExpr}
@@ -695,7 +723,7 @@ function pageMetricsQuery(days: number, frontend: string, steps: StepDef[], nonc
   const field = steps[0]?.type === "view" ? "view.name" : "url.path";
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(
@@ -761,7 +789,7 @@ function cwvByPageQuery(days: number, frontend: string): string {
 function deviceQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -773,7 +801,7 @@ function deviceQuery(days: number, frontend: string, steps: StepDef[]): string {
 function browserQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -786,7 +814,7 @@ function browserQuery(days: number, frontend: string, steps: StepDef[]): string 
 function geoQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -800,7 +828,7 @@ function errorQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | filter characteristics.has_error == true
 | fieldsAdd step_tag = ${tagExpr}
@@ -812,7 +840,7 @@ function trendsSparklineQuery(days: number, frontend: string, steps: StepDef[]):
   const period = periodClause(days, false);
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd slot_day = bin(start_time, ${binSize})
@@ -836,7 +864,7 @@ function pageSparklineQuery(days: number, frontend: string, steps: StepDef[]): s
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
   const field = steps[0]?.type === "view" ? "view.name" : "url.path";
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd slot_day = bin(start_time, ${binSize})
@@ -857,7 +885,7 @@ function stepSparklineQuery(days: number, frontend: string, steps: StepDef[]): s
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${tagExpr}
@@ -880,7 +908,7 @@ function trendsConvSparklineQuery(days: number, frontend: string, steps: StepDef
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(',\n');
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(' and ');
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd slot_day = bin(start_time, ${binSize})
@@ -902,7 +930,7 @@ function sessionQualityQuery(days: number, frontend: string, steps: StepDef[], p
   const period = periodClause(days, prev);
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | summarize
@@ -926,7 +954,7 @@ function todayFunnelHourlyQuery(frontend: string, steps: StepDef[], nonce = 0): 
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `// ${nonce}
 fetch user.events, from: "${todayStart}", to: now()
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd slot_ts = bin(start_time, 15m)
@@ -948,7 +976,7 @@ ${iAnyLines}
 function worstSessionsQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1021,7 +1049,7 @@ function clickIssuesQuery(days: number, frontend: string): string {
 function geoPerformanceQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1176,7 +1204,7 @@ function sankeyPrevPathsQuery(days: number, frontend: string): string {
 function hourlyDistributionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd hour = getHour(start_time)
@@ -1199,7 +1227,7 @@ function conversionAttributionQuery(days: number, frontend: string, steps: StepD
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1231,7 +1259,7 @@ ${iAnyLines}
 function sessionDurationDistributionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd dur_bucket = coalesce(
@@ -1260,7 +1288,7 @@ function rootCauseCorrelationQuery(days: number, frontend: string, steps: StepDe
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1293,7 +1321,7 @@ function rootCauseStepDropQuery(days: number, frontend: string, steps: StepDef[]
   const period = periodClause(days);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${tagExpr}
@@ -1326,7 +1354,7 @@ function forecastTrendQuery(days: number, frontend: string, steps: StepDef[]): s
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1355,7 +1383,7 @@ ${iAnyLines}
 function forecastApdexTrendQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd day_bucket = formatTimestamp(start_time, format: "${forecastBucketFormat(days)}")
@@ -1422,7 +1450,7 @@ function resourceWaterfallQuery(days: number, frontend: string, steps: StepDef[]
   const period = periodClause(days);
   const stepTag = resourceStepTagExpr(steps);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_request == true
 | fieldsAdd res_dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${stepTag}
@@ -1446,7 +1474,7 @@ function resourceByStepQuery(days: number, frontend: string, steps: StepDef[]): 
   const period = periodClause(days);
   const stepTag = resourceStepTagExpr(steps);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_request == true
 | fieldsAdd res_dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${stepTag}
@@ -1466,7 +1494,7 @@ function resourceSessionDrillQuery(days: number, frontend: string, steps: StepDe
   const period = periodClause(days);
   const stepTag = resourceStepTagExpr(steps);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_request == true
 | fieldsAdd res_dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${stepTag}
@@ -1508,7 +1536,7 @@ function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): s
   const firstStepExpr = stepFilter(steps[0]);
   const lastStepExpr = stepFilter(steps[steps.length - 1]);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd country = geo.country.iso_code
 | fieldsAdd hit_first = ${firstStepExpr}
@@ -1538,7 +1566,7 @@ function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[], buc
     : `| fieldsAdd bucket_ts = bin(start_time, ${bucket})\n| fieldsAdd hour_bucket = formatTimestamp(bucket_ts, format: "yyyy-MM-dd HH:mm")`;
   const limit = bucket === "1h" ? 5000 : bucket === "30m" ? 8000 : 10000;
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1567,7 +1595,7 @@ ${bucketExpr}
 function osVersionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1592,13 +1620,13 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
   const lastIds = steps[steps.length - 1]?.identifiers ?? [];
   const lastStepMatch = lastIds.map(id => `pageName == "${id}"`).join(" or ") || "false";
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
 | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
 | summarize total_events = count(), by: {dt.rum.session.id, pageName}
 | lookup [
     fetch user.events, ${period}
-    | filter frontend.name == "${frontend}"
+    | filter ${frontendFilter(steps, frontend)}
     | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
     | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
     | filter ${lastStepMatch}
@@ -1692,7 +1720,7 @@ function utmAttributionQuery(days: number, frontend: string, steps: StepDef[]): 
   const period = periodClause(days);
   const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | fieldsAdd utm_source = coalesce(stringKey(custom_properties, "utm_source"), stringKey(custom_properties, "utmSource"), "direct")
 | fieldsAdd utm_medium = coalesce(stringKey(custom_properties, "utm_medium"), stringKey(custom_properties, "utmMedium"), "none")
 | fieldsAdd utm_campaign = coalesce(stringKey(custom_properties, "utm_campaign"), stringKey(custom_properties, "utmCampaign"), "none")
@@ -1758,7 +1786,7 @@ function deploymentEventsQuery(days: number): string {
 function changeImpactQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd hour_ts = formatTimestamp(start_time, format: "yyyy-MM-dd HH:00")
@@ -1781,7 +1809,7 @@ function changeImpactQuery(days: number, frontend: string, steps: StepDef[]): st
 function sloApdexTrendQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd hour_key = formatTimestamp(start_time, format: "yyyy-MM-dd HH:00")
@@ -1847,7 +1875,7 @@ function sessionReplayQuery(days: number, frontend: string): string {
 function abSegmentQuery(days: number, frontend: string, steps: StepDef[], segmentFilter: string): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | filter ${segmentFilter}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1893,7 +1921,7 @@ function cohortRetentionQuery(days: number, frontend: string, steps: StepDef[]):
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1941,7 +1969,7 @@ function sessionEngagementQuery(days: number, frontend: string, steps: StepDef[]
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1970,7 +1998,7 @@ function funnelVelocityQuery(days: number, frontend: string, steps: StepDef[]): 
   const period = periodClause(days);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | filter step_tag != "other"
@@ -2633,6 +2661,15 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 12, 2026</Paragraph>
+            <Paragraph><Strong>Cross-App Funnels — Per-Step Application Assignment</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Per-step app selector</Strong>: Each funnel step now has its own Application dropdown. Steps default to the previous step's app — change it to target a different Dynatrace frontend application for that step</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Multi-app queries</Strong>: When a funnel spans multiple apps, all DQL queries automatically use <code>in(frontend.name, {"{"}...{"}"})</code> instead of a single-app equality filter — correctly scoping data across all referenced apps</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Per-step page dropdowns</Strong>: The Pages/Identifiers dropdown for each step shows only pages from that step's assigned app (fetched via a single multi-app query for efficiency)</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Default Frontend Application</Strong> renamed — serves as the default for new steps and for non-step-specific queries (Sankey, CWV, Session Replay, etc.)</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• Backward compatible: existing saved funnels without per-step app fields automatically inherit the default frontend application</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 11, 2026</Paragraph>
             <Paragraph><Strong>FinOps Expansion — 8 New Cost Intelligence Sub-Tabs</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Right-Sizing</Strong>: Identifies over-provisioned hosts by comparing actual CPU/memory utilization against allocated capacity, with per-host savings estimates and fleet-wide optimization potential</Paragraph>
@@ -2891,8 +2928,9 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Errors &amp; Reliability</Strong>: Exceptions, Error Clustering, SLO Tracker</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>FinOps</Strong>: Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, SLO Cost Trade-offs, Tag Allocation, Observability ROI</Paragraph>
         <Paragraph><Strong>Hiding a parent group</Strong> hides all its sub-tabs. Hiding individual sub-tabs within a visible group removes only those sub-tabs. Hiding a tab does not affect data collection, only display.</Paragraph>
-        <Paragraph><Strong>Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. Selecting a different app immediately re-queries all data and updates the Pages / Identifiers dropdowns for the new app.</Paragraph>
-        <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the selected app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
+        <Paragraph><Strong>Default Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. This serves as the default app for new funnel steps. Each step can be assigned a different app to support cross-app funnels.</Paragraph>
+        <Paragraph><Strong>Funnel Steps — Per-Step Application</Strong>: Each funnel step has its own Application selector. When adding a new step, it inherits the previous step's app. Change a step's app to build funnels that span multiple applications (e.g. marketing site → checkout app). The Pages/Identifiers dropdown shows pages specific to that step's selected app. Queries automatically use <code>in(frontend.name, {"{"}app1", "app2{"}"})</code> when the funnel spans multiple apps.</Paragraph>
+        <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the step's assigned app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
         <Paragraph><Strong>Average Order Value</Strong>: Set in Settings to enable revenue metrics across What-If Analysis, Revenue Intelligence, Errors &amp; Drop-offs, Conversion Attribution, Map, Root Cause Correlation, Trends, Executive Summary, Anomaly Detection, and Change Intelligence tabs. This value represents the average revenue per conversion (final funnel step completion). Set to 0 to hide revenue metrics.</Paragraph>
         <Paragraph><Strong>AI Insights</Strong>: The AI Insights panel is sub-tab aware and <Strong>industry-aware</Strong> — it shows analysis specific to the currently active sub-tab, automatically enriched with benchmarks for your selected industry. Toggle AI Insights in the header and navigate between sub-tabs to get contextual recommendations tailored to E-Commerce, SaaS, Media, Financial Services, Travel, Healthcare, or Gaming verticals.</Paragraph>
         <Paragraph><Strong>Industry</Strong>: Select your industry vertical in Settings to calibrate all AI Insights benchmarks. Each industry has specific targets for conversion rate, Apdex, error rate, latency, CDN ROI, idle capacity utilization, cost per conversion, and more. The analysis engine compares your actual metrics against these industry-specific thresholds to surface relevant insights.</Paragraph>
@@ -3233,9 +3271,23 @@ export function UserJourney() {
   const appEntityData = useDql({ query: appEntityQuery(frontend) });
   const appEntityId = (appEntityData.data?.records?.[0] as any)?.['id'] ?? '';
   const settingsAppsData = useDql({ query: showSettings ? availableAppsQuery() : "fetch user.events | limit 0" });
-  const settingsPagesData = useDql({ query: (showSettings && frontend) ? availablePagesQuery(frontend) : "fetch user.events | limit 0" });
+  const stepsApps = useMemo(() => uniqueApps(steps, frontend), [steps, frontend]);
+  const settingsPagesData = useDql({ query: showSettings ? availablePagesMultiAppQuery(stepsApps.length > 0 ? stepsApps : [frontend]) : "fetch user.events | limit 0" });
   const availableApps: string[] = (settingsAppsData.data?.records ?? []).map((r: any) => r['frontend.name']).filter(Boolean);
-  const availablePages: string[] = (settingsPagesData.data?.records ?? []).map((r: any) => r['view.name']).filter(Boolean);
+  // Map of app → pages for per-step page dropdowns
+  const pagesByApp = useMemo<Record<string, string[]>>(() => {
+    const map: Record<string, string[]> = {};
+    for (const r of (settingsPagesData.data?.records ?? []) as any[]) {
+      const app = r['frontend.name'];
+      const page = r['view.name'];
+      if (app && page) {
+        if (!map[app]) map[app] = [];
+        map[app].push(page);
+      }
+    }
+    return map;
+  }, [settingsPagesData.data]);
+  const availablePages: string[] = useMemo(() => Object.values(pagesByApp).flat(), [pagesByApp]);
   const hourlyDistributionData = useDql({ query: hourlyDistributionQuery(timeframeDays, frontend, steps) }, refetchOpts);
 
   // NEW: Conversion Attribution, Duration Distribution
@@ -3564,15 +3616,15 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.51.0</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.55.0</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
       <Sheet title="Settings" show={showSettings} onDismiss={() => setShowSettings(false)} actions={<Button variant="emphasized" onClick={() => setShowSettings(false)}>Close</Button>}>
         <div style={{ padding: "4px 0" }}>
           {/* Frontend Application Name */}
-          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Frontend Application</Paragraph>
-          <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Select the Dynatrace frontend application to monitor. The list shows apps with data in the last 30 days. Changes take effect immediately.</Paragraph>
+          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Default Frontend Application</Paragraph>
+          <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Select the default Dynatrace frontend application. This is used as the default app for new funnel steps. Each step can optionally target a different app (for cross-app funnels).</Paragraph>
           <div style={{ marginBottom: 20 }}>
             {settingsAppsData.isLoading ? (
               <ProgressBar style={{ width: "100%" }} />
@@ -3597,7 +3649,7 @@ export function UserJourney() {
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
           {/* Funnel Steps */}
           <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnel Steps</Paragraph>
-          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Define the user journey steps (min {MIN_STEPS}, max {MAX_STEPS}). Each step can have multiple pages (OR logic within a step). Wildcards supported: <Strong>/home*</Strong>, <Strong>*home</Strong>, <Strong>*home*</Strong>. Logic: (Step1a OR Step1b) AND Step2 AND Step3.</Paragraph>
+          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Define the user journey steps (min {MIN_STEPS}, max {MAX_STEPS}). Funnels can span multiple apps — each step has its own app assignment. Each step can have multiple pages (OR logic within a step). Wildcards supported: <Strong>/home*</Strong>, <Strong>*home</Strong>, <Strong>*home*</Strong>.</Paragraph>
           {steps.map((step, i) => (
             <div key={i} style={{ marginBottom: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
               <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
@@ -3622,8 +3674,30 @@ export function UserJourney() {
                   </Select>
                 </div>
               </Flex>
+              <div style={{ marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Application {(step.app && step.app !== frontend) && <span style={{ color: PURPLE, fontWeight: 600 }}>(different app)</span>}</Text>
+                {settingsAppsData.isLoading ? (
+                  <ProgressBar style={{ width: "100%" }} />
+                ) : (
+                  <Select value={step.app || frontend} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], app: val || frontend }; saveSteps(next); }}>
+                    <Select.Trigger />
+                    <Select.Content>
+                      <Select.Filter />
+                      {(step.app || frontend) && !availableApps.includes(step.app || frontend) && (
+                        <Select.Option value={step.app || frontend}>{step.app || frontend}</Select.Option>
+                      )}
+                      {availableApps.map(app => (
+                        <Select.Option key={app} value={app}>{app}</Select.Option>
+                      ))}
+                    </Select.Content>
+                  </Select>
+                )}
+              </div>
               <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4, marginTop: 4 }}>Pages / Identifiers {step.identifiers.length > 1 && <span style={{ opacity: 0.7 }}>(OR logic — any match counts)</span>}</Text>
-              {step.identifiers.map((id, j) => (
+              {step.identifiers.map((id, j) => {
+                const stepApp = step.app || frontend;
+                const stepPages = pagesByApp[stepApp] ?? [];
+                return (
                 <Flex key={j} gap={6} alignItems="center" style={{ marginBottom: 4 }}>
                   <div style={{ flex: 1 }}>
                     {settingsPagesData.isLoading ? (
@@ -3633,14 +3707,14 @@ export function UserJourney() {
                         <Select.Trigger />
                         <Select.Content>
                           <Select.Filter />
-                          {id && !availablePages.includes(id) && (
+                          {id && !stepPages.includes(id) && (
                             <Select.Option value={id}>{id}</Select.Option>
                           )}
-                          {availablePages.map(page => (
+                          {stepPages.map(page => (
                             <Select.Option key={page} value={page}>{page}</Select.Option>
                           ))}
-                          {availablePages.length === 0 && (
-                            <Select.Option value="" disabled>No pages found for this app</Select.Option>
+                          {stepPages.length === 0 && (
+                            <Select.Option value="" disabled>No pages found for {stepApp}</Select.Option>
                           )}
                         </Select.Content>
                       </Select>
@@ -3650,12 +3724,13 @@ export function UserJourney() {
                     <button onClick={() => { const next = [...steps]; const ids = step.identifiers.filter((_, k) => k !== j); next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 11, padding: "2px 4px" }}>✕</button>
                   )}
                 </Flex>
-              ))}
+                );
+              })}
               <button onClick={() => { const next = [...steps]; next[i] = { ...next[i], identifiers: [...step.identifiers, ""] }; saveSteps(next); }} style={{ background: "none", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 4, color: BLUE, cursor: "pointer", fontSize: 11, padding: "3px 8px", marginTop: 2 }}>+ Add Page</button>
             </div>
           ))}
           {steps.length < MAX_STEPS && (
-            <button onClick={() => { const next = [...steps, { label: "", identifiers: [""], type: "view" as const }]; saveSteps(next); }} style={{ width: "100%", padding: "8px", background: "rgba(69,137,255,0.1)", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 6, color: BLUE, cursor: "pointer", fontSize: 12, marginBottom: 16 }}>+ Add Step</button>
+            <button onClick={() => { const prevApp = steps.length > 0 ? (steps[steps.length - 1].app || frontend) : frontend; const next = [...steps, { label: "", identifiers: [""], type: "view" as const, app: prevApp }]; saveSteps(next); }} style={{ width: "100%", padding: "8px", background: "rgba(69,137,255,0.1)", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 6, color: BLUE, cursor: "pointer", fontSize: 12, marginBottom: 16 }}>+ Add Step</button>
           )}
           <button onClick={() => { saveSteps(DEFAULT_FUNNEL_STEPS); }} style={{ width: "100%", padding: "6px", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, marginBottom: 16 }}>Reset to Defaults</button>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
@@ -4134,6 +4209,12 @@ function analyzeFunnelOverview(overallConv: number, overallApdex: number, qualit
   const insights: InsightItem[] = [];
   const recs: RecommendationItem[] = [];
   const errorRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+
+  // Cross-app funnel detection
+  const distinctApps = [...new Set(steps.map(s => s.app).filter(Boolean))];
+  if (distinctApps.length > 1) {
+    insights.push({ severity: "info", icon: "🔀", text: `This funnel spans ${distinctApps.length} applications (${distinctApps.join(", ")}). Cross-app session correlation relies on shared session identifiers — verify that sessions are properly linked across app boundaries for accurate conversion tracking.` });
+  }
 
   // Multi-page session overlap explanation
   if (pageMap && pageMap.size > 0) {

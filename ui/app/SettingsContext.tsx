@@ -4,17 +4,17 @@ import { useUserAppState, useSetUserAppState } from "@dynatrace-sdk/react-hooks"
 // ---------------------------------------------------------------------------
 // Types & defaults
 // ---------------------------------------------------------------------------
-export type StepDef = { label: string; identifiers: string[]; type: "view" | "request" };
+export type StepDef = { label: string; identifiers: string[]; type: "view" | "request"; app?: string };
 
 export const DEFAULT_FRONTEND = "www.angular.easytravel.com";
 export const MIN_STEPS = 2;
 export const MAX_STEPS = 10;
 
 export const DEFAULT_FUNNEL_STEPS: StepDef[] = [
-  { label: "Home", identifiers: ["/easytravel/home", "/"], type: "view" },
-  { label: "Search", identifiers: ["/easytravel/search"], type: "view" },
-  { label: "Journey Detail", identifiers: ["/easytravel/journeys/:id:"], type: "view" },
-  { label: "Book", identifiers: ["/easytravel/journeys/:id:/book"], type: "view" },
+  { label: "Home", identifiers: ["/easytravel/home", "/"], type: "view", app: "www.angular.easytravel.com" },
+  { label: "Search", identifiers: ["/easytravel/search"], type: "view", app: "www.angular.easytravel.com" },
+  { label: "Journey Detail", identifiers: ["/easytravel/journeys/:id:"], type: "view", app: "www.angular.easytravel.com" },
+  { label: "Book", identifiers: ["/easytravel/journeys/:id:/book"], type: "view", app: "www.angular.easytravel.com" },
 ];
 
 export const DEFAULT_AOV = 1200;
@@ -151,6 +151,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             label: s.label ?? "",
             identifiers: Array.isArray(s.identifiers) ? s.identifiers : (s.identifier ? [s.identifier] : [""]),
             type: s.type ?? "view",
+            app: s.app ?? undefined,
           }));
           setSteps(migrated);
         }
