@@ -16,8 +16,8 @@ import { TimeseriesChart, TimeseriesAnnotations } from "@dynatrace/strato-compon
 import type { Timeseries } from "@dynatrace/strato-components/charts";
 import { DataTable } from "@dynatrace/strato-components-preview/tables";
 import "./UserJourney.css";
-import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, MIN_STEPS, MAX_STEPS, DEFAULT_AOV, INDUSTRY_OPTIONS, INDUSTRY_BENCHMARKS, IndustryType, IndustryBenchmark } from "../SettingsContext";
-import type { StepDef } from "../SettingsContext";
+import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, DEFAULT_FUNNELS, MIN_STEPS, MAX_STEPS, MAX_FUNNELS, DEFAULT_AOV, INDUSTRY_OPTIONS, INDUSTRY_BENCHMARKS, IndustryType, IndustryBenchmark } from "../SettingsContext";
+import type { StepDef, FunnelDef } from "../SettingsContext";
 import { HyperlyzerTab } from "./HyperlyzerTab";
 import { ForecastModal } from "../components/ForecastModal";
 import { CorrelationsPanel, CorrelationsContext, computeCorrelations } from "../components/CorrelationsPanel";
@@ -2662,12 +2662,14 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 12, 2026</Paragraph>
-            <Paragraph><Strong>Cross-App Funnels — Per-Step Application Assignment</Strong></Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Per-step app selector</Strong>: Each funnel step now has its own Application dropdown. Steps default to the previous step's app — change it to target a different Dynatrace frontend application for that step</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Multi-app queries</Strong>: When a funnel spans multiple apps, all DQL queries automatically use <code>in(frontend.name, {"{"}...{"}"})</code> instead of a single-app equality filter — correctly scoping data across all referenced apps</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Per-step page dropdowns</Strong>: The Pages/Identifiers dropdown for each step shows only pages from that step's assigned app (fetched via a single multi-app query for efficiency)</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• <Strong>Default Frontend Application</Strong> renamed — serves as the default for new steps and for non-step-specific queries (Sankey, CWV, Session Replay, etc.)</Paragraph>
-            <Paragraph style={{ fontSize: 13 }}>• Backward compatible: existing saved funnels without per-step app fields automatically inherit the default frontend application</Paragraph>
+            <Paragraph><Strong>Multi-Funnel Management & Funnel Discovery</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Multiple funnels</Strong>: Create up to 10 named funnels. A global <Strong>Funnel</Strong> dropdown in the header lets you switch the active funnel — all tabs instantly update to reflect the selected funnel's steps</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Funnel management</Strong>: Create, rename, and delete funnels in Settings. Funnel tabs show all defined funnels with a highlighted active funnel. The active funnel's steps are editable inline</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Auto-open Settings</Strong>: If no funnels are configured (first launch), Settings opens automatically to guide initial setup</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Funnel Discovery</Strong>: Select one or more applications and click <Strong>Discover Funnels</Strong> — analyzes 7 days of session data to identify common page sequences. Candidate funnels show step count and session volume. Click <Strong>Apply</Strong>, enter a name, and the discovered funnel is added instantly</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Cross-app funnels</Strong>: Each step has its own Application dropdown. Steps default to the previous step's app — change it to target a different app for that step. Multi-app queries use <code>in(frontend.name, {"{"}...{"}"})</code></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Per-step page dropdowns</Strong>: Pages/Identifiers for each step shows only pages from that step's assigned app</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• Backward compatible: existing saved single-funnel configurations are migrated automatically to the multi-funnel format</Paragraph>
           </div>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 11, 2026</Paragraph>
@@ -2870,7 +2872,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         </div>
       </HelpSection>
       <HelpSection title="Overview">
-        <Paragraph>The <Strong>User Journey & Experience</Strong> app provides comprehensive frontend observability for <Strong>{frontend}</Strong>. It tracks users through a {steps.length}-step conversion funnel using real-time DQL queries against Dynatrace Grail. The funnel is <Strong>strict sequential</Strong>: each step requires all previous steps.</Paragraph>
+        <Paragraph>The <Strong>User Journey & Experience</Strong> app provides comprehensive frontend observability. You can define up to {MAX_FUNNELS} named funnels (managed in Settings); the active funnel tracks users through a {steps.length}-step conversion funnel using real-time DQL queries against Dynatrace Grail. The funnel is <Strong>strict sequential</Strong>: each step requires all previous steps.</Paragraph>
       </HelpSection>
       <HelpSection title="Funnel Steps">
         <div style={{ margin: "12px 0", padding: "12px 16px", background: "rgba(69,137,255,0.08)", borderRadius: 8 }}>
@@ -2929,6 +2931,8 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>FinOps</Strong>: Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, SLO Cost Trade-offs, Tag Allocation, Observability ROI</Paragraph>
         <Paragraph><Strong>Hiding a parent group</Strong> hides all its sub-tabs. Hiding individual sub-tabs within a visible group removes only those sub-tabs. Hiding a tab does not affect data collection, only display.</Paragraph>
         <Paragraph><Strong>Default Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. This serves as the default app for new funnel steps. Each step can be assigned a different app to support cross-app funnels.</Paragraph>
+        <Paragraph><Strong>Funnels</Strong>: You can create up to {MAX_FUNNELS} named funnels. Use the header <Strong>Funnel</Strong> dropdown to switch between them. In Settings, funnel tabs let you select, create, rename, and delete funnels. If no funnels exist on first launch, Settings opens automatically.</Paragraph>
+        <Paragraph><Strong>Funnel Discovery</Strong>: Select one or more applications and click <Strong>Discover Funnels</Strong> to automatically find common user journeys from the last 7 days of session data. Discovered candidates show step count and session volume — click <Strong>Apply</Strong>, enter a name, and the funnel is added to your collection.</Paragraph>
         <Paragraph><Strong>Funnel Steps — Per-Step Application</Strong>: Each funnel step has its own Application selector. When adding a new step, it inherits the previous step's app. Change a step's app to build funnels that span multiple applications (e.g. marketing site → checkout app). The Pages/Identifiers dropdown shows pages specific to that step's selected app. Queries automatically use <code>in(frontend.name, {"{"}app1", "app2{"}"})</code> when the funnel spans multiple apps.</Paragraph>
         <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the step's assigned app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
         <Paragraph><Strong>Average Order Value</Strong>: Set in Settings to enable revenue metrics across What-If Analysis, Revenue Intelligence, Errors &amp; Drop-offs, Conversion Attribution, Map, Root Cause Correlation, Trends, Executive Summary, Anomaly Detection, and Change Intelligence tabs. This value represents the average revenue per conversion (final funnel step completion). Set to 0 to hide revenue metrics.</Paragraph>
@@ -2982,6 +2986,175 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
   );
 }
 
+// ---------------------------------------------------------------------------
+// Funnel Discovery Component
+// ---------------------------------------------------------------------------
+function funnelDiscoveryQuery(apps: string[]): string {
+  if (apps.length === 0) return `fetch user.events | limit 0`;
+  const appFilter = apps.length === 1
+    ? `frontend.name == "${apps[0]}"`
+    : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+  return `fetch user.events, from: now()-7d
+| filter ${appFilter}
+| filter isNotNull(view.name) and view.name != ""
+| fieldsAdd pageName = view.name
+| summarize pages = collectDistinct(pageName), by: {dt.rum.session.id}
+| expand page_seq = pages
+| fieldsRemove pages
+| summarize session_count = count(), by: {page_seq}
+| sort session_count desc
+| limit 50`;
+}
+
+/** Discovers common page sequences and proposes funnel candidates. */
+function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels, saveFunnels, saveActiveFunnelIndex }: {
+  availableApps: string[];
+  settingsAppsLoading: boolean;
+  frontend: string;
+  funnels: FunnelDef[];
+  saveFunnels: (v: FunnelDef[]) => void;
+  saveActiveFunnelIndex: (v: number) => void;
+}) {
+  const [discoveryApps, setDiscoveryApps] = useState<string[]>([frontend]);
+  const [runDiscovery, setRunDiscovery] = useState(false);
+  const [namingIdx, setNamingIdx] = useState<number | null>(null);
+  const [pendingName, setPendingName] = useState("");
+
+  const discoveryData = useDql({ query: runDiscovery ? funnelDiscoveryQuery(discoveryApps) : "fetch user.events | limit 0" });
+  const discoveryRecords = discoveryData.data?.records ?? [];
+
+  // Build candidate funnels from top pages — group into sequences of 3-5 steps
+  const candidates = useMemo<{ steps: StepDef[]; sessions: number }[]>(() => {
+    if (!runDiscovery || discoveryRecords.length === 0) return [];
+    // Get top pages sorted by frequency
+    const pageFreq: { page: string; count: number }[] = (discoveryRecords as any[]).map(r => ({
+      page: r['page_seq'] ?? '',
+      count: Number(r['session_count'] ?? 0),
+    })).filter(p => p.page && p.count > 0);
+
+    if (pageFreq.length < 3) return [];
+
+    // Build candidate funnels: sliding windows of 3, 4, and 5 consecutive top pages
+    const results: { steps: StepDef[]; sessions: number }[] = [];
+    const topPages = pageFreq.slice(0, 20);
+
+    // Strategy: Group top pages into potential funnels based on URL hierarchy
+    // Sort by URL path depth to find natural progression
+    const sorted = [...topPages].sort((a, b) => {
+      const depthA = (a.page.match(/\//g) || []).length;
+      const depthB = (b.page.match(/\//g) || []).length;
+      return depthA - depthB;
+    });
+
+    // Build one funnel from top 4-5 pages by depth progression
+    const funnelPages = sorted.slice(0, Math.min(5, sorted.length));
+    if (funnelPages.length >= 3) {
+      results.push({
+        steps: funnelPages.map((p, i) => ({
+          label: p.page.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
+          identifiers: [p.page],
+          type: "view" as const,
+          app: discoveryApps[0] || frontend,
+        })),
+        sessions: Math.min(...funnelPages.map(p => p.count)),
+      });
+    }
+
+    // Also try sequential top-3 as a simpler funnel
+    if (topPages.length >= 3) {
+      const top3 = topPages.slice(0, 3);
+      results.push({
+        steps: top3.map((p, i) => ({
+          label: p.page.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
+          identifiers: [p.page],
+          type: "view" as const,
+          app: discoveryApps[0] || frontend,
+        })),
+        sessions: Math.min(...top3.map(p => p.count)),
+      });
+    }
+
+    // Top 4 by frequency
+    if (topPages.length >= 4) {
+      const top4 = topPages.slice(0, 4);
+      results.push({
+        steps: top4.map((p, i) => ({
+          label: p.page.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
+          identifiers: [p.page],
+          type: "view" as const,
+          app: discoveryApps[0] || frontend,
+        })),
+        sessions: Math.min(...top4.map(p => p.count)),
+      });
+    }
+
+    return results;
+  }, [runDiscovery, discoveryRecords, discoveryApps, frontend]);
+
+  const handleApply = (idx: number) => {
+    setNamingIdx(idx);
+    setPendingName(`Discovered Funnel ${funnels.length + 1}`);
+  };
+
+  const confirmApply = () => {
+    if (namingIdx == null || !candidates[namingIdx]) return;
+    if (funnels.length >= MAX_FUNNELS) return;
+    const newFunnel: FunnelDef = { name: pendingName || `Funnel ${funnels.length + 1}`, steps: candidates[namingIdx].steps };
+    const next = [...funnels, newFunnel];
+    saveFunnels(next);
+    saveActiveFunnelIndex(next.length - 1);
+    setNamingIdx(null);
+    setPendingName("");
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnel Discovery</Paragraph>
+      <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Select one or more applications and discover common user journeys automatically from session data (last 7 days).</Paragraph>
+      <div style={{ marginBottom: 8 }}>
+        <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Applications to analyze</Text>
+        {settingsAppsLoading ? <ProgressBar style={{ width: "100%" }} /> : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+            {availableApps.map(app => {
+              const selected = discoveryApps.includes(app);
+              return (
+                <button key={app} onClick={() => { setDiscoveryApps(prev => selected ? prev.filter(a => a !== app) : [...prev, app]); setRunDiscovery(false); }} style={{ padding: "4px 10px", borderRadius: 4, border: selected ? "2px solid #4589FF" : "1px solid rgba(128,128,128,0.3)", background: selected ? "rgba(69,137,255,0.12)" : "transparent", color: selected ? "#4589FF" : "inherit", cursor: "pointer", fontSize: 11, fontWeight: selected ? 600 : 400 }}>{app}</button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <button onClick={() => setRunDiscovery(true)} disabled={discoveryApps.length === 0} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: discoveryApps.length > 0 ? "#4589FF" : "rgba(128,128,128,0.2)", color: discoveryApps.length > 0 ? "#fff" : "rgba(128,128,128,0.5)", cursor: discoveryApps.length > 0 ? "pointer" : "not-allowed", fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Discover Funnels</button>
+      {runDiscovery && discoveryData.isLoading && <ProgressBar style={{ width: "100%", marginBottom: 8 }} />}
+      {runDiscovery && !discoveryData.isLoading && candidates.length === 0 && (
+        <Paragraph style={{ opacity: 0.5, fontSize: 12 }}>No funnel candidates found. Try selecting different applications or ensure they have session data.</Paragraph>
+      )}
+      {candidates.map((c, idx) => (
+        <div key={idx} style={{ marginBottom: 10, padding: "10px 12px", background: "rgba(128,128,128,0.04)", borderRadius: 8, border: "1px solid rgba(128,128,128,0.15)" }}>
+          <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: 600 }}>Candidate {idx + 1} — {c.steps.length} steps ({c.sessions.toLocaleString()} sessions)</Text>
+            {funnels.length < MAX_FUNNELS && namingIdx !== idx && (
+              <button onClick={() => handleApply(idx)} style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid rgba(69,137,255,0.4)", background: "rgba(69,137,255,0.1)", color: BLUE, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
+            )}
+          </Flex>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {c.steps.map((s, si) => (
+              <span key={si} style={{ fontSize: 11, padding: "2px 8px", background: "rgba(69,137,255,0.08)", borderRadius: 4, color: BLUE }}>{s.identifiers[0]}</span>
+            ))}
+          </div>
+          {namingIdx === idx && (
+            <Flex gap={8} alignItems="center" style={{ marginTop: 8 }}>
+              <TextInput value={pendingName} onChange={(val) => setPendingName(val ?? "")} placeholder="Funnel name" />
+              <button onClick={confirmApply} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: GREEN, color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Save</button>
+              <button onClick={() => setNamingIdx(null)} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: "rgba(128,128,128,0.2)", color: "inherit", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+            </Flex>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ===========================================================================
 // MAIN COMPONENT
 // ===========================================================================
@@ -3006,11 +3179,20 @@ export function UserJourney() {
   const [aiOpen, setAiOpen] = useState(false);
   const closeAiInsights = React.useCallback(() => setAiOpen(false), []);
   const aiContextValue = React.useMemo(() => ({ open: aiOpen, close: closeAiInsights, activeSubTab: activeSubTabKey }), [aiOpen, closeAiInsights, activeSubTabKey]);
-  const { frontend, steps, saveFrontend, saveSteps, aov, saveAov, monthlyInfraCost, saveMonthlyInfraCost, cdnMonthlyCost, saveCdnMonthlyCost, computeCostPerHour, saveComputeCostPerHour, costPerGb, saveCostPerGb, engineerHourlyRate, saveEngineerHourlyRate, industry, saveIndustry } = useSettings();
+  const { frontend, steps, funnels, activeFunnelIndex, saveFunnels, saveActiveFunnelIndex, saveFrontend, saveSteps, aov, saveAov, monthlyInfraCost, saveMonthlyInfraCost, cdnMonthlyCost, saveCdnMonthlyCost, computeCostPerHour, saveComputeCostPerHour, costPerGb, saveCostPerGb, engineerHourlyRate, saveEngineerHourlyRate, industry, saveIndustry } = useSettings();
   const [sankeyStyle, setSankeyStyle] = useState<SankeyStyle>(DEFAULT_SANKEY_STYLE);
   const [funnelStyle, setFunnelStyle] = useState<FunnelStyle>(DEFAULT_FUNNEL_STYLE);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number>(Date.now());
+
+  // Auto-open settings when no funnels exist (first launch)
+  const noFunnelsRef = useRef(false);
+  useEffect(() => {
+    if (funnels.length === 0 && !noFunnelsRef.current) {
+      noFunnelsRef.current = true;
+      setShowSettings(true);
+    }
+  }, [funnels]);
 
   // Forecast modal state
   const [forecastModal, setForecastModal] = useState<{ label: string; sparkline: number[]; color?: string } | null>(null);
@@ -3574,10 +3756,19 @@ export function UserJourney() {
           </div>
           <div>
             <Heading level={3} style={{ margin: 0 }}>User Journey & Experience</Heading>
-            <Text style={{ fontSize: 12, opacity: 0.6 }}>{frontend}</Text>
+            <Text style={{ fontSize: 12, opacity: 0.6 }}>{funnels[activeFunnelIndex]?.name ?? frontend}</Text>
           </div>
         </Flex>
         <Flex alignItems="center" gap={12}>
+          <Strong style={{ fontSize: 12 }}>Funnel</Strong>
+          <Select value={String(activeFunnelIndex)} onChange={(val) => { if (val != null) saveActiveFunnelIndex(Number(val)); }}>
+            <Select.Trigger style={{ minWidth: 160 }} />
+            <Select.Content>
+              {funnels.map((f, i) => (
+                <Select.Option key={i} value={String(i)}>{f.name}</Select.Option>
+              ))}
+            </Select.Content>
+          </Select>
           <Strong style={{ fontSize: 12 }}>Timeframe</Strong>
           <div style={{ minWidth: 280 }}>
             <TimeframeSelector
@@ -3616,7 +3807,7 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.55.0</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.56.0</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
@@ -3624,7 +3815,7 @@ export function UserJourney() {
         <div style={{ padding: "4px 0" }}>
           {/* Frontend Application Name */}
           <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Default Frontend Application</Paragraph>
-          <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Select the default Dynatrace frontend application. This is used as the default app for new funnel steps. Each step can optionally target a different app (for cross-app funnels).</Paragraph>
+          <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Default app for new funnel steps and non-step queries (Sankey, CWV, Session Replay). Each step can override this.</Paragraph>
           <div style={{ marginBottom: 20 }}>
             {settingsAppsData.isLoading ? (
               <ProgressBar style={{ width: "100%" }} />
@@ -3647,92 +3838,118 @@ export function UserJourney() {
             )}
           </div>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
-          {/* Funnel Steps */}
-          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnel Steps</Paragraph>
-          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Define the user journey steps (min {MIN_STEPS}, max {MAX_STEPS}). Funnels can span multiple apps — each step has its own app assignment. Each step can have multiple pages (OR logic within a step). Wildcards supported: <Strong>/home*</Strong>, <Strong>*home</Strong>, <Strong>*home*</Strong>.</Paragraph>
-          {steps.map((step, i) => (
-            <div key={i} style={{ marginBottom: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
-              <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: 700, color: BLUE }}>Step {i + 1}</Text>
-                {steps.length > MIN_STEPS && (
-                  <button onClick={() => { const next = steps.filter((_, j) => j !== i); saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕ Remove</button>
-                )}
-              </Flex>
-              <Flex gap={8} style={{ marginBottom: 6 }}>
+          {/* Funnel Management */}
+          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnels ({funnels.length}/{MAX_FUNNELS})</Paragraph>
+          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Manage multiple funnels (up to {MAX_FUNNELS}). Select the active funnel from the header dropdown. Each funnel has a name and its own step definitions.</Paragraph>
+          {/* Funnel tabs */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+            {funnels.map((f, fi) => (
+              <button key={fi} onClick={() => saveActiveFunnelIndex(fi)} style={{ padding: "5px 12px", borderRadius: 6, border: fi === activeFunnelIndex ? "2px solid #4589FF" : "1px solid rgba(128,128,128,0.3)", background: fi === activeFunnelIndex ? "rgba(69,137,255,0.15)" : "rgba(128,128,128,0.05)", color: fi === activeFunnelIndex ? "#4589FF" : "inherit", cursor: "pointer", fontSize: 12, fontWeight: fi === activeFunnelIndex ? 700 : 400 }}>{f.name}</button>
+            ))}
+            {funnels.length < MAX_FUNNELS && (
+              <button onClick={() => { const newFunnel: FunnelDef = { name: `Funnel ${funnels.length + 1}`, steps: [{ label: "", identifiers: [""], type: "view", app: frontend }] }; const next = [...funnels, newFunnel]; saveFunnels(next); saveActiveFunnelIndex(next.length - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px dashed rgba(69,137,255,0.4)", background: "none", color: BLUE, cursor: "pointer", fontSize: 12 }}>+ New Funnel</button>
+            )}
+          </div>
+          {/* Active funnel editor */}
+          {funnels[activeFunnelIndex] && (
+            <div style={{ padding: "12px", background: "rgba(69,137,255,0.04)", borderRadius: 8, border: "1px solid rgba(69,137,255,0.15)", marginBottom: 16 }}>
+              <Flex alignItems="center" gap={8} style={{ marginBottom: 10 }}>
+                <Text style={{ fontSize: 12, opacity: 0.5 }}>Name</Text>
                 <div style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Label</Text>
-                  <TextInput value={step.label} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], label: val ?? "" }; saveSteps(next); }} placeholder="e.g. Home Page" />
+                  <TextInput value={funnels[activeFunnelIndex].name} onChange={(val) => { const next = [...funnels]; next[activeFunnelIndex] = { ...next[activeFunnelIndex], name: val ?? "" }; saveFunnels(next); }} placeholder="Funnel name" />
                 </div>
-                <div style={{ minWidth: 100 }}>
-                  <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Type</Text>
-                  <Select value={step.type} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], type: (val ?? "view") as "view" | "request" }; saveSteps(next); }}>
-                    <Select.Trigger style={{ minWidth: 90 }} />
-                    <Select.Content>
-                      <Select.Option value="view">View</Select.Option>
-                      <Select.Option value="request">Request</Select.Option>
-                    </Select.Content>
-                  </Select>
-                </div>
-              </Flex>
-              <div style={{ marginBottom: 6 }}>
-                <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Application {(step.app && step.app !== frontend) && <span style={{ color: PURPLE, fontWeight: 600 }}>(different app)</span>}</Text>
-                {settingsAppsData.isLoading ? (
-                  <ProgressBar style={{ width: "100%" }} />
-                ) : (
-                  <Select value={step.app || frontend} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], app: val || frontend }; saveSteps(next); }}>
-                    <Select.Trigger />
-                    <Select.Content>
-                      <Select.Filter />
-                      {(step.app || frontend) && !availableApps.includes(step.app || frontend) && (
-                        <Select.Option value={step.app || frontend}>{step.app || frontend}</Select.Option>
-                      )}
-                      {availableApps.map(app => (
-                        <Select.Option key={app} value={app}>{app}</Select.Option>
-                      ))}
-                    </Select.Content>
-                  </Select>
+                {funnels.length > 1 && (
+                  <button onClick={() => { if (confirm(`Delete "${funnels[activeFunnelIndex].name}"?`)) { const next = funnels.filter((_, j) => j !== activeFunnelIndex); saveFunnels(next); saveActiveFunnelIndex(Math.max(0, activeFunnelIndex - 1)); } }} style={{ background: "none", border: "1px solid rgba(193,25,48,0.4)", borderRadius: 4, color: RED, cursor: "pointer", fontSize: 11, padding: "4px 8px" }}>Delete Funnel</button>
                 )}
-              </div>
-              <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4, marginTop: 4 }}>Pages / Identifiers {step.identifiers.length > 1 && <span style={{ opacity: 0.7 }}>(OR logic — any match counts)</span>}</Text>
-              {step.identifiers.map((id, j) => {
-                const stepApp = step.app || frontend;
-                const stepPages = pagesByApp[stepApp] ?? [];
-                return (
-                <Flex key={j} gap={6} alignItems="center" style={{ marginBottom: 4 }}>
-                  <div style={{ flex: 1 }}>
-                    {settingsPagesData.isLoading ? (
+              </Flex>
+              <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Steps (min {MIN_STEPS}, max {MAX_STEPS}). Funnels can span multiple apps. Wildcards: <Strong>/home*</Strong>, <Strong>*home</Strong>, <Strong>*home*</Strong>.</Paragraph>
+              {steps.map((step, i) => (
+                <div key={i} style={{ marginBottom: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: 700, color: BLUE }}>Step {i + 1}</Text>
+                    {steps.length > MIN_STEPS && (
+                      <button onClick={() => { const next = steps.filter((_, j) => j !== i); saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕ Remove</button>
+                    )}
+                  </Flex>
+                  <Flex gap={8} style={{ marginBottom: 6 }}>
+                    <div style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Label</Text>
+                      <TextInput value={step.label} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], label: val ?? "" }; saveSteps(next); }} placeholder="e.g. Home Page" />
+                    </div>
+                    <div style={{ minWidth: 100 }}>
+                      <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Type</Text>
+                      <Select value={step.type} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], type: (val ?? "view") as "view" | "request" }; saveSteps(next); }}>
+                        <Select.Trigger style={{ minWidth: 90 }} />
+                        <Select.Content>
+                          <Select.Option value="view">View</Select.Option>
+                          <Select.Option value="request">Request</Select.Option>
+                        </Select.Content>
+                      </Select>
+                    </div>
+                  </Flex>
+                  <div style={{ marginBottom: 6 }}>
+                    <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Application {(step.app && step.app !== frontend) && <span style={{ color: PURPLE, fontWeight: 600 }}>(different app)</span>}</Text>
+                    {settingsAppsData.isLoading ? (
                       <ProgressBar style={{ width: "100%" }} />
                     ) : (
-                      <Select value={id} onChange={(val) => { const next = [...steps]; const ids = [...next[i].identifiers]; ids[j] = val ?? ""; next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }}>
+                      <Select value={step.app || frontend} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], app: val || frontend }; saveSteps(next); }}>
                         <Select.Trigger />
                         <Select.Content>
                           <Select.Filter />
-                          {id && !stepPages.includes(id) && (
-                            <Select.Option value={id}>{id}</Select.Option>
+                          {(step.app || frontend) && !availableApps.includes(step.app || frontend) && (
+                            <Select.Option value={step.app || frontend}>{step.app || frontend}</Select.Option>
                           )}
-                          {stepPages.map(page => (
-                            <Select.Option key={page} value={page}>{page}</Select.Option>
+                          {availableApps.map(app => (
+                            <Select.Option key={app} value={app}>{app}</Select.Option>
                           ))}
-                          {stepPages.length === 0 && (
-                            <Select.Option value="" disabled>No pages found for {stepApp}</Select.Option>
-                          )}
                         </Select.Content>
                       </Select>
                     )}
                   </div>
-                  {step.identifiers.length > 1 && (
-                    <button onClick={() => { const next = [...steps]; const ids = step.identifiers.filter((_, k) => k !== j); next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 11, padding: "2px 4px" }}>✕</button>
-                  )}
-                </Flex>
-                );
-              })}
-              <button onClick={() => { const next = [...steps]; next[i] = { ...next[i], identifiers: [...step.identifiers, ""] }; saveSteps(next); }} style={{ background: "none", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 4, color: BLUE, cursor: "pointer", fontSize: 11, padding: "3px 8px", marginTop: 2 }}>+ Add Page</button>
+                  <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4, marginTop: 4 }}>Pages / Identifiers {step.identifiers.length > 1 && <span style={{ opacity: 0.7 }}>(OR logic — any match counts)</span>}</Text>
+                  {step.identifiers.map((id, j) => {
+                    const stepApp = step.app || frontend;
+                    const stepPages = pagesByApp[stepApp] ?? [];
+                    return (
+                    <Flex key={j} gap={6} alignItems="center" style={{ marginBottom: 4 }}>
+                      <div style={{ flex: 1 }}>
+                        {settingsPagesData.isLoading ? (
+                          <ProgressBar style={{ width: "100%" }} />
+                        ) : (
+                          <Select value={id} onChange={(val) => { const next = [...steps]; const ids = [...next[i].identifiers]; ids[j] = val ?? ""; next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }}>
+                            <Select.Trigger />
+                            <Select.Content>
+                              <Select.Filter />
+                              {id && !stepPages.includes(id) && (
+                                <Select.Option value={id}>{id}</Select.Option>
+                              )}
+                              {stepPages.map(page => (
+                                <Select.Option key={page} value={page}>{page}</Select.Option>
+                              ))}
+                              {stepPages.length === 0 && (
+                                <Select.Option value="" disabled>No pages found for {stepApp}</Select.Option>
+                              )}
+                            </Select.Content>
+                          </Select>
+                        )}
+                      </div>
+                      {step.identifiers.length > 1 && (
+                        <button onClick={() => { const next = [...steps]; const ids = step.identifiers.filter((_, k) => k !== j); next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 11, padding: "2px 4px" }}>✕</button>
+                      )}
+                    </Flex>
+                    );
+                  })}
+                  <button onClick={() => { const next = [...steps]; next[i] = { ...next[i], identifiers: [...step.identifiers, ""] }; saveSteps(next); }} style={{ background: "none", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 4, color: BLUE, cursor: "pointer", fontSize: 11, padding: "3px 8px", marginTop: 2 }}>+ Add Page</button>
+                </div>
+              ))}
+              {steps.length < MAX_STEPS && (
+                <button onClick={() => { const prevApp = steps.length > 0 ? (steps[steps.length - 1].app || frontend) : frontend; const next = [...steps, { label: "", identifiers: [""], type: "view" as const, app: prevApp }]; saveSteps(next); }} style={{ width: "100%", padding: "8px", background: "rgba(69,137,255,0.1)", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 6, color: BLUE, cursor: "pointer", fontSize: 12, marginBottom: 8 }}>+ Add Step</button>
+              )}
             </div>
-          ))}
-          {steps.length < MAX_STEPS && (
-            <button onClick={() => { const prevApp = steps.length > 0 ? (steps[steps.length - 1].app || frontend) : frontend; const next = [...steps, { label: "", identifiers: [""], type: "view" as const, app: prevApp }]; saveSteps(next); }} style={{ width: "100%", padding: "8px", background: "rgba(69,137,255,0.1)", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 6, color: BLUE, cursor: "pointer", fontSize: 12, marginBottom: 16 }}>+ Add Step</button>
           )}
-          <button onClick={() => { saveSteps(DEFAULT_FUNNEL_STEPS); }} style={{ width: "100%", padding: "6px", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, marginBottom: 16 }}>Reset to Defaults</button>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
+          {/* Funnel Discovery */}
+          <FunnelDiscovery availableApps={availableApps} settingsAppsLoading={settingsAppsData.isLoading} frontend={frontend} funnels={funnels} saveFunnels={saveFunnels} saveActiveFunnelIndex={saveActiveFunnelIndex} />
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
           {/* Average Order Value */}
           <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Average Order Value (AOV)</Paragraph>

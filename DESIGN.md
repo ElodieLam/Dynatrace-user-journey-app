@@ -83,6 +83,40 @@ The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<
 
 **Query impact**: All ~37 step-scoped query functions now use `${frontendFilter(steps, frontend)}` instead of `frontend.name == "${frontend}"`. Non-step queries (Sankey, CWV, Session Replay) continue using the default frontend.
 
+### Multi-Funnel Management & Discovery
+
+**Purpose**: Allow users to define, persist, and switch between up to 10 independent funnel configurations. Includes automatic funnel discovery from session data.
+
+**Data Model** (`ui/app/SettingsContext.tsx`):
+- **`FunnelDef` type**: `{ name: string; steps: StepDef[] }` — each funnel is a named set of steps
+- **Constants**: `MAX_FUNNELS = 10`, `DEFAULT_FUNNELS: FunnelDef[] = []` (empty — forces Settings on first launch)
+- **Storage keys**: `uj-funnels` (JSON array of `FunnelDef`), `uj-active-funnel` (index as string)
+- **Context exports**: `funnels`, `activeFunnelIndex`, `saveFunnels()`, `saveActiveFunnelIndex()`, plus backward-compat `steps`/`setSteps`/`saveSteps` (derived from active funnel)
+
+**Migration**: On load, reads `uj-funnels` first. If absent, checks legacy `uj-funnel-steps` key and wraps in `[{ name: "My Funnel", steps }]`. New installs start with empty array.
+
+**UI — Header Funnel Selector** (`UserJourney.tsx`):
+- Dropdown positioned left of the Timeframe selector in the app header
+- Shows active funnel name; lists all funnels for quick switching
+- Selecting a funnel updates `activeFunnelIndex` → all tabs re-render with the new funnel's steps
+
+**UI — Settings Funnel Management**:
+- **Funnel tabs**: Horizontal tab row showing all funnels by name, highlighted active tab, "+ New Funnel" button (disabled at MAX_FUNNELS)
+- **Per-funnel editor**: Editable name field, Delete button (with confirmation for last funnel), and the existing step editor scoped to that funnel's steps
+- **Auto-open Settings**: A `useEffect` detects `funnels.length === 0` and opens Settings automatically on first launch
+
+**UI — Funnel Discovery** (`FunnelDiscovery` component):
+- **App selection**: Multi-select dropdown of available applications
+- **Discovery query** (`funnelDiscoveryQuery`): Analyzes 7 days of session data to find common sequential page patterns (grouped by session, ordered by timestamp, filtered by min 3 distinct pages)
+- **Candidate list**: Shows discovered funnel candidates with step count, session volume, and page sequence preview
+- **Apply flow**: Click Apply → enter funnel name → funnel is appended to the funnels array and activated
+
+**Per-Funnel Settings** (embedded in `FunnelDef`):
+- Each funnel stores its own AOV, FinOps costs (monthly infra, CDN, compute/hour, cost/GB, engineer hourly rate), and industry type
+- Context still exposes flat `aov`, `saveAov`, `industry`, `saveIndustry`, etc. — consumers are unaware of per-funnel storage
+- **Legacy migration**: If a funnel has no embedded settings, falls back to the old global state keys (`uj-average-order-value`, `uj-monthly-infra-cost`, etc.) then to compile-time defaults
+- Once saved per-funnel, the embedded value takes precedence over legacy global keys
+
 ---
 
 ## Tab Reference
