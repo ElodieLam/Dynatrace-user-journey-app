@@ -9156,21 +9156,31 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             const highlightedNodes = new Set<string>();
             const highlightedLinkIndices = new Set<number>();
             if (selectedFlow) {
-              highlightedNodes.add(selectedFlow.src);
-              highlightedNodes.add(selectedFlow.tgt);
-              // BFS upstream from src
+              // BFS upstream: nodes that have a path leading INTO src
+              const upstreamNodes = new Set<string>();
               const upQ = [selectedFlow.src]; const seenUp = new Set<string>([selectedFlow.src]);
               while (upQ.length > 0) {
                 const pg = upQ.shift()!;
-                for (const l of links) { if (l.tgt === pg && !seenUp.has(l.src)) { seenUp.add(l.src); highlightedNodes.add(l.src); upQ.push(l.src); } }
+                for (const l of links) { if (l.tgt === pg && !seenUp.has(l.src)) { seenUp.add(l.src); upstreamNodes.add(l.src); upQ.push(l.src); } }
               }
-              // BFS downstream from tgt
+              // BFS downstream: nodes reachable FROM tgt
+              const downstreamNodes = new Set<string>();
               const downQ = [selectedFlow.tgt]; const seenDown = new Set<string>([selectedFlow.tgt]);
               while (downQ.length > 0) {
                 const pg = downQ.shift()!;
-                for (const l of links) { if (l.src === pg && !seenDown.has(l.tgt)) { seenDown.add(l.tgt); highlightedNodes.add(l.tgt); downQ.push(l.tgt); } }
+                for (const l of links) { if (l.src === pg && !seenDown.has(l.tgt)) { seenDown.add(l.tgt); downstreamNodes.add(l.tgt); downQ.push(l.tgt); } }
               }
-              sortedLinks.forEach((l, i) => { if (highlightedNodes.has(l.src) && highlightedNodes.has(l.tgt)) highlightedLinkIndices.add(i); });
+              upstreamNodes.forEach(n => highlightedNodes.add(n));
+              highlightedNodes.add(selectedFlow.src);
+              highlightedNodes.add(selectedFlow.tgt);
+              downstreamNodes.forEach(n => highlightedNodes.add(n));
+              // Only highlight: the selected link, links in the upstream chain (→ src), links in the downstream chain (tgt →)
+              sortedLinks.forEach((l, i) => {
+                const isSelected = l.src === selectedFlow.src && l.tgt === selectedFlow.tgt;
+                const isUpstream = upstreamNodes.has(l.src) && (upstreamNodes.has(l.tgt) || l.tgt === selectedFlow.src);
+                const isDownstream = (l.src === selectedFlow.tgt || downstreamNodes.has(l.src)) && downstreamNodes.has(l.tgt);
+                if (isSelected || isUpstream || isDownstream) highlightedLinkIndices.add(i);
+              });
             }
             const hasFocus = selectedFlow !== null;
 
