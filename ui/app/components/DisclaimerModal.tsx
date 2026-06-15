@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useUserAppState, useSetUserAppState } from "@dynatrace-sdk/react-hooks";
+import appConfig from "../../../app.config.json";
 
-const DISCLAIMER_STATE_KEY = "uj-disclaimer-v1";
+const DISCLAIMER_STATE_KEY = `uj-disclaimer-${appConfig.app.version}`;
 
 const AMBER = "#F59E0B";
 const AMBER_DARK = "#D97706";
@@ -192,7 +193,7 @@ export function DisclaimerModal() {
           <div style={{ height: "1px", background: "rgba(255,255,255,0.08)", marginBottom: "24px" }} />
 
           {/* Checkbox */}
-          <label
+          <div
             style={{
               display: "flex",
               alignItems: "center",
@@ -201,6 +202,7 @@ export function DisclaimerModal() {
               marginBottom: "24px",
               userSelect: "none",
             }}
+            onClick={() => setDontShow((v) => !v)}
             onMouseEnter={() => setCheckHover(true)}
             onMouseLeave={() => setCheckHover(false)}
           >
@@ -218,7 +220,6 @@ export function DisclaimerModal() {
                 transition: "border-color 0.15s, background 0.15s",
                 boxShadow: dontShow ? `0 0 8px ${AMBER_GLOW}` : "none",
               }}
-              onClick={() => setDontShow((v) => !v)}
             >
               {dontShow && (
                 <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
@@ -226,16 +227,10 @@ export function DisclaimerModal() {
                 </svg>
               )}
             </div>
-            <input
-              type="checkbox"
-              checked={dontShow}
-              onChange={(e) => setDontShow(e.target.checked)}
-              style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
-            />
             <span style={{ fontSize: "14px", color: checkHover || dontShow ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.7)", transition: "color 0.15s" }}>
               Don't show this again
             </span>
-          </label>
+          </div>
 
           {/* Continue button */}
           <button
