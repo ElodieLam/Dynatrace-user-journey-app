@@ -9377,6 +9377,25 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               });
             }
             const hasFocus = selectedFlow !== null;
+            // Node-click focus: de-emphasize nodes not connected to the clicked node
+            const focusedPageName = activeTooltip?.startsWith("page:") ? activeTooltip.slice(5) : null;
+            const focusedSvcId = activeTooltip?.startsWith("svc:") ? activeTooltip.slice(4) : null;
+            const pageFocusSet = new Set<string>();
+            if (focusedPageName) {
+              pageFocusSet.add(focusedPageName);
+              for (const l of links) {
+                if (l.src === focusedPageName) pageFocusSet.add(l.tgt);
+                if (l.tgt === focusedPageName) pageFocusSet.add(l.src);
+              }
+            }
+            const svcFocusSet = new Set<string>();
+            if (focusedSvcId) {
+              svcFocusSet.add(focusedSvcId);
+              for (const e of beEdges) {
+                if (e.src === focusedSvcId) svcFocusSet.add(e.tgt);
+                if (e.tgt === focusedSvcId) svcFocusSet.add(e.src);
+              }
+            }
 
             // Compute vertical offsets for link attachment points
             const srcOffsets = new Map<string, number>();
@@ -9498,9 +9517,10 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       const x1 = sp.x + nodeW; const y1 = sp.y + nodeH / 2;
                       const x2 = bePos.x; const y2 = bePos.y + beNodeH / 2;
                       const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                      const feBeOp = focusedSvcId ? (svcFocusSet.has(svc.id) ? 0.75 : 0.05) : focusedPageName ? 0.07 : 0.4;
                       return (
                         <path key={`fe-be-${svc.id}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                          fill="none" stroke={FLOW_NODE_META["svc-direct"].color} strokeWidth={1.5} strokeOpacity={0.4} strokeDasharray="6,4" />
+                          fill="none" stroke={FLOW_NODE_META["svc-direct"].color} strokeWidth={1.5} strokeOpacity={feBeOp} strokeDasharray="6,4" style={{ transition: "stroke-opacity 0.2s" }} />
                       );
                     });
                   })()}
@@ -9512,9 +9532,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const x1 = sp.x + beNodeW; const y1 = sp.y + beNodeH / 2;
                     const x2 = tp.x; const y2 = tp.y + beNodeH / 2;
                     const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                    const beEdgeFocused = !!focusedSvcId && svcFocusSet.has(edge.src) && svcFocusSet.has(edge.tgt);
+                    const beEdgeOp = focusedSvcId ? (beEdgeFocused ? 0.75 : 0.05) : focusedPageName ? 0.07 : 0.22;
                     return (
                       <path key={`be-${ei}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                        fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={1.5} />
+                        fill="none" stroke={`rgba(255,255,255,${beEdgeOp})`} strokeWidth={beEdgeFocused ? 2.5 : 1.5} style={{ transition: "all 0.2s" }} />
                     );
                   })}
 
@@ -9532,7 +9554,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const color = linkColors[i % linkColors.length];
                     const isSelected = hasFocus && link.src === selectedFlow!.src && link.tgt === selectedFlow!.tgt;
                     const isHighlighted = !hasFocus || highlightedLinkIndices.has(i);
-                    const strokeOpacity = hasFocus ? (isHighlighted ? (isSelected ? 0.9 : 0.55) : 0.05) : 0.35;
+                    const strokeOpacity = hasFocus
+                      ? (isHighlighted ? (isSelected ? 0.9 : 0.55) : 0.05)
+                      : focusedPageName
+                        ? ((link.src === focusedPageName || link.tgt === focusedPageName) ? 0.65 : 0.05)
+                        : focusedSvcId ? 0.08 : 0.35;
                     return (
                       <path key={i} d={`M${x1},${srcY} C${cx1},${srcY} ${cx2},${tgtY} ${x2},${tgtY}`}
                         fill="none" stroke={color} strokeWidth={isSelected ? thickness * 1.4 : thickness}
@@ -9553,7 +9579,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const conv = convMap.get(name);
                     const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
                     const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
-                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : 1;
+                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : focusedPageName ? (pageFocusSet.has(name) ? 1 : 0.1) : focusedSvcId ? 0.12 : 1;
                     const isActive = activeTooltip === `page:${name}`;
                     return (
                       <g key={name}
@@ -9585,7 +9611,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const isActive = activeTooltip === `svc:${svcId}`;
                     return (
                       <g key={svcId}
-                        style={{ cursor: draggingNode === `be:${svcId}` ? "grabbing" : "grab", transition: draggingNode === `be:${svcId}` ? "none" : "opacity 0.2s" }}
+                        style={{ cursor: draggingNode === `be:${svcId}` ? "grabbing" : "grab", transition: draggingNode === `be:${svcId}` ? "none" : "opacity 0.2s", opacity: focusedSvcId ? (svcFocusSet.has(svcId) ? 1 : 0.1) : focusedPageName ? 0.15 : 1 }}
                         onMouseDown={(e) => { e.stopPropagation(); setDraggingNode(`be:${svcId}`); setDragStart({ mx: e.clientX, my: e.clientY, nx: bePos.x, ny: bePos.y }); setWasDragging(false); }}
                         onClick={(e) => { e.stopPropagation(); if (!wasDragging) setActiveTooltip(prev => prev === `svc:${svcId}` ? null : `svc:${svcId}`); }}
                       >
@@ -9605,7 +9631,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   {(() => {
                     if (!activeTooltip) return null;
                     let tNode: { x: number; y: number; w: number; h: number } | null = null;
-                    let ttTitle = "", ttSub = "", ttColor = BLUE;
+                    let ttTitle = "", ttSub = "", ttColor = BLUE, ttLink = "";
                     let perfSpark: number[] = [], errSpark: number[] = [];
                     let ttSessions = 0, ttThroughput = 0, ttErrRate = 0, ttDur = 0;
                     let isSvc = false;
@@ -9627,6 +9653,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       ttErrRate = 0.5 + (pHash % 11) / 5;
                       perfSpark = syntheticSparkline(ttDur, 8, pname + "_dur");
                       errSpark = syntheticSparkline(ttErrRate, 8, pname + "_err");
+                      ttLink = appEntityId ? vitalsUrl(appEntityId, pname) : "";
                     } else if (activeTooltip.startsWith("svc:")) {
                       isSvc = true;
                       const svcId = activeTooltip.slice(4);
@@ -9645,10 +9672,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       ttErrRate = 0.2 + (sHash % 7) * 0.3;
                       perfSpark = syntheticSparkline(ttDur, 8, svcId + "_lat");
                       errSpark = syntheticSparkline(ttErrRate, 8, svcId + "_err");
+                      ttLink = `${ENV_URL}/ui/apps/dynatrace.services/explorer/services?detailsId=${encodeURIComponent(svcId)}&sidebarOpen=false&tf=${tfParam()}`;
                     }
 
                     if (!tNode) return null;
-                    const TW = 242, TH = 196;
+                    const TW = 242, TH = 220;
                     let tx = tNode.x;
                     let ty = tNode.y - TH - 8;
                     if (ty < 0) ty = tNode.y + tNode.h + 8;
@@ -9682,6 +9710,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                             </div>
                           </div>
                           {isSvc && <div style={{ marginTop: 6, fontSize: 9, color: "rgba(255,255,255,0.28)", fontStyle: "italic" }}>Connect APM instrumentation for live metrics</div>}
+                          {ttLink && <a href={ttLink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "block", marginTop: 7, fontSize: 10, color: ttColor, textDecoration: "none", fontWeight: 700, letterSpacing: 0.2 }}>{isSvc ? "View in Gen3 Services ↗" : "View in Gen3 Pages ↗"}</a>}
                         </div>
                       </foreignObject>
                     );
