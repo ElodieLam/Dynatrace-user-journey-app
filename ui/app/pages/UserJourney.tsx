@@ -3145,6 +3145,26 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
           </div>
         )}
       </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Filter by step</Text>
+          <input
+            value={discoveryStepFilter}
+            onChange={(e) => setDiscoveryStepFilter(e.target.value)}
+            placeholder="e.g. chat, checkout…"
+            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Exclude step</Text>
+          <input
+            value={discoveryStepExclude}
+            onChange={(e) => setDiscoveryStepExclude(e.target.value)}
+            placeholder="e.g. chat, /login…"
+            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
+          />
+        </div>
+      </div>
       <Flex alignItems="center" gap={8} style={{ marginBottom: 12 }}>
         <button onClick={() => { setActiveFilter(discoveryStepFilter); setActiveExclude(discoveryStepExclude); setRunDiscovery(true); }} disabled={discoveryApps.length === 0} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: discoveryApps.length > 0 ? "#4589FF" : "rgba(128,128,128,0.2)", color: discoveryApps.length > 0 ? "#fff" : "rgba(128,128,128,0.5)", cursor: discoveryApps.length > 0 ? "pointer" : "not-allowed", fontSize: 12, fontWeight: 600 }}>Discover Funnels</button>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -3162,28 +3182,6 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
       {runDiscovery && discoveryData.isLoading && <ProgressBar style={{ width: "100%", marginBottom: 8 }} />}
       {runDiscovery && !discoveryData.isLoading && candidates.length === 0 && (
         <Paragraph style={{ opacity: 0.5, fontSize: 12 }}>No funnel candidates found. Try selecting different applications or ensure they have session data.</Paragraph>
-      )}
-      {runDiscovery && !discoveryData.isLoading && candidates.length > 0 && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Filter by step</Text>
-            <input
-              value={discoveryStepFilter}
-              onChange={(e) => setDiscoveryStepFilter(e.target.value)}
-              placeholder="e.g. chat, checkout…"
-              style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Exclude step</Text>
-            <input
-              value={discoveryStepExclude}
-              onChange={(e) => setDiscoveryStepExclude(e.target.value)}
-              placeholder="e.g. chat, /login…"
-              style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
-            />
-          </div>
-        </div>
       )}
       {filteredGroups.slice(0, discoveryLimit).map(({ key, repIdx, otherIdxs }, groupPos) => {
         const isExpanded = expandedGroups.has(key);
