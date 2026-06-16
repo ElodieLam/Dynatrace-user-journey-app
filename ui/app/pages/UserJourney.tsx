@@ -3005,7 +3005,7 @@ function funnelDiscoveryQuery(apps: string[]): string {
 | fieldsAdd step1 = pages[0], step2 = pages[1], step3 = pages[2], step4 = if(pageCount >= 4, pages[3], else:""), step5 = if(pageCount >= 5, pages[4], else:"")
 | summarize sessions = count(), by: {app, step1, step2, step3, step4, step5}
 | sort sessions desc
-| limit 50`;
+| limit 100`;
 }
 
 /** Discovers common page sequences and proposes funnel candidates. */
@@ -3021,6 +3021,9 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
   const [runDiscovery, setRunDiscovery] = useState(false);
   const [namingIdx, setNamingIdx] = useState<number | null>(null);
   const [pendingName, setPendingName] = useState("");
+  const [discoveryStepFilter, setDiscoveryStepFilter] = useState("");
+  const [discoveryStepExclude, setDiscoveryStepExclude] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const discoveryData = useDql({ query: runDiscovery ? funnelDiscoveryQuery(discoveryApps) : "fetch user.events | limit 0" });
   const discoveryRecords = discoveryData.data?.records ?? [];
@@ -3066,6 +3069,40 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
     return results;
   }, [runDiscovery, discoveryRecords, frontend]);
 
+  // Group candidates by their unique page set — candidates sharing the same pages are "like" variants
+  const groupedCandidates = useMemo(() => {
+    const groups = new Map<string, { key: string; repIdx: number; otherIdxs: number[] }>();
+    candidates.forEach((c, idx) => {
+      const key = [...new Set(c.steps.map(s => s.identifiers[0]))].sort().join("|");
+      if (!groups.has(key)) {
+        groups.set(key, { key, repIdx: idx, otherIdxs: [] });
+      } else {
+        groups.get(key)!.otherIdxs.push(idx);
+      }
+    });
+    return Array.from(groups.values());
+  }, [candidates]);
+
+  // Apply filter and exclude — both are substring/wildcard matches against step identifiers
+  const filteredGroups = useMemo(() => {
+    let result = groupedCandidates;
+    if (discoveryStepFilter.trim()) {
+      const f = discoveryStepFilter.trim().toLowerCase();
+      result = result.filter(({ repIdx, otherIdxs }) => {
+        const allCands = [candidates[repIdx], ...otherIdxs.map(i => candidates[i])];
+        return allCands.some(c => c.steps.some(s => s.identifiers[0].toLowerCase().includes(f)));
+      });
+    }
+    if (discoveryStepExclude.trim()) {
+      const x = discoveryStepExclude.trim().toLowerCase();
+      result = result.filter(({ repIdx, otherIdxs }) => {
+        const allCands = [candidates[repIdx], ...otherIdxs.map(i => candidates[i])];
+        return !allCands.some(c => c.steps.some(s => s.identifiers[0].toLowerCase().includes(x)));
+      });
+    }
+    return result;
+  }, [groupedCandidates, discoveryStepFilter, discoveryStepExclude, candidates]);
+
   const handleApply = (idx: number) => {
     setNamingIdx(idx);
     setPendingName(`Discovered Funnel ${funnels.length + 1}`);
@@ -3104,28 +3141,76 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
       {runDiscovery && !discoveryData.isLoading && candidates.length === 0 && (
         <Paragraph style={{ opacity: 0.5, fontSize: 12 }}>No funnel candidates found. Try selecting different applications or ensure they have session data.</Paragraph>
       )}
-      {candidates.map((c, idx) => (
-        <div key={idx} style={{ marginBottom: 10, padding: "10px 12px", background: "rgba(128,128,128,0.04)", borderRadius: 8, border: "1px solid rgba(128,128,128,0.15)" }}>
-          <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 6 }}>
-            <Text style={{ fontSize: 12, fontWeight: 600 }}>Candidate {idx + 1} — {c.steps.length} steps ({c.sessions.toLocaleString()} sessions) <span style={{ fontWeight: 400, opacity: 0.6 }}>from {c.app}</span></Text>
-            {funnels.length < MAX_FUNNELS && namingIdx !== idx && (
-              <button onClick={() => handleApply(idx)} style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid rgba(69,137,255,0.4)", background: "rgba(69,137,255,0.1)", color: BLUE, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
-            )}
-          </Flex>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {c.steps.map((s, si) => (
-              <span key={si} style={{ fontSize: 11, padding: "2px 8px", background: "rgba(69,137,255,0.08)", borderRadius: 4, color: BLUE }}>{s.identifiers[0]}</span>
-            ))}
+      {runDiscovery && !discoveryData.isLoading && candidates.length > 0 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <div style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Filter by step</Text>
+            <input
+              value={discoveryStepFilter}
+              onChange={(e) => setDiscoveryStepFilter(e.target.value)}
+              placeholder="e.g. chat, checkout…"
+              style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
+            />
           </div>
-          {namingIdx === idx && (
-            <Flex gap={8} alignItems="center" style={{ marginTop: 8 }}>
-              <TextInput value={pendingName} onChange={(val) => setPendingName(val ?? "")} placeholder="Funnel name" />
-              <button onClick={confirmApply} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: GREEN, color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Save</button>
-              <button onClick={() => setNamingIdx(null)} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: "rgba(128,128,128,0.2)", color: "inherit", cursor: "pointer", fontSize: 11 }}>Cancel</button>
-            </Flex>
-          )}
+          <div style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Exclude step</Text>
+            <input
+              value={discoveryStepExclude}
+              onChange={(e) => setDiscoveryStepExclude(e.target.value)}
+              placeholder="e.g. chat, /login…"
+              style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
+            />
+          </div>
         </div>
-      ))}
+      )}
+      {filteredGroups.map(({ key, repIdx, otherIdxs }, groupPos) => {
+        const isExpanded = expandedGroups.has(key);
+        const renderCandidate = (candIdx: number, isRep: boolean) => {
+          const cand = candidates[candIdx];
+          return (
+            <div key={candIdx} style={{ marginBottom: isRep ? 0 : 6, padding: "10px 12px", background: isRep ? "rgba(128,128,128,0.04)" : "rgba(69,137,255,0.03)", borderRadius: 8, border: `1px solid ${isRep ? "rgba(128,128,128,0.15)" : "rgba(69,137,255,0.12)"}`, marginLeft: isRep ? 0 : 12 }}>
+              <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: 600 }}>
+                  {isRep ? `Candidate ${groupPos + 1}` : "↳ Similar"} — {cand.steps.length} steps ({cand.sessions.toLocaleString()} sessions) <span style={{ fontWeight: 400, opacity: 0.6 }}>from {cand.app}</span>
+                </Text>
+                {funnels.length < MAX_FUNNELS && namingIdx !== candIdx && (
+                  <button onClick={() => handleApply(candIdx)} style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid rgba(69,137,255,0.4)", background: "rgba(69,137,255,0.1)", color: BLUE, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
+                )}
+              </Flex>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {cand.steps.map((s, si) => (
+                  <span key={si} style={{ fontSize: 11, padding: "2px 8px", background: "rgba(69,137,255,0.08)", borderRadius: 4, color: BLUE }}>{s.identifiers[0]}</span>
+                ))}
+              </div>
+              {namingIdx === candIdx && (
+                <Flex gap={8} alignItems="center" style={{ marginTop: 8 }}>
+                  <TextInput value={pendingName} onChange={(val) => setPendingName(val ?? "")} placeholder="Funnel name" />
+                  <button onClick={confirmApply} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: GREEN, color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Save</button>
+                  <button onClick={() => setNamingIdx(null)} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: "rgba(128,128,128,0.2)", color: "inherit", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+                </Flex>
+              )}
+            </div>
+          );
+        };
+        return (
+          <div key={key} style={{ marginBottom: 10 }}>
+            {renderCandidate(repIdx, true)}
+            {otherIdxs.length > 0 && (
+              <button
+                onClick={() => setExpandedGroups(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
+                style={{ marginTop: 4, marginLeft: 12, padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(128,128,128,0.2)", background: "transparent", color: "rgba(128,128,128,0.7)", cursor: "pointer", fontSize: 11 }}
+              >
+                {isExpanded ? `▲ Hide ${otherIdxs.length} similar` : `▼ ${otherIdxs.length} similar variant${otherIdxs.length > 1 ? "s" : ""}`}
+              </button>
+            )}
+            {isExpanded && (
+              <div style={{ marginTop: 6 }}>
+                {otherIdxs.map(oi => renderCandidate(oi, false))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -8939,6 +9024,11 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeNavigationPaths(data, [], steps), [data, steps]));
   const [selectedFlow, setSelectedFlow] = useState<{ src: string; tgt: string } | null>(null);
+  const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<{ mx: number; my: number; nx: number; ny: number } | null>(null);
+  const [manualNodePos, setManualNodePos] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const [wasDragging, setWasDragging] = useState(false);
+  React.useEffect(() => { setManualNodePos(new Map()); }, [data]);
   if (isLoading) return <Loading />;
 
   const paths = (data.data?.records ?? []) as any[];
@@ -9140,6 +9230,12 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               });
             });
 
+            // Apply manual drag overrides
+            for (const [nodeName, mp] of manualNodePos) {
+              const existing = nodePos.get(nodeName);
+              if (existing) nodePos.set(nodeName, { ...existing, x: mp.x, y: mp.y });
+            }
+
             // Build links (between visible nodes — forward and same-layer)
             const links: { src: string; tgt: string; value: number }[] = [];
             paths.forEach((p: any) => {
@@ -9194,7 +9290,19 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
 
             return (
               <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%", position: "relative" }}>
-                <svg width={W} height={H} style={{ display: "block", minWidth: W, cursor: hasFocus ? "pointer" : "default" }} onClick={() => setSelectedFlow(null)}>
+                <svg width={W} height={H}
+                  style={{ display: "block", minWidth: W, cursor: draggingNode ? "grabbing" : (hasFocus ? "pointer" : "default") }}
+                  onMouseMove={(e) => {
+                    if (!draggingNode || !dragStart) return;
+                    const dx = e.clientX - dragStart.mx;
+                    const dy = e.clientY - dragStart.my;
+                    if (!wasDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) setWasDragging(true);
+                    setManualNodePos(prev => { const next = new Map(prev); next.set(draggingNode, { x: dragStart.nx + dx, y: dragStart.ny + dy }); return next; });
+                  }}
+                  onMouseUp={() => { setDraggingNode(null); setDragStart(null); }}
+                  onMouseLeave={() => { setDraggingNode(null); setDragStart(null); }}
+                  onClick={() => { if (wasDragging) { setWasDragging(false); return; } setSelectedFlow(null); }}
+                >
                   {/* Links */}
                   {sortedLinks.map((link, i) => {
                     const sp = nodePos.get(link.src); const tp = nodePos.get(link.tgt);
@@ -9230,7 +9338,15 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
                     const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : 1;
                     return (
-                      <g key={name} style={{ opacity: nodeOpacity, transition: "opacity 0.2s" }}>
+                      <g key={name}
+                        style={{ opacity: nodeOpacity, transition: draggingNode === name ? "none" : "opacity 0.2s", cursor: draggingNode === name ? "grabbing" : "grab" }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          setDraggingNode(name);
+                          setDragStart({ mx: e.clientX, my: e.clientY, nx: pos.x, ny: pos.y });
+                          setWasDragging(false);
+                        }}
+                      >
                         <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6}
                           fill="rgba(128,128,128,0.1)" stroke={borderColor} strokeWidth={isFunnel ? 2.5 : 1.5} strokeOpacity={0.8} />
                         <text x={pos.x + 10} y={pos.y + 20} fontSize={12} fill={borderColor} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
