@@ -9076,7 +9076,9 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
   const [wasDragging, setWasDragging] = useState(false);
   const [showBackend, setShowBackend] = useState(true);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [maxVisibleDepth, setMaxVisibleDepth] = useState(2);
   React.useEffect(() => { setManualNodePos(new Map()); }, [data]);
+  React.useEffect(() => { setMaxVisibleDepth(2); }, [backendServicesData, serviceToServiceData]);
   if (isLoading) return <Loading />;
 
   const paths = (data.data?.records ?? []) as any[];
@@ -9183,8 +9185,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
       }
     }
   });
-  const beServices = Array.from(beServiceMap.values()).slice(0, 24);
-  const beEdges = s2sEdges.filter(e => beServiceMap.has(e.src) && beServiceMap.has(e.tgt));
+  const allBeServices = Array.from(beServiceMap.values());
+  const maxDataDepth = allBeServices.reduce((m, s) => Math.max(m, s.depth), 0);
+  const beServices = allBeServices.filter(s => s.depth <= maxVisibleDepth).slice(0, 40);
+  const visibleBeIds = new Set(beServices.map(s => s.id));
+  const beEdges = s2sEdges.filter(e => visibleBeIds.has(e.src) && visibleBeIds.has(e.tgt));
 
   // Entry/exit page classification
   const step1Pages = new Set<string>(); const step2Pages = new Set<string>();
@@ -9383,8 +9388,8 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             const beH = Math.max(200, maxBePerDepth * (beNodeH + bePadY) + 80);
             const beTotalW = showBackend && beServices.length > 0 ? beDepths.length * beColW + 40 : 0;
             const beStartX = svgW + (showBackend && beServices.length > 0 ? bePad : 0);
-            const totalSvgW = svgW + beTotalW + (showBackend && beServices.length > 0 ? bePad : 0);
-            const totalSvgH = Math.max(svgH, showBackend && beServices.length > 0 ? beH : svgH);
+            let totalSvgW = svgW + beTotalW + (showBackend && beServices.length > 0 ? bePad : 0);
+            let totalSvgH = Math.max(svgH, showBackend && beServices.length > 0 ? beH : svgH);
 
             // Backend node positions
             const beNodePos = new Map<string, { x: number; y: number; depth: number; name: string }>();
@@ -9397,6 +9402,18 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   beNodePos.set(svc.id, { x: beStartX + di * beColW, y: startY + si * (beNodeH + bePadY), depth, name: svc.name });
                 });
               });
+            }
+            // Apply manual drag overrides to backend nodes
+            for (const [key, mp] of manualNodePos) {
+              if (!key.startsWith("be:")) continue;
+              const svcId = key.slice(3);
+              const existing = beNodePos.get(svcId);
+              if (existing) beNodePos.set(svcId, { ...existing, x: mp.x, y: mp.y });
+            }
+            // Expand SVG bounds to fit any dragged backend nodes
+            for (const [, bp] of beNodePos) {
+              totalSvgW = Math.max(totalSvgW, bp.x + beNodeW + bePad);
+              totalSvgH = Math.max(totalSvgH, bp.y + beNodeH + bePadY);
             }
 
             // Gather present node types for legend
@@ -9559,8 +9576,10 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const shortName = svc.name.length > 26 ? svc.name.substring(0, 24) + "…" : svc.name;
                     const isActive = activeTooltip === `svc:${svcId}`;
                     return (
-                      <g key={svcId} style={{ cursor: "pointer" }}
-                        onClick={(e) => { e.stopPropagation(); setActiveTooltip(prev => prev === `svc:${svcId}` ? null : `svc:${svcId}`); }}
+                      <g key={svcId}
+                        style={{ cursor: draggingNode === `be:${svcId}` ? "grabbing" : "grab", transition: draggingNode === `be:${svcId}` ? "none" : "opacity 0.2s" }}
+                        onMouseDown={(e) => { e.stopPropagation(); setDraggingNode(`be:${svcId}`); setDragStart({ mx: e.clientX, my: e.clientY, nx: bePos.x, ny: bePos.y }); setWasDragging(false); }}
+                        onClick={(e) => { e.stopPropagation(); if (!wasDragging) setActiveTooltip(prev => prev === `svc:${svcId}` ? null : `svc:${svcId}`); }}
                       >
                         <rect x={bePos.x} y={bePos.y} width={beNodeW} height={beNodeH} rx={6}
                           fill={isActive ? `${meta.color}22` : "rgba(128,128,128,0.08)"} stroke={meta.color} strokeWidth={isActive ? meta.borderWidth + 1 : meta.borderWidth} strokeOpacity={0.85} />
@@ -9673,6 +9692,35 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     );
                   })}
                 </Flex>
+
+                {/* Expand / collapse deeper backend tiers */}
+                {showBackend && maxDataDepth > 0 && (
+                  <Flex alignItems="center" gap={8} style={{ marginTop: 8, flexWrap: "wrap" as any }}>
+                    {maxDataDepth > maxVisibleDepth && (
+                      <button
+                        onClick={() => setMaxVisibleDepth(d => d + 1)}
+                        style={{ background: "rgba(156,39,176,0.12)", border: "1px solid rgba(156,39,176,0.5)", borderRadius: 6, color: FLOW_NODE_META["svc-direct"].color, cursor: "pointer", padding: "5px 14px", fontSize: 12, fontWeight: 600, transition: "background 0.15s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(156,39,176,0.28)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(156,39,176,0.12)")}
+                      >
+                        ▶ Expand Tier {maxVisibleDepth + 1} downstream
+                      </button>
+                    )}
+                    {maxVisibleDepth > 1 && (
+                      <button
+                        onClick={() => setMaxVisibleDepth(d => Math.max(1, d - 1))}
+                        style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, color: "rgba(255,255,255,0.45)", cursor: "pointer", padding: "5px 14px", fontSize: 12, transition: "background 0.15s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                      >
+                        ◀ Collapse Tier {maxVisibleDepth}
+                      </button>
+                    )}
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+                      {maxDataDepth > 0 ? `Showing Tier 1–${maxVisibleDepth} of ${maxDataDepth} available` : ""}
+                    </span>
+                  </Flex>
+                )}
 
                 {hasFocus && (
                   <button
