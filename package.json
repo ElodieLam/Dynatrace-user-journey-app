@@ -3,12 +3,13 @@
   "version": "0.0.0",
   "description": "Not an official Dynatrace app & not something you can open a support ticket on.",
   "scripts": {
-    "build": "dt-app build",
-    "start": "dt-app dev",
-    "deploy": "dt-app deploy",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 dt-app build --no-type-check",
+    "start": "cross-env NODE_OPTIONS=--max-old-space-size=8192 dt-app dev --no-type-check",
+    "deploy": "cross-env NODE_OPTIONS=--max-old-space-size=8192 dt-app deploy --no-type-check",
     "uninstall": "dt-app uninstall",
     "info": "dt-app info",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "cross-env NODE_OPTIONS=--max-old-space-size=8192 tsc -p ui/tsconfig.json --noEmit"
   },
   "engines": {
     "node": ">=16.13.0"
@@ -45,6 +46,7 @@
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.5",
     "canvas": "^3.2.3",
+    "cross-env": "^7.0.3",
     "dt-app": "1.8.1",
     "typescript": "^5.6.3"
   }
