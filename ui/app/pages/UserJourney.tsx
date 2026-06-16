@@ -9236,6 +9236,14 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               if (existing) nodePos.set(nodeName, { ...existing, x: mp.x, y: mp.y });
             }
 
+            // Expand SVG bounds to fit any dragged nodes beyond the default layout area
+            let svgW = W;
+            let svgH = H;
+            for (const [, pos] of nodePos) {
+              svgW = Math.max(svgW, pos.x + nodeW + padX);
+              svgH = Math.max(svgH, pos.y + nodeH + padY);
+            }
+
             // Build links (between visible nodes — forward and same-layer)
             const links: { src: string; tgt: string; value: number }[] = [];
             paths.forEach((p: any) => {
@@ -9290,8 +9298,8 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
 
             return (
               <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%", position: "relative" }}>
-                <svg width={W} height={H}
-                  style={{ display: "block", minWidth: W, cursor: draggingNode ? "grabbing" : (hasFocus ? "pointer" : "default") }}
+                <svg width={svgW} height={svgH}
+                  style={{ display: "block", minWidth: svgW, cursor: draggingNode ? "grabbing" : (hasFocus ? "pointer" : "default") }}
                   onMouseMove={(e) => {
                     if (!draggingNode || !dragStart) return;
                     const dx = e.clientX - dragStart.mx;
