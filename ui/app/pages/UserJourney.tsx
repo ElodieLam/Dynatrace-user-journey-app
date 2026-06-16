@@ -410,7 +410,7 @@ function availablePagesMultiAppQuery(apps: string[]): string {
 
 function vitalsUrl(appEntityId: string, pageName: string): string {
   const encoded = btoa(pageName);
-  return `${ENV_URL}/ui/apps/dynatrace.experience.vitals/performance/web/${encodeURIComponent(appEntityId)}/pages/${encodeURIComponent(encoded)}?tf=${tfParam()}`;
+  return `${ENV_URL}/ui/apps/dynatrace.experience.vitals/performance/web/${encodeURIComponent(appEntityId)}/views/${encodeURIComponent(encoded)}?tf=${tfParam()}`;
 }
 
 function errorInspectorUrl(errorId: string, frontend: string): string {
@@ -9660,7 +9660,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       ttErrRate = 0.5 + (pHash % 11) / 5;
                       perfSpark = syntheticSparkline(ttDur, 8, pname + "_dur");
                       errSpark = syntheticSparkline(ttErrRate, 8, pname + "_err");
-                      ttLink = appEntityId ? vitalsUrl(appEntityId, pname) : "";
+                      ttLink = (appEntityId && !/[:*{]/.test(pname)) ? vitalsUrl(appEntityId, pname) : "";
                     } else if (activeTooltip.startsWith("svc:")) {
                       isSvc = true;
                       const svcId = activeTooltip.slice(4);
