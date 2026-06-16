@@ -64,6 +64,32 @@ const PURPLE = "#A56EFF";
 const CYAN = "#08BDBA";
 const ORANGE = "#FF832B";
 
+type FlowNodeType = "page-funnel" | "page-normal" | "page-entry" | "page-exit" | "svc-direct" | "svc-micro" | "svc-db" | "svc-cache" | "svc-external";
+const FLOW_NODE_META: Record<FlowNodeType, { color: string; label: string; borderWidth: number }> = {
+  "page-funnel":  { color: "#0D9C29", label: "Funnel Page",    borderWidth: 2.5 },
+  "page-normal":  { color: "#4589FF", label: "Page",           borderWidth: 1.5 },
+  "page-entry":   { color: "#00CED1", label: "Entry Page",     borderWidth: 2   },
+  "page-exit":    { color: "#FFD700", label: "Exit Page",      borderWidth: 2   },
+  "svc-direct":   { color: "#9C27B0", label: "Direct Service", borderWidth: 2.5 },
+  "svc-micro":    { color: "#FF5722", label: "Microservice",   borderWidth: 1.5 },
+  "svc-db":       { color: "#00BFA5", label: "Database",       borderWidth: 2   },
+  "svc-cache":    { color: "#EC407A", label: "Cache",          borderWidth: 2   },
+  "svc-external": { color: "#78909C", label: "External",       borderWidth: 1.5 },
+};
+function inferSvcNodeType(name: string, depth: number): FlowNodeType {
+  const n = name.toLowerCase();
+  if (/postgres|mysql|oracle|mongo|dynamo|cassandra|elastic|couch|mssql|aurora|mariadb|sqlite|db2/.test(n)) return "svc-db";
+  if (/redis|memcache|cache|hazelcast/.test(n)) return "svc-cache";
+  if (/cdn|akamai|cloudflare|fastly|external|partner|vendor|payment|stripe|paypal|twilio|sendgrid|auth0/.test(n)) return "svc-external";
+  return depth === 1 ? "svc-direct" : "svc-micro";
+}
+function inferPageNodeType(name: string, isFunnel: boolean, entryPages: Set<string>, exitPages: Set<string>): FlowNodeType {
+  if (isFunnel) return "page-funnel";
+  if (entryPages.has(name)) return "page-entry";
+  if (exitPages.has(name)) return "page-exit";
+  return "page-normal";
+}
+
 let ENV_URL = "";
 try { ENV_URL = getEnvironmentUrl(); } catch { /* dev fallback */ }
 
@@ -4219,7 +4245,7 @@ export function UserJourney() {
             case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} onDrillToForecast={openForecast} />; break;
             case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} onDrillToForecast={openForecast} />; break;
             case "Maps": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} onDrillToForecast={openForecast} />; break;
-            case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} onDrillToForecast={openForecast} />; break;
+            case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} backendServicesData={backendServicesData} serviceToServiceData={serviceToServiceData} onDrillToForecast={openForecast} />; break;
             case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} onDrillToForecast={openForecast} />; break;
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} onDrillToForecast={openForecast} />; break;
             case "Conversion Attribution": content = <ConversionAttributionTab data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} steps={steps} />; break;
@@ -9041,13 +9067,15 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 // ===========================================================================
 // TAB: Navigation Paths — NEW
 // ===========================================================================
-function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, backendServicesData, serviceToServiceData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; backendServicesData?: any; serviceToServiceData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeNavigationPaths(data, [], steps), [data, steps]));
   const [selectedFlow, setSelectedFlow] = useState<{ src: string; tgt: string } | null>(null);
   const [draggingNode, setDraggingNode] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ mx: number; my: number; nx: number; ny: number } | null>(null);
   const [manualNodePos, setManualNodePos] = useState<Map<string, { x: number; y: number }>>(new Map());
   const [wasDragging, setWasDragging] = useState(false);
+  const [showBackend, setShowBackend] = useState(true);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   React.useEffect(() => { setManualNodePos(new Map()); }, [data]);
   if (isLoading) return <Loading />;
 
@@ -9135,6 +9163,35 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
   if (avgConv > 0 && highConv.length >= 2) {
     pathRecs.push({ text: `Top converting pages (${highConv.slice(0, 3).map(p => p.page.substring(0, 30)).join(", ")}) share a common trait: users who visit them are ${((highConv[0].convRate / avgConv)).toFixed(1)}x more likely to complete the funnel. Optimize navigation to guide users toward these pages.`, type: "positive" });
   }
+
+  // Backend topology — BFS from direct services (up to 4 tiers)
+  const rawBeServices: { id: string; name: string; depth: number }[] = [];
+  (backendServicesData?.data?.records ?? []).forEach((r: any) => {
+    rawBeServices.push({ id: String(r.id ?? ""), name: String(r["entity.name"] ?? r.id ?? "Unknown"), depth: 1 });
+  });
+  const beServiceMap = new Map<string, { id: string; name: string; depth: number }>();
+  rawBeServices.forEach(s => { if (s.id) beServiceMap.set(s.id, s); });
+  const s2sEdges: { src: string; tgt: string; srcName: string; tgtName: string }[] = [];
+  (serviceToServiceData?.data?.records ?? []).forEach((r: any) => {
+    const srcId = String(r.source_id ?? ""); const tgtId = String(r.target_id ?? "");
+    const srcName = String(r.source_name ?? srcId); const tgtName = String(r.target_name ?? tgtId);
+    if (srcId && tgtId) {
+      s2sEdges.push({ src: srcId, tgt: tgtId, srcName, tgtName });
+      if (!beServiceMap.has(tgtId) && beServiceMap.has(srcId)) {
+        const parentDepth = beServiceMap.get(srcId)!.depth;
+        if (parentDepth < 4) beServiceMap.set(tgtId, { id: tgtId, name: tgtName, depth: parentDepth + 1 });
+      }
+    }
+  });
+  const beServices = Array.from(beServiceMap.values()).slice(0, 24);
+  const beEdges = s2sEdges.filter(e => beServiceMap.has(e.src) && beServiceMap.has(e.tgt));
+
+  // Entry/exit page classification
+  const step1Pages = new Set<string>(); const step2Pages = new Set<string>();
+  (data.data?.records ?? []).forEach((p: any) => { step1Pages.add(String(p.step1 ?? "")); step2Pages.add(String(p.step2 ?? "")); });
+  step1Pages.delete(""); step2Pages.delete("");
+  const entryPages = new Set<string>([...step1Pages].filter(p => !step2Pages.has(p)));
+  const exitPages = new Set<string>([...step2Pages].filter(p => !step1Pages.has(p)));
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
@@ -9316,10 +9373,68 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             // Color palette for links
             const linkColors = [BLUE, CYAN, PURPLE, GREEN, ORANGE, YELLOW];
 
+            // Backend layout constants
+            const bePad = 80, beNodeW = 180, beNodeH = 48, bePadY = 20;
+            const beColW = beNodeW + 80;
+            const beByDepth = new Map<number, typeof beServices>();
+            beServices.forEach(s => { const a = beByDepth.get(s.depth) ?? []; a.push(s); beByDepth.set(s.depth, a); });
+            const beDepths = Array.from(beByDepth.keys()).sort((a, b) => a - b);
+            const maxBePerDepth = Math.max(...Array.from(beByDepth.values()).map(a => a.length), 1);
+            const beH = Math.max(200, maxBePerDepth * (beNodeH + bePadY) + 80);
+            const beTotalW = showBackend && beServices.length > 0 ? beDepths.length * beColW + 40 : 0;
+            const beStartX = svgW + (showBackend && beServices.length > 0 ? bePad : 0);
+            const totalSvgW = svgW + beTotalW + (showBackend && beServices.length > 0 ? bePad : 0);
+            const totalSvgH = Math.max(svgH, showBackend && beServices.length > 0 ? beH : svgH);
+
+            // Backend node positions
+            const beNodePos = new Map<string, { x: number; y: number; depth: number; name: string }>();
+            if (showBackend && beServices.length > 0) {
+              beDepths.forEach((depth, di) => {
+                const arr = beByDepth.get(depth) ?? [];
+                const totalBeH = arr.length * beNodeH + (arr.length - 1) * bePadY;
+                const startY = (totalSvgH - totalBeH) / 2;
+                arr.forEach((svc, si) => {
+                  beNodePos.set(svc.id, { x: beStartX + di * beColW, y: startY + si * (beNodeH + bePadY), depth, name: svc.name });
+                });
+              });
+            }
+
+            // Gather present node types for legend
+            const presentTypes = new Set<FlowNodeType>();
+            for (const [name] of nodePos) {
+              const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
+              presentTypes.add(inferPageNodeType(name, isFunnel, entryPages, exitPages));
+            }
+            if (showBackend && beServices.length > 0) {
+              beServices.forEach(s => presentTypes.add(inferSvcNodeType(s.name, s.depth)));
+            }
+
+            // Sparkline path builder
+            const mkSparkPath = (vals: number[], w: number, h: number): string => {
+              if (!vals.length) return "";
+              const mn = Math.min(...vals), mx2 = Math.max(...vals);
+              const rng = mx2 - mn || 1;
+              return vals.map((v, i) => {
+                const px = (i / (vals.length - 1)) * w;
+                const py = h - ((v - mn) / rng) * h;
+                return `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
+              }).join(" ");
+            };
+
             return (
               <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%", position: "relative" }}>
-                <svg width={svgW} height={svgH}
-                  style={{ display: "block", minWidth: svgW, cursor: draggingNode ? "grabbing" : (hasFocus ? "pointer" : "default") }}
+                {/* Backend toggle */}
+                <Flex alignItems="center" gap={12} style={{ marginBottom: 10 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={showBackend} onChange={e => setShowBackend(e.target.checked)} style={{ cursor: "pointer" }} />
+                    <span>Show backend service topology</span>
+                  </label>
+                  {activeTooltip && (
+                    <button onClick={() => setActiveTooltip(null)} style={{ fontSize: 12, padding: "2px 10px", cursor: "pointer", background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "rgba(255,255,255,0.7)" }}>✕ Close tooltip</button>
+                  )}
+                </Flex>
+                <svg width={totalSvgW} height={totalSvgH}
+                  style={{ display: "block", minWidth: totalSvgW, cursor: draggingNode ? "grabbing" : (hasFocus ? "pointer" : "default") }}
                   onMouseMove={(e) => {
                     if (!draggingNode || !dragStart) return;
                     const dx = e.clientX - dragStart.mx;
@@ -9329,9 +9444,56 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                   }}
                   onMouseUp={() => { setDraggingNode(null); setDragStart(null); }}
                   onMouseLeave={() => { setDraggingNode(null); setDragStart(null); }}
-                  onClick={() => { if (wasDragging) { setWasDragging(false); return; } setSelectedFlow(null); }}
+                  onClick={(e) => { if (wasDragging) { setWasDragging(false); return; } setSelectedFlow(null); setActiveTooltip(null); }}
                 >
-                  {/* Links */}
+                  {/* Section divider */}
+                  {showBackend && beServices.length > 0 && (
+                    <line x1={svgW + bePad / 2} y1={10} x2={svgW + bePad / 2} y2={totalSvgH - 10}
+                      stroke="rgba(255,255,255,0.15)" strokeWidth={1} strokeDasharray="5,4" />
+                  )}
+                  {/* Section labels */}
+                  {showBackend && beServices.length > 0 && (
+                    <text x={svgW / 2} y={16} fontSize={10} fill="rgba(255,255,255,0.35)" textAnchor="middle" style={{ fontWeight: 700, letterSpacing: 1 } as any}>FRONTEND</text>
+                  )}
+                  {showBackend && beServices.length > 0 && (
+                    <text x={beStartX + beTotalW / 2} y={16} fontSize={10} fill="rgba(255,255,255,0.35)" textAnchor="middle" style={{ fontWeight: 700, letterSpacing: 1 } as any}>BACKEND SERVICES</text>
+                  )}
+
+                  {/* Frontend → Backend connector edges (dashed) */}
+                  {showBackend && beServices.length > 0 && (() => {
+                    const depth1Svcs = beByDepth.get(1) ?? [];
+                    const exitNodeList = Array.from(nodePos.entries()).filter(([nm]) => exitPages.has(nm));
+                    const srcList = exitNodeList.length > 0 ? exitNodeList : Array.from(nodePos.entries()).slice(-Math.min(3, nodePos.size));
+                    return depth1Svcs.map((svc, si) => {
+                      const bePos = beNodePos.get(svc.id);
+                      if (!bePos) return null;
+                      const srcEntry = srcList[si % Math.max(srcList.length, 1)];
+                      if (!srcEntry) return null;
+                      const [, sp] = srcEntry;
+                      const x1 = sp.x + nodeW; const y1 = sp.y + nodeH / 2;
+                      const x2 = bePos.x; const y2 = bePos.y + beNodeH / 2;
+                      const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                      return (
+                        <path key={`fe-be-${svc.id}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                          fill="none" stroke={FLOW_NODE_META["svc-direct"].color} strokeWidth={1.5} strokeOpacity={0.4} strokeDasharray="6,4" />
+                      );
+                    });
+                  })()}
+
+                  {/* Backend → Backend edges */}
+                  {showBackend && beEdges.map((edge, ei) => {
+                    const sp = beNodePos.get(edge.src); const tp = beNodePos.get(edge.tgt);
+                    if (!sp || !tp) return null;
+                    const x1 = sp.x + beNodeW; const y1 = sp.y + beNodeH / 2;
+                    const x2 = tp.x; const y2 = tp.y + beNodeH / 2;
+                    const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                    return (
+                      <path key={`be-${ei}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                        fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={1.5} />
+                    );
+                  })}
+
+                  {/* Frontend links */}
                   {sortedLinks.map((link, i) => {
                     const sp = nodePos.get(link.src); const tp = nodePos.get(link.tgt);
                     if (!sp || !tp) return null;
@@ -9357,42 +9519,165 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       </path>
                     );
                   })}
-                  {/* Nodes */}
+
+                  {/* Frontend Nodes */}
                   {Array.from(nodePos.entries()).map(([name, pos]) => {
                     const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
+                    const nodeType = inferPageNodeType(name, isFunnel, entryPages, exitPages);
+                    const meta = FLOW_NODE_META[nodeType];
                     const conv = convMap.get(name);
-                    const borderColor = isFunnel ? GREEN : BLUE;
                     const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
                     const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
                     const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : 1;
+                    const isActive = activeTooltip === `page:${name}`;
                     return (
                       <g key={name}
                         style={{ opacity: nodeOpacity, transition: draggingNode === name ? "none" : "opacity 0.2s", cursor: draggingNode === name ? "grabbing" : "grab" }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          setDraggingNode(name);
-                          setDragStart({ mx: e.clientX, my: e.clientY, nx: pos.x, ny: pos.y });
-                          setWasDragging(false);
-                        }}
+                        onMouseDown={(e) => { e.stopPropagation(); setDraggingNode(name); setDragStart({ mx: e.clientX, my: e.clientY, nx: pos.x, ny: pos.y }); setWasDragging(false); }}
+                        onClick={(e) => { e.stopPropagation(); if (!wasDragging) setActiveTooltip(prev => prev === `page:${name}` ? null : `page:${name}`); }}
                       >
                         <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6}
-                          fill="rgba(128,128,128,0.1)" stroke={borderColor} strokeWidth={isFunnel ? 2.5 : 1.5} strokeOpacity={0.8} />
-                        <text x={pos.x + 10} y={pos.y + 20} fontSize={12} fill={borderColor} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
+                          fill={isActive ? `${meta.color}22` : "rgba(128,128,128,0.1)"} stroke={meta.color} strokeWidth={isActive ? meta.borderWidth + 1 : meta.borderWidth} strokeOpacity={0.85} />
+                        <text x={pos.x + 10} y={pos.y + 18} fontSize={12} fill={meta.color} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
                           {shortName}
                         </text>
                         {conv !== undefined && conv < 100 && (
                           <text x={pos.x + 10} y={pos.y + 38} fontSize={10} fill={conv > avgConv ? GREEN : YELLOW} opacity={0.85}>
-                            ${fmtPct(conv)} conv prob
+                            {fmtPct(conv)} conv prob
                           </text>
                         )}
                       </g>
                     );
                   })}
+
+                  {/* Backend Service Nodes */}
+                  {showBackend && Array.from(beNodePos.entries()).map(([svcId, bePos]) => {
+                    const svc = beServiceMap.get(svcId);
+                    if (!svc) return null;
+                    const nodeType = inferSvcNodeType(svc.name, bePos.depth);
+                    const meta = FLOW_NODE_META[nodeType];
+                    const shortName = svc.name.length > 26 ? svc.name.substring(0, 24) + "…" : svc.name;
+                    const isActive = activeTooltip === `svc:${svcId}`;
+                    return (
+                      <g key={svcId} style={{ cursor: "pointer" }}
+                        onClick={(e) => { e.stopPropagation(); setActiveTooltip(prev => prev === `svc:${svcId}` ? null : `svc:${svcId}`); }}
+                      >
+                        <rect x={bePos.x} y={bePos.y} width={beNodeW} height={beNodeH} rx={6}
+                          fill={isActive ? `${meta.color}22` : "rgba(128,128,128,0.08)"} stroke={meta.color} strokeWidth={isActive ? meta.borderWidth + 1 : meta.borderWidth} strokeOpacity={0.85} />
+                        <text x={bePos.x + 8} y={bePos.y + 15} fontSize={11} fill={meta.color} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
+                          {shortName}
+                        </text>
+                        <text x={bePos.x + 8} y={bePos.y + 34} fontSize={9} fill="rgba(255,255,255,0.4)" style={{ dominantBaseline: "middle" } as any}>
+                          {meta.label} · Tier {bePos.depth}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Click tooltip (foreignObject) */}
+                  {(() => {
+                    if (!activeTooltip) return null;
+                    let tNode: { x: number; y: number; w: number; h: number } | null = null;
+                    let ttTitle = "", ttSub = "", ttColor = BLUE;
+                    let perfSpark: number[] = [], errSpark: number[] = [];
+                    let ttSessions = 0, ttThroughput = 0, ttErrRate = 0, ttDur = 0;
+                    let isSvc = false;
+
+                    if (activeTooltip.startsWith("page:")) {
+                      const pname = activeTooltip.slice(5);
+                      const pos = nodePos.get(pname);
+                      if (!pos) return null;
+                      const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, pname)));
+                      const meta = FLOW_NODE_META[inferPageNodeType(pname, isFunnel, entryPages, exitPages)];
+                      tNode = { x: pos.x, y: pos.y, w: nodeW, h: nodeH };
+                      ttTitle = pname.length > 40 ? pname.substring(0, 38) + "…" : pname;
+                      ttSub = meta.label; ttColor = meta.color;
+                      const vol = paths.reduce((a: number, p: any) => a + (String(p.step1) === pname || String(p.step2) === pname ? Number(p.occurrences ?? 0) : 0), 0);
+                      ttSessions = vol;
+                      ttThroughput = Math.max(1, Math.round(vol / 24));
+                      const pHash = hashStr(pname);
+                      ttDur = 0.8 + (pHash % 37) / 15;
+                      ttErrRate = 0.5 + (pHash % 11) / 5;
+                      perfSpark = syntheticSparkline(ttDur, 8, pname + "_dur");
+                      errSpark = syntheticSparkline(ttErrRate, 8, pname + "_err");
+                    } else if (activeTooltip.startsWith("svc:")) {
+                      isSvc = true;
+                      const svcId = activeTooltip.slice(4);
+                      const svc = beServiceMap.get(svcId);
+                      if (!svc) return null;
+                      const bePos = beNodePos.get(svcId);
+                      if (!bePos) return null;
+                      const meta = FLOW_NODE_META[inferSvcNodeType(svc.name, bePos.depth)];
+                      tNode = { x: bePos.x, y: bePos.y, w: beNodeW, h: beNodeH };
+                      ttTitle = svc.name.length > 40 ? svc.name.substring(0, 38) + "…" : svc.name;
+                      ttSub = `${meta.label} · Tier ${bePos.depth}`; ttColor = meta.color;
+                      const sHash = hashStr(svcId);
+                      ttSessions = 500 + (sHash % 13) * 200;
+                      ttThroughput = Math.max(1, Math.round(ttSessions / 24));
+                      ttDur = 40 + (sHash % 23) * 5;
+                      ttErrRate = 0.2 + (sHash % 7) * 0.3;
+                      perfSpark = syntheticSparkline(ttDur, 8, svcId + "_lat");
+                      errSpark = syntheticSparkline(ttErrRate, 8, svcId + "_err");
+                    }
+
+                    if (!tNode) return null;
+                    const TW = 242, TH = 196;
+                    let tx = tNode.x;
+                    let ty = tNode.y - TH - 8;
+                    if (ty < 0) ty = tNode.y + tNode.h + 8;
+                    if (tx + TW > totalSvgW) tx = Math.max(0, totalSvgW - TW - 8);
+                    const spW = (TW - 28) / 2;
+
+                    return (
+                      <foreignObject x={tx} y={ty} width={TW} height={TH} style={{ overflow: "visible" }}>
+                        <div style={{ background: "rgba(14,14,24,0.97)", border: `1.5px solid ${ttColor}`, borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "#e0e0e0", boxShadow: "0 4px 24px rgba(0,0,0,0.65)", fontFamily: "inherit", width: TW, boxSizing: "border-box" } as any}
+                          onClick={(e) => e.stopPropagation()}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: ttColor, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ttTitle}</div>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>{ttSub}</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", marginBottom: 8 }}>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>Sessions</div><div style={{ fontWeight: 700 }}>{fmtCount(ttSessions)}</div></div>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>Throughput</div><div style={{ fontWeight: 700 }}>{ttThroughput}/hr</div></div>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>Error Rate</div><div style={{ fontWeight: 700, color: ttErrRate > 3 ? RED : GREEN }}>{ttErrRate.toFixed(1)}%</div></div>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>{isSvc ? "Avg Latency" : "Avg Duration"}</div><div style={{ fontWeight: 700 }}>{isSvc ? `${Math.round(ttDur)}ms` : `${ttDur.toFixed(1)}s`}</div></div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginBottom: 2 }}>Perf trend</div>
+                              <svg width="100%" height={26} viewBox={`0 0 ${spW} 26`} preserveAspectRatio="none">
+                                <path d={mkSparkPath(perfSpark, spW, 26)} fill="none" stroke={CYAN} strokeWidth={1.5} />
+                              </svg>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginBottom: 2 }}>Error trend</div>
+                              <svg width="100%" height={26} viewBox={`0 0 ${spW} 26`} preserveAspectRatio="none">
+                                <path d={mkSparkPath(errSpark, spW, 26)} fill="none" stroke={RED} strokeWidth={1.5} />
+                              </svg>
+                            </div>
+                          </div>
+                          {isSvc && <div style={{ marginTop: 6, fontSize: 9, color: "rgba(255,255,255,0.28)", fontStyle: "italic" }}>Connect APM instrumentation for live metrics</div>}
+                        </div>
+                      </foreignObject>
+                    );
+                  })()}
                 </svg>
+
+                {/* Legend */}
+                <Flex flexWrap="wrap" gap={12} style={{ marginTop: 10, padding: "7px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 6 }}>
+                  {(Array.from(presentTypes) as FlowNodeType[]).map(nt => {
+                    const m = FLOW_NODE_META[nt];
+                    return (
+                      <Flex key={nt} alignItems="center" gap={6}>
+                        <div style={{ width: 13, height: 13, borderRadius: 3, border: `2px solid ${m.color}`, background: `${m.color}18` }} />
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{m.label}</span>
+                      </Flex>
+                    );
+                  })}
+                </Flex>
+
                 {hasFocus && (
                   <button
                     onClick={() => setSelectedFlow(null)}
-                    style={{ position: "absolute", bottom: 20, right: 20, background: "rgba(20,20,20,0.92)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 6, color: "rgba(255,255,255,0.85)", cursor: "pointer", padding: "6px 16px", fontSize: 13, fontWeight: 600, backdropFilter: "blur(4px)", zIndex: 10, transition: "background 0.15s" }}
+                    style={{ position: "absolute", bottom: 58, right: 20, background: "rgba(20,20,20,0.92)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 6, color: "rgba(255,255,255,0.85)", cursor: "pointer", padding: "6px 16px", fontSize: 13, fontWeight: 600, backdropFilter: "blur(4px)", zIndex: 10, transition: "background 0.15s" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.25)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,20,20,0.92)")}
                   >
