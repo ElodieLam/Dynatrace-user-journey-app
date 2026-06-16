@@ -410,7 +410,9 @@ function availablePagesMultiAppQuery(apps: string[]): string {
 
 function vitalsUrl(appEntityId: string, pageName: string): string {
   const encoded = btoa(pageName);
-  return `${ENV_URL}/ui/apps/dynatrace.experience.vitals/performance/web/${encodeURIComponent(appEntityId)}/views/${encodeURIComponent(encoded)}?tf=${tfParam()}`;
+  const days = CURRENT_TIMEFRAME_DAYS;
+  const fromStr = days <= 1 ? `now()-${Math.max(1, Math.round(days * 24))}h` : `now()-${Math.max(1, Math.round(days))}d`;
+  return `${ENV_URL}/ui/apps/dynatrace.experience.vitals/performance/web/${encodeURIComponent(appEntityId)}/views/${encodeURIComponent(encoded)}?from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent("now()")}`;
 }
 
 function errorInspectorUrl(errorId: string, frontend: string): string {
