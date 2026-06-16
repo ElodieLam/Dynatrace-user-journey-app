@@ -1713,7 +1713,7 @@ function serviceToServiceQuery(days: number, frontend: string): string {
 | filter isNotNull(downstream_id)
 | lookup [fetch dt.entity.service | fields id, entity.name], sourceField:downstream_id, lookupField:id, prefix:"tgt."
 | fields source_id = id, source_name = entity.name, target_id = downstream_id, target_name = tgt.entity.name
-| limit 300`;
+| limit 500`;
 }
 
 // NEW: Davis problems on backend services
@@ -9177,14 +9177,22 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
   (serviceToServiceData?.data?.records ?? []).forEach((r: any) => {
     const srcId = String(r.source_id ?? ""); const tgtId = String(r.target_id ?? "");
     const srcName = String(r.source_name ?? srcId); const tgtName = String(r.target_name ?? tgtId);
-    if (srcId && tgtId) {
-      s2sEdges.push({ src: srcId, tgt: tgtId, srcName, tgtName });
-      if (!beServiceMap.has(tgtId) && beServiceMap.has(srcId)) {
-        const parentDepth = beServiceMap.get(srcId)!.depth;
-        if (parentDepth < 4) beServiceMap.set(tgtId, { id: tgtId, name: tgtName, depth: parentDepth + 1 });
+    if (srcId && tgtId) s2sEdges.push({ src: srcId, tgt: tgtId, srcName, tgtName });
+  });
+  // Multi-pass BFS: expand depth tier by tier until no new nodes are discovered
+  let bfsChanged = true;
+  while (bfsChanged) {
+    bfsChanged = false;
+    for (const edge of s2sEdges) {
+      if (beServiceMap.has(edge.src) && !beServiceMap.has(edge.tgt)) {
+        const parentDepth = beServiceMap.get(edge.src)!.depth;
+        if (parentDepth < 6) {
+          beServiceMap.set(edge.tgt, { id: edge.tgt, name: edge.tgtName, depth: parentDepth + 1 });
+          bfsChanged = true;
+        }
       }
     }
-  });
+  }
   const allBeServices = Array.from(beServiceMap.values());
   const maxDataDepth = allBeServices.reduce((m, s) => Math.max(m, s.depth), 0);
   const beServices = allBeServices.filter(s => s.depth <= maxVisibleDepth).slice(0, 40);
