@@ -9390,13 +9390,16 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             }
             const svcFocusSet = new Set<string>();
             if (focusedSvcId) {
-              svcFocusSet.add(focusedSvcId);
-              // BFS upstream: trace all ancestor services back to Tier 1
+              // Upstream BFS from selected node only — finds all ancestor services back to Tier 1
+              const ancestorSet = new Set<string>([focusedSvcId]);
               let bfsCh = true;
-              while (bfsCh) { bfsCh = false; for (const e of beEdges) { if (svcFocusSet.has(e.tgt) && !svcFocusSet.has(e.src)) { svcFocusSet.add(e.src); bfsCh = true; } } }
-              // BFS downstream: trace all descendant services forward
+              while (bfsCh) { bfsCh = false; for (const e of beEdges) { if (ancestorSet.has(e.tgt) && !ancestorSet.has(e.src)) { ancestorSet.add(e.src); bfsCh = true; } } }
+              // Downstream BFS from selected node only — avoids pulling in siblings of ancestors
+              const descendantSet = new Set<string>([focusedSvcId]);
               bfsCh = true;
-              while (bfsCh) { bfsCh = false; for (const e of beEdges) { if (svcFocusSet.has(e.src) && !svcFocusSet.has(e.tgt)) { svcFocusSet.add(e.tgt); bfsCh = true; } } }
+              while (bfsCh) { bfsCh = false; for (const e of beEdges) { if (descendantSet.has(e.src) && !descendantSet.has(e.tgt)) { descendantSet.add(e.tgt); bfsCh = true; } } }
+              for (const id of ancestorSet) svcFocusSet.add(id);
+              for (const id of descendantSet) svcFocusSet.add(id);
             }
             // True when the focus chain reaches Tier 1 — frontend pages should be highlighted too
             const svcFocusIncludesFrontend = focusedSvcId !== null && Array.from(svcFocusSet).some(id => beServiceMap.get(id)?.depth === 1);
