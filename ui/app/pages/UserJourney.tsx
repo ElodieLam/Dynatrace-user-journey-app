@@ -2989,23 +2989,29 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
 // ---------------------------------------------------------------------------
 // Funnel Discovery Component
 // ---------------------------------------------------------------------------
-function funnelDiscoveryQuery(apps: string[]): string {
+function funnelDiscoveryQuery(apps: string[], filter?: string, exclude?: string): string {
   if (apps.length === 0) return `fetch user.events | limit 0`;
   const appFilter = apps.length === 1
     ? `frontend.name == "${apps[0]}"`
     : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+  const f = filter?.trim().toLowerCase() ?? "";
+  const x = exclude?.trim().toLowerCase() ?? "";
   // Track page visit order within sessions per app — sort by timestamp to preserve navigation sequence
-  return `fetch user.events, from: now()-7d
-| filter ${appFilter}
-| filter isNotNull(view.name) and view.name != ""
-| sort timestamp asc
-| summarize pages = collectArray(view.name), app = first(frontend.name), by: {dt.rum.session.id}
-| fieldsAdd pageCount = arraySize(pages)
-| filter pageCount >= 3
-| fieldsAdd step1 = pages[0], step2 = pages[1], step3 = pages[2], step4 = if(pageCount >= 4, pages[3], else:""), step5 = if(pageCount >= 5, pages[4], else:"")
-| summarize sessions = count(), by: {app, step1, step2, step3, step4, step5}
-| sort sessions desc
-| limit 100`;
+  const lines = [
+    `fetch user.events, from: now()-7d`,
+    `| filter ${appFilter}`,
+    `| filter isNotNull(view.name) and view.name != ""`,
+    `| sort timestamp asc`,
+    `| summarize pages = collectArray(view.name), app = first(frontend.name), by: {dt.rum.session.id}`,
+    `| fieldsAdd pageCount = arraySize(pages)`,
+    `| filter pageCount >= 3`,
+    `| fieldsAdd step1 = pages[0], step2 = pages[1], step3 = pages[2], step4 = if(pageCount >= 4, pages[3], else:""), step5 = if(pageCount >= 5, pages[4], else:"")`,
+    `| summarize sessions = count(), by: {app, step1, step2, step3, step4, step5}`,
+  ];
+  if (f) lines.push(`| filter contains(lower(step1), "${f}") or contains(lower(step2), "${f}") or contains(lower(step3), "${f}") or contains(lower(step4), "${f}") or contains(lower(step5), "${f}")`);
+  if (x) lines.push(`| filter not(contains(lower(step1), "${x}") or contains(lower(step2), "${x}") or contains(lower(step3), "${x}") or contains(lower(step4), "${x}") or contains(lower(step5), "${x}"))`);
+  lines.push(`| sort sessions desc`, `| limit 100`);
+  return lines.join("\n");
 }
 
 /** Discovers common page sequences and proposes funnel candidates. */
@@ -3023,9 +3029,12 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
   const [pendingName, setPendingName] = useState("");
   const [discoveryStepFilter, setDiscoveryStepFilter] = useState("");
   const [discoveryStepExclude, setDiscoveryStepExclude] = useState("");
+  const [discoveryLimit, setDiscoveryLimit] = useState(3);
+  const [activeFilter, setActiveFilter] = useState("");
+  const [activeExclude, setActiveExclude] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const discoveryData = useDql({ query: runDiscovery ? funnelDiscoveryQuery(discoveryApps) : "fetch user.events | limit 0" });
+  const discoveryData = useDql({ query: runDiscovery ? funnelDiscoveryQuery(discoveryApps, activeFilter, activeExclude) : "fetch user.events | limit 0" });
   const discoveryRecords = discoveryData.data?.records ?? [];
 
   // Build candidate funnels from actual sequential page paths in sessions, grouped per app
@@ -3063,7 +3072,7 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
         sessions,
       });
 
-      if (results.length >= 10) break; // Cap at 10 candidates
+      if (results.length >= 50) break; // generous cap — display limit is applied later
     }
 
     return results;
@@ -3136,7 +3145,20 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
           </div>
         )}
       </div>
-      <button onClick={() => setRunDiscovery(true)} disabled={discoveryApps.length === 0} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: discoveryApps.length > 0 ? "#4589FF" : "rgba(128,128,128,0.2)", color: discoveryApps.length > 0 ? "#fff" : "rgba(128,128,128,0.5)", cursor: discoveryApps.length > 0 ? "pointer" : "not-allowed", fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Discover Funnels</button>
+      <Flex alignItems="center" gap={8} style={{ marginBottom: 12 }}>
+        <button onClick={() => { setActiveFilter(discoveryStepFilter); setActiveExclude(discoveryStepExclude); setRunDiscovery(true); }} disabled={discoveryApps.length === 0} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: discoveryApps.length > 0 ? "#4589FF" : "rgba(128,128,128,0.2)", color: discoveryApps.length > 0 ? "#fff" : "rgba(128,128,128,0.5)", cursor: discoveryApps.length > 0 ? "pointer" : "not-allowed", fontSize: 12, fontWeight: 600 }}>Discover Funnels</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Text style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap" }}>Limit</Text>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={discoveryLimit}
+            onChange={(e) => setDiscoveryLimit(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+            style={{ width: 52, padding: "6px 8px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, textAlign: "center" }}
+          />
+        </div>
+      </Flex>
       {runDiscovery && discoveryData.isLoading && <ProgressBar style={{ width: "100%", marginBottom: 8 }} />}
       {runDiscovery && !discoveryData.isLoading && candidates.length === 0 && (
         <Paragraph style={{ opacity: 0.5, fontSize: 12 }}>No funnel candidates found. Try selecting different applications or ensure they have session data.</Paragraph>
@@ -3163,7 +3185,7 @@ function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels
           </div>
         </div>
       )}
-      {filteredGroups.map(({ key, repIdx, otherIdxs }, groupPos) => {
+      {filteredGroups.slice(0, discoveryLimit).map(({ key, repIdx, otherIdxs }, groupPos) => {
         const isExpanded = expandedGroups.has(key);
         const renderCandidate = (candIdx: number, isRep: boolean) => {
           const cand = candidates[candIdx];
