@@ -9468,12 +9468,18 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                 pageToDepth1Svcs.set(pageName, arr);
               }
             });
-            // focusedExitPages: only the exit pages wired to Tier-1 services in the backend focus chain
+            // focusedExitPages: exit pages wired to Tier-1 services in the backend focus chain
             const focusedExitPages = new Set<string>();
             if (svcFocusIncludesFrontend) {
               for (const [svcId, pageName] of depth1SvcToPage) {
                 if (svcFocusSet.has(svcId)) focusedExitPages.add(pageName);
               }
+            }
+            // svcFocusPageSet: all frontend pages that eventually lead to focusedExitPages (BFS backwards)
+            const svcFocusPageSet = new Set<string>(focusedExitPages);
+            if (svcFocusIncludesFrontend && svcFocusPageSet.size > 0) {
+              let bfsChanged = true;
+              while (bfsChanged) { bfsChanged = false; for (const l of links) { if (svcFocusPageSet.has(l.tgt) && !svcFocusPageSet.has(l.src)) { svcFocusPageSet.add(l.src); bfsChanged = true; } } }
             }
             // pageSvcFocusSet: all backend services reachable from focused pages via connectors + BFS downstream
             const pageSvcFocusSet = new Set<string>();
@@ -9606,7 +9612,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       ? (isHighlighted ? (isSelected ? 0.9 : 0.55) : 0.05)
                       : focusedPageName
                         ? ((link.src === focusedPageName || link.tgt === focusedPageName) ? 0.65 : 0.05)
-                        : focusedSvcId ? (svcFocusIncludesFrontend ? (focusedExitPages.has(link.src) || focusedExitPages.has(link.tgt) ? 0.35 : 0.08) : 0.08) : 0.35;
+                        : focusedSvcId ? (svcFocusIncludesFrontend ? (svcFocusPageSet.has(link.src) && svcFocusPageSet.has(link.tgt) ? 0.55 : 0.05) : 0.05) : 0.35;
                     return (
                       <path key={i} d={`M${x1},${srcY} C${cx1},${srcY} ${cx2},${tgtY} ${x2},${tgtY}`}
                         fill="none" stroke={color} strokeWidth={isSelected ? thickness * 1.4 : thickness}
@@ -9627,7 +9633,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const conv = convMap.get(name);
                     const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
                     const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
-                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : focusedPageName ? (pageFocusSet.has(name) ? 1 : 0.1) : focusedSvcId ? (svcFocusIncludesFrontend ? (focusedExitPages.has(name) ? 1 : 0.15) : 0.12) : 1;
+                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : focusedPageName ? (pageFocusSet.has(name) ? 1 : 0.1) : focusedSvcId ? (svcFocusIncludesFrontend ? (svcFocusPageSet.has(name) ? 1 : 0.12) : 0.12) : 1;
                     const isActive = activeTooltip === `page:${name}`;
                     return (
                       <g key={name}
