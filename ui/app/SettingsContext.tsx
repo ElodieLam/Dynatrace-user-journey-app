@@ -4,17 +4,33 @@ import { useUserAppState, useSetUserAppState } from "@dynatrace-sdk/react-hooks"
 // ---------------------------------------------------------------------------
 // Types & defaults
 // ---------------------------------------------------------------------------
-export type StepDef = { label: string; identifiers: string[]; type: "view" | "request" };
+export type StepDef = { label: string; identifiers: string[]; type: "view" | "request"; app?: string };
+export type FunnelDef = {
+  name: string;
+  steps: StepDef[];
+  aov?: number;
+  monthlyInfraCost?: number;
+  cdnMonthlyCost?: number;
+  computeCostPerHour?: number;
+  costPerGb?: number;
+  engineerHourlyRate?: number;
+  industry?: IndustryType;
+};
 
 export const DEFAULT_FRONTEND = "www.angular.easytravel.com";
 export const MIN_STEPS = 2;
 export const MAX_STEPS = 10;
+export const MAX_FUNNELS = 10;
 
 export const DEFAULT_FUNNEL_STEPS: StepDef[] = [
-  { label: "Home", identifiers: ["/easytravel/home", "/"], type: "view" },
-  { label: "Search", identifiers: ["/easytravel/search"], type: "view" },
-  { label: "Journey Detail", identifiers: ["/easytravel/journeys/:id:"], type: "view" },
-  { label: "Book", identifiers: ["/easytravel/journeys/:id:/book"], type: "view" },
+  { label: "Home", identifiers: ["/easytravel/home", "/"], type: "view", app: "www.angular.easytravel.com" },
+  { label: "Search", identifiers: ["/easytravel/search"], type: "view", app: "www.angular.easytravel.com" },
+  { label: "Journey Detail", identifiers: ["/easytravel/journeys/:id:"], type: "view", app: "www.angular.easytravel.com" },
+  { label: "Book", identifiers: ["/easytravel/journeys/:id:/book"], type: "view", app: "www.angular.easytravel.com" },
+];
+
+export const DEFAULT_FUNNELS: FunnelDef[] = [
+  { name: "EasyTravel Booking", steps: DEFAULT_FUNNEL_STEPS },
 ];
 
 export const DEFAULT_AOV = 1200;
@@ -65,7 +81,9 @@ export const INDUSTRY_BENCHMARKS: Record<IndustryType, IndustryBenchmark> = {
 };
 
 const FRONTEND_STATE_KEY = "uj-frontend-app";
-const STEPS_STATE_KEY = "uj-funnel-steps";
+const FUNNELS_STATE_KEY = "uj-funnels";
+const ACTIVE_FUNNEL_STATE_KEY = "uj-active-funnel";
+const STEPS_STATE_KEY = "uj-funnel-steps"; // legacy — used for migration only
 const AOV_STATE_KEY = "uj-average-order-value";
 const MONTHLY_INFRA_COST_STATE_KEY = "uj-monthly-infra-cost";
 const CDN_MONTHLY_COST_STATE_KEY = "uj-cdn-monthly-cost";
@@ -80,8 +98,18 @@ const INDUSTRY_STATE_KEY = "uj-industry";
 interface SettingsContextValue {
   frontend: string;
   setFrontend: (v: string) => void;
+  // Multi-funnel
+  funnels: FunnelDef[];
+  setFunnels: (v: FunnelDef[]) => void;
+  activeFunnelIndex: number;
+  setActiveFunnelIndex: (v: number) => void;
+  saveFunnels: (v: FunnelDef[]) => void;
+  saveActiveFunnelIndex: (v: number) => void;
+  // Derived from active funnel — backward compat
   steps: StepDef[];
   setSteps: (v: StepDef[]) => void;
+  saveSteps: (v: StepDef[]) => void;
+  // Other settings
   aov: number;
   setAov: (v: number) => void;
   monthlyInfraCost: number;
@@ -97,7 +125,6 @@ interface SettingsContextValue {
   industry: IndustryType;
   setIndustry: (v: IndustryType) => void;
   saveFrontend: (v: string) => void;
-  saveSteps: (v: StepDef[]) => void;
   saveAov: (v: number) => void;
   saveMonthlyInfraCost: (v: number) => void;
   saveCdnMonthlyCost: (v: number) => void;
@@ -114,17 +141,14 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 // ---------------------------------------------------------------------------
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [frontend, setFrontend] = useState<string>(DEFAULT_FRONTEND);
-  const [steps, setSteps] = useState<StepDef[]>(DEFAULT_FUNNEL_STEPS);
-  const [aov, setAov] = useState<number>(DEFAULT_AOV);
-  const [monthlyInfraCost, setMonthlyInfraCost] = useState<number>(DEFAULT_MONTHLY_INFRA_COST);
-  const [cdnMonthlyCost, setCdnMonthlyCost] = useState<number>(DEFAULT_CDN_MONTHLY_COST);
-  const [computeCostPerHour, setComputeCostPerHour] = useState<number>(DEFAULT_COMPUTE_COST_PER_HOUR);
-  const [costPerGb, setCostPerGb] = useState<number>(DEFAULT_COST_PER_GB);
-  const [engineerHourlyRate, setEngineerHourlyRate] = useState<number>(DEFAULT_ENGINEER_HOURLY_RATE);
-  const [industry, setIndustry] = useState<IndustryType>(DEFAULT_INDUSTRY);
+  const [funnels, setFunnels] = useState<FunnelDef[]>(DEFAULT_FUNNELS);
+  const [activeFunnelIndex, setActiveFunnelIndex] = useState<number>(0);
 
   const savedFrontend = useUserAppState({ key: FRONTEND_STATE_KEY });
-  const savedSteps = useUserAppState({ key: STEPS_STATE_KEY });
+  const savedFunnels = useUserAppState({ key: FUNNELS_STATE_KEY });
+  const savedActiveFunnel = useUserAppState({ key: ACTIVE_FUNNEL_STATE_KEY });
+  const savedLegacySteps = useUserAppState({ key: STEPS_STATE_KEY });
+  // Legacy global keys — kept for migration fallback only
   const savedAov = useUserAppState({ key: AOV_STATE_KEY });
   const savedMonthlyInfraCost = useUserAppState({ key: MONTHLY_INFRA_COST_STATE_KEY });
   const savedCdnMonthlyCost = useUserAppState({ key: CDN_MONTHLY_COST_STATE_KEY });
@@ -141,119 +165,135 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [savedFrontend.data?.value]);
 
+  // Load multi-funnel state (or migrate from legacy single-funnel)
   useEffect(() => {
-    if (savedSteps.data?.value) {
+    if (savedFunnels.data?.value) {
       try {
-        const parsed = JSON.parse(savedSteps.data.value as string) as any[];
+        const parsed = JSON.parse(savedFunnels.data.value as string) as any[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const migrated: FunnelDef[] = parsed.map((f: any) => ({
+            name: f.name ?? "Unnamed Funnel",
+            steps: Array.isArray(f.steps) ? f.steps.map((s: any) => ({
+              label: s.label ?? "",
+              identifiers: Array.isArray(s.identifiers) ? s.identifiers : (s.identifier ? [s.identifier] : [""]),
+              type: s.type ?? "view",
+              app: s.app ?? undefined,
+            })) : DEFAULT_FUNNEL_STEPS,
+            aov: f.aov !== undefined ? Number(f.aov) : undefined,
+            monthlyInfraCost: f.monthlyInfraCost !== undefined ? Number(f.monthlyInfraCost) : undefined,
+            cdnMonthlyCost: f.cdnMonthlyCost !== undefined ? Number(f.cdnMonthlyCost) : undefined,
+            computeCostPerHour: f.computeCostPerHour !== undefined ? Number(f.computeCostPerHour) : undefined,
+            costPerGb: f.costPerGb !== undefined ? Number(f.costPerGb) : undefined,
+            engineerHourlyRate: f.engineerHourlyRate !== undefined ? Number(f.engineerHourlyRate) : undefined,
+            industry: f.industry ?? undefined,
+          }));
+          setFunnels(migrated);
+          return; // Already have multi-funnel data
+        }
+      } catch { /* ignore */ }
+    }
+    // Migrate from legacy single-funnel format
+    if (savedLegacySteps.data?.value) {
+      try {
+        const parsed = JSON.parse(savedLegacySteps.data.value as string) as any[];
         if (Array.isArray(parsed) && parsed.length >= MIN_STEPS && parsed.length <= MAX_STEPS) {
-          // Migrate old format: identifier (string) → identifiers (string[])
-          const migrated: StepDef[] = parsed.map((s: any) => ({
+          const migratedSteps: StepDef[] = parsed.map((s: any) => ({
             label: s.label ?? "",
             identifiers: Array.isArray(s.identifiers) ? s.identifiers : (s.identifier ? [s.identifier] : [""]),
             type: s.type ?? "view",
+            app: s.app ?? undefined,
           }));
-          setSteps(migrated);
+          setFunnels([{ name: "My Funnel", steps: migratedSteps }]);
         }
-      } catch { /* ignore parse errors */ }
+      } catch { /* ignore */ }
     }
-  }, [savedSteps.data?.value]);
+  }, [savedFunnels.data?.value, savedLegacySteps.data?.value]);
 
   useEffect(() => {
-    if (savedAov.data?.value) {
-      const v = Number(savedAov.data.value);
-      if (!isNaN(v) && v >= 0) setAov(v);
+    if (savedActiveFunnel.data?.value) {
+      const v = Number(savedActiveFunnel.data.value);
+      if (!isNaN(v) && v >= 0) setActiveFunnelIndex(v);
     }
-  }, [savedAov.data?.value]);
-
-  useEffect(() => {
-    if (savedMonthlyInfraCost.data?.value) {
-      const v = Number(savedMonthlyInfraCost.data.value);
-      if (!isNaN(v) && v >= 0) setMonthlyInfraCost(v);
-    }
-  }, [savedMonthlyInfraCost.data?.value]);
-
-  useEffect(() => {
-    if (savedCdnMonthlyCost.data?.value) {
-      const v = Number(savedCdnMonthlyCost.data.value);
-      if (!isNaN(v) && v >= 0) setCdnMonthlyCost(v);
-    }
-  }, [savedCdnMonthlyCost.data?.value]);
-
-  useEffect(() => {
-    if (savedComputeCostPerHour.data?.value) {
-      const v = Number(savedComputeCostPerHour.data.value);
-      if (!isNaN(v) && v >= 0) setComputeCostPerHour(v);
-    }
-  }, [savedComputeCostPerHour.data?.value]);
-
-  useEffect(() => {
-    if (savedCostPerGb.data?.value) {
-      const v = Number(savedCostPerGb.data.value);
-      if (!isNaN(v) && v >= 0) setCostPerGb(v);
-    }
-  }, [savedCostPerGb.data?.value]);
-
-  useEffect(() => {
-    if (savedEngineerHourlyRate.data?.value) {
-      const v = Number(savedEngineerHourlyRate.data.value);
-      if (!isNaN(v) && v >= 0) setEngineerHourlyRate(v);
-    }
-  }, [savedEngineerHourlyRate.data?.value]);
-
-  useEffect(() => {
-    if (savedIndustry.data?.value) {
-      const v = savedIndustry.data.value as string;
-      if (INDUSTRY_OPTIONS.some(o => o.value === v)) setIndustry(v as IndustryType);
-    }
-  }, [savedIndustry.data?.value]);
+  }, [savedActiveFunnel.data?.value]);
 
   const saveFrontend = (v: string) => {
     setFrontend(v);
     saveState({ key: FRONTEND_STATE_KEY, body: { value: v } });
   };
 
-  const saveSteps = (v: StepDef[]) => {
-    setSteps(v);
-    saveState({ key: STEPS_STATE_KEY, body: { value: JSON.stringify(v) } });
+  const saveFunnels = (v: FunnelDef[]) => {
+    setFunnels(v);
+    saveState({ key: FUNNELS_STATE_KEY, body: { value: JSON.stringify(v) } });
   };
 
-  const saveAov = (v: number) => {
-    setAov(v);
-    saveState({ key: AOV_STATE_KEY, body: { value: String(v) } });
+  const saveActiveFunnelIndex = (v: number) => {
+    setActiveFunnelIndex(v);
+    saveState({ key: ACTIVE_FUNNEL_STATE_KEY, body: { value: String(v) } });
   };
 
-  const saveMonthlyInfraCost = (v: number) => {
-    setMonthlyInfraCost(v);
-    saveState({ key: MONTHLY_INFRA_COST_STATE_KEY, body: { value: String(v) } });
+  // ---------------------------------------------------------------------------
+  // Derived values from active funnel (backward compat for all consumers)
+  // ---------------------------------------------------------------------------
+  const safeIndex = activeFunnelIndex < funnels.length ? activeFunnelIndex : 0;
+  const activeFunnel = funnels[safeIndex];
+  const steps = activeFunnel?.steps ?? DEFAULT_FUNNEL_STEPS;
+
+  // Legacy fallbacks: use old global state keys if the funnel doesn't have these fields yet
+  const legacyAov = savedAov.data?.value ? Number(savedAov.data.value) : NaN;
+  const legacyInfra = savedMonthlyInfraCost.data?.value ? Number(savedMonthlyInfraCost.data.value) : NaN;
+  const legacyCdn = savedCdnMonthlyCost.data?.value ? Number(savedCdnMonthlyCost.data.value) : NaN;
+  const legacyCompute = savedComputeCostPerHour.data?.value ? Number(savedComputeCostPerHour.data.value) : NaN;
+  const legacyGb = savedCostPerGb.data?.value ? Number(savedCostPerGb.data.value) : NaN;
+  const legacyEngineer = savedEngineerHourlyRate.data?.value ? Number(savedEngineerHourlyRate.data.value) : NaN;
+  const legacyIndustry = savedIndustry.data?.value as string | undefined;
+
+  const aov = activeFunnel?.aov ?? (!isNaN(legacyAov) ? legacyAov : DEFAULT_AOV);
+  const monthlyInfraCost = activeFunnel?.monthlyInfraCost ?? (!isNaN(legacyInfra) ? legacyInfra : DEFAULT_MONTHLY_INFRA_COST);
+  const cdnMonthlyCost = activeFunnel?.cdnMonthlyCost ?? (!isNaN(legacyCdn) ? legacyCdn : DEFAULT_CDN_MONTHLY_COST);
+  const computeCostPerHour = activeFunnel?.computeCostPerHour ?? (!isNaN(legacyCompute) ? legacyCompute : DEFAULT_COMPUTE_COST_PER_HOUR);
+  const costPerGb = activeFunnel?.costPerGb ?? (!isNaN(legacyGb) ? legacyGb : DEFAULT_COST_PER_GB);
+  const engineerHourlyRate = activeFunnel?.engineerHourlyRate ?? (!isNaN(legacyEngineer) ? legacyEngineer : DEFAULT_ENGINEER_HOURLY_RATE);
+  const industry: IndustryType = activeFunnel?.industry ?? (legacyIndustry && INDUSTRY_OPTIONS.some(o => o.value === legacyIndustry) ? legacyIndustry as IndustryType : DEFAULT_INDUSTRY);
+
+  // ---------------------------------------------------------------------------
+  // Setters — update active funnel in local state (non-persisting)
+  // ---------------------------------------------------------------------------
+  const updateActiveFunnel = (patch: Partial<FunnelDef>) => {
+    const next = [...funnels];
+    if (next[safeIndex]) { next[safeIndex] = { ...next[safeIndex], ...patch }; setFunnels(next); }
   };
 
-  const saveCdnMonthlyCost = (v: number) => {
-    setCdnMonthlyCost(v);
-    saveState({ key: CDN_MONTHLY_COST_STATE_KEY, body: { value: String(v) } });
+  const persistActiveFunnel = (patch: Partial<FunnelDef>) => {
+    const next = [...funnels];
+    if (next[safeIndex]) { next[safeIndex] = { ...next[safeIndex], ...patch }; saveFunnels(next); }
   };
 
-  const saveComputeCostPerHour = (v: number) => {
-    setComputeCostPerHour(v);
-    saveState({ key: COMPUTE_COST_PER_HOUR_STATE_KEY, body: { value: String(v) } });
-  };
+  const setSteps = (v: StepDef[]) => updateActiveFunnel({ steps: v });
+  const saveSteps = (v: StepDef[]) => persistActiveFunnel({ steps: v });
 
-  const saveCostPerGb = (v: number) => {
-    setCostPerGb(v);
-    saveState({ key: COST_PER_GB_STATE_KEY, body: { value: String(v) } });
-  };
+  const setAov = (v: number) => updateActiveFunnel({ aov: v });
+  const saveAov = (v: number) => persistActiveFunnel({ aov: v });
 
-  const saveEngineerHourlyRate = (v: number) => {
-    setEngineerHourlyRate(v);
-    saveState({ key: ENGINEER_HOURLY_RATE_STATE_KEY, body: { value: String(v) } });
-  };
+  const setMonthlyInfraCost = (v: number) => updateActiveFunnel({ monthlyInfraCost: v });
+  const saveMonthlyInfraCost = (v: number) => persistActiveFunnel({ monthlyInfraCost: v });
 
-  const saveIndustry = (v: IndustryType) => {
-    setIndustry(v);
-    saveState({ key: INDUSTRY_STATE_KEY, body: { value: v } });
-  };
+  const setCdnMonthlyCost = (v: number) => updateActiveFunnel({ cdnMonthlyCost: v });
+  const saveCdnMonthlyCost = (v: number) => persistActiveFunnel({ cdnMonthlyCost: v });
+
+  const setComputeCostPerHour = (v: number) => updateActiveFunnel({ computeCostPerHour: v });
+  const saveComputeCostPerHour = (v: number) => persistActiveFunnel({ computeCostPerHour: v });
+
+  const setCostPerGb = (v: number) => updateActiveFunnel({ costPerGb: v });
+  const saveCostPerGb = (v: number) => persistActiveFunnel({ costPerGb: v });
+
+  const setEngineerHourlyRate = (v: number) => updateActiveFunnel({ engineerHourlyRate: v });
+  const saveEngineerHourlyRate = (v: number) => persistActiveFunnel({ engineerHourlyRate: v });
+
+  const setIndustry = (v: IndustryType) => updateActiveFunnel({ industry: v });
+  const saveIndustry = (v: IndustryType) => persistActiveFunnel({ industry: v });
 
   return (
-    <SettingsContext.Provider value={{ frontend, setFrontend, steps, setSteps, aov, setAov, monthlyInfraCost, setMonthlyInfraCost, cdnMonthlyCost, setCdnMonthlyCost, computeCostPerHour, setComputeCostPerHour, costPerGb, setCostPerGb, engineerHourlyRate, setEngineerHourlyRate, industry, setIndustry, saveFrontend, saveSteps, saveAov, saveMonthlyInfraCost, saveCdnMonthlyCost, saveComputeCostPerHour, saveCostPerGb, saveEngineerHourlyRate, saveIndustry }}>
+    <SettingsContext.Provider value={{ frontend, setFrontend, funnels, setFunnels, activeFunnelIndex, setActiveFunnelIndex, saveFunnels, saveActiveFunnelIndex, steps, setSteps, saveSteps, aov, setAov, monthlyInfraCost, setMonthlyInfraCost, cdnMonthlyCost, setCdnMonthlyCost, computeCostPerHour, setComputeCostPerHour, costPerGb, setCostPerGb, engineerHourlyRate, setEngineerHourlyRate, industry, setIndustry, saveFrontend, saveAov, saveMonthlyInfraCost, saveCdnMonthlyCost, saveComputeCostPerHour, saveCostPerGb, saveEngineerHourlyRate, saveIndustry }}>
       {children}
     </SettingsContext.Provider>
   );

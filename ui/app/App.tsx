@@ -4,10 +4,12 @@ import { Route, Routes } from "react-router-dom";
 import { UserJourney } from "./pages/UserJourney";
 import { ObservabilityJourney } from "./pages/ObservabilityJourney";
 import { SettingsProvider } from "./SettingsContext";
+import { DisclaimerModal } from "./components/DisclaimerModal";
 
 export const App = () => {
   return (
     <SettingsProvider>
+      <DisclaimerModal />
       <Page>
         <Page.Main>
           <Routes>

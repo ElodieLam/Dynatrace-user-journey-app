@@ -16,8 +16,8 @@ import { TimeseriesChart, TimeseriesAnnotations } from "@dynatrace/strato-compon
 import type { Timeseries } from "@dynatrace/strato-components/charts";
 import { DataTable } from "@dynatrace/strato-components-preview/tables";
 import "./UserJourney.css";
-import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, MIN_STEPS, MAX_STEPS, DEFAULT_AOV, INDUSTRY_OPTIONS, INDUSTRY_BENCHMARKS, IndustryType, IndustryBenchmark } from "../SettingsContext";
-import type { StepDef } from "../SettingsContext";
+import { useSettings, DEFAULT_FRONTEND, DEFAULT_FUNNEL_STEPS, DEFAULT_FUNNELS, MIN_STEPS, MAX_STEPS, MAX_FUNNELS, DEFAULT_AOV, INDUSTRY_OPTIONS, INDUSTRY_BENCHMARKS, IndustryType, IndustryBenchmark } from "../SettingsContext";
+import type { StepDef, FunnelDef } from "../SettingsContext";
 import { HyperlyzerTab } from "./HyperlyzerTab";
 import { ForecastModal } from "../components/ForecastModal";
 import { CorrelationsPanel, CorrelationsContext, computeCorrelations } from "../components/CorrelationsPanel";
@@ -63,6 +63,32 @@ const BLUE = "#4589FF";
 const PURPLE = "#A56EFF";
 const CYAN = "#08BDBA";
 const ORANGE = "#FF832B";
+
+type FlowNodeType = "page-funnel" | "page-normal" | "page-entry" | "page-exit" | "svc-direct" | "svc-micro" | "svc-db" | "svc-cache" | "svc-external";
+const FLOW_NODE_META: Record<FlowNodeType, { color: string; label: string; borderWidth: number }> = {
+  "page-funnel":  { color: "#0D9C29", label: "Funnel Page",    borderWidth: 2.5 },
+  "page-normal":  { color: "#4589FF", label: "Page",           borderWidth: 1.5 },
+  "page-entry":   { color: "#00CED1", label: "Entry Page",     borderWidth: 2   },
+  "page-exit":    { color: "#FFD700", label: "Exit Page",      borderWidth: 2   },
+  "svc-direct":   { color: "#9C27B0", label: "Direct Service", borderWidth: 2.5 },
+  "svc-micro":    { color: "#FF5722", label: "Microservice",   borderWidth: 1.5 },
+  "svc-db":       { color: "#00BFA5", label: "Database",       borderWidth: 2   },
+  "svc-cache":    { color: "#EC407A", label: "Cache",          borderWidth: 2   },
+  "svc-external": { color: "#78909C", label: "External",       borderWidth: 1.5 },
+};
+function inferSvcNodeType(name: string, depth: number): FlowNodeType {
+  const n = name.toLowerCase();
+  if (/postgres|mysql|oracle|mongo|dynamo|cassandra|elastic|couch|mssql|aurora|mariadb|sqlite|db2/.test(n)) return "svc-db";
+  if (/redis|memcache|cache|hazelcast/.test(n)) return "svc-cache";
+  if (/cdn|akamai|cloudflare|fastly|external|partner|vendor|payment|stripe|paypal|twilio|sendgrid|auth0/.test(n)) return "svc-external";
+  return depth === 1 ? "svc-direct" : "svc-micro";
+}
+function inferPageNodeType(name: string, isFunnel: boolean, entryPages: Set<string>, exitPages: Set<string>): FlowNodeType {
+  if (isFunnel) return "page-funnel";
+  if (entryPages.has(name)) return "page-entry";
+  if (exitPages.has(name)) return "page-exit";
+  return "page-normal";
+}
 
 let ENV_URL = "";
 try { ENV_URL = getEnvironmentUrl(); } catch { /* dev fallback */ }
@@ -329,6 +355,20 @@ function sessionReplayUrl(sessionId: string, startTs?: string): string {
   return `${ENV_URL}/ui/apps/dynatrace.users.sessions/session-viewer/${sessionId}/${ts}?tf=${tfParam()}&perspective=general#filtering=${encodeURIComponent(`ID = *"${sessionId.substring(0, 6)}"*`)}`;
 }
 
+/** Build a DQL filter clause for potentially multiple frontend apps across steps.
+ *  Returns `frontend.name == "X"` for single app, `in(frontend.name, {"X","Y"})` for multiple. */
+function frontendFilter(steps: StepDef[], fallback: string): string {
+  const apps = [...new Set(steps.map(s => s.app || fallback).filter(Boolean))];
+  if (apps.length === 0) return `frontend.name == "${fallback}"`;
+  if (apps.length === 1) return `frontend.name == "${apps[0]}"`;
+  return `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+}
+
+/** Collect unique app names from steps (with fallback). */
+function uniqueApps(steps: StepDef[], fallback: string): string[] {
+  return [...new Set(steps.map(s => s.app || fallback).filter(Boolean))];
+}
+
 function appEntityQuery(frontend: string): string {
   return `fetch dt.entity.application
 | filter entity.name == "${frontend}"
@@ -354,9 +394,25 @@ function availablePagesQuery(frontend: string): string {
 | fieldsRemove count`;
 }
 
+/** Fetch pages for multiple apps — returns app + page pairs. */
+function availablePagesMultiAppQuery(apps: string[]): string {
+  if (apps.length === 0) return `fetch user.events | limit 0`;
+  const filter = apps.length === 1
+    ? `frontend.name == "${apps[0]}"`
+    : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+  return `fetch user.events, from: now()-7d
+| filter ${filter} and isNotNull(view.name) and view.name != ""
+| summarize count = count(), by: {frontend.name, view.name}
+| sort count desc
+| limit 500
+| fieldsRemove count`;
+}
+
 function vitalsUrl(appEntityId: string, pageName: string): string {
   const encoded = btoa(pageName);
-  return `${ENV_URL}/ui/apps/dynatrace.experience.vitals/performance/web/${encodeURIComponent(appEntityId)}/pages/${encodeURIComponent(encoded)}?tf=${tfParam()}`;
+  const days = CURRENT_TIMEFRAME_DAYS;
+  const fromStr = days <= 1 ? `now()-${Math.max(1, Math.round(days * 24))}h` : `now()-${Math.max(1, Math.round(days))}d`;
+  return `${ENV_URL}/ui/apps/dynatrace.experience.vitals/performance/web/${encodeURIComponent(appEntityId)}/views/${encodeURIComponent(encoded)}?from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent("now()")}`;
 }
 
 function errorInspectorUrl(errorId: string, frontend: string): string {
@@ -651,7 +707,7 @@ function sessionFlowQuery(days: number, frontend: string, steps: StepDef[], prev
   }).join(",\n");
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | summarize steps = collectDistinct(step_tag), by: {dt.rum.session.id}
@@ -667,7 +723,7 @@ function stepMetricsQuery(days: number, frontend: string, steps: StepDef[], nonc
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${tagExpr}
@@ -695,7 +751,7 @@ function pageMetricsQuery(days: number, frontend: string, steps: StepDef[], nonc
   const field = steps[0]?.type === "view" ? "view.name" : "url.path";
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(
@@ -761,7 +817,7 @@ function cwvByPageQuery(days: number, frontend: string): string {
 function deviceQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -773,7 +829,7 @@ function deviceQuery(days: number, frontend: string, steps: StepDef[]): string {
 function browserQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -786,7 +842,7 @@ function browserQuery(days: number, frontend: string, steps: StepDef[]): string 
 function geoQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -800,7 +856,7 @@ function errorQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | filter characteristics.has_error == true
 | fieldsAdd step_tag = ${tagExpr}
@@ -812,7 +868,7 @@ function trendsSparklineQuery(days: number, frontend: string, steps: StepDef[]):
   const period = periodClause(days, false);
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd slot_day = bin(start_time, ${binSize})
@@ -836,7 +892,7 @@ function pageSparklineQuery(days: number, frontend: string, steps: StepDef[]): s
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
   const field = steps[0]?.type === "view" ? "view.name" : "url.path";
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd slot_day = bin(start_time, ${binSize})
@@ -857,7 +913,7 @@ function stepSparklineQuery(days: number, frontend: string, steps: StepDef[]): s
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${tagExpr}
@@ -880,7 +936,7 @@ function trendsConvSparklineQuery(days: number, frontend: string, steps: StepDef
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(',\n');
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(' and ');
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd slot_day = bin(start_time, ${binSize})
@@ -902,7 +958,7 @@ function sessionQualityQuery(days: number, frontend: string, steps: StepDef[], p
   const period = periodClause(days, prev);
   return `// ${nonce}
 fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | summarize
@@ -926,7 +982,7 @@ function todayFunnelHourlyQuery(frontend: string, steps: StepDef[], nonce = 0): 
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `// ${nonce}
 fetch user.events, from: "${todayStart}", to: now()
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd slot_ts = bin(start_time, 15m)
@@ -948,7 +1004,7 @@ ${iAnyLines}
 function worstSessionsQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1021,7 +1077,7 @@ function clickIssuesQuery(days: number, frontend: string): string {
 function geoPerformanceQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1176,7 +1232,7 @@ function sankeyPrevPathsQuery(days: number, frontend: string): string {
 function hourlyDistributionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd hour = getHour(start_time)
@@ -1199,7 +1255,7 @@ function conversionAttributionQuery(days: number, frontend: string, steps: StepD
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1231,7 +1287,7 @@ ${iAnyLines}
 function sessionDurationDistributionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd dur_bucket = coalesce(
@@ -1260,7 +1316,7 @@ function rootCauseCorrelationQuery(days: number, frontend: string, steps: StepDe
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1293,7 +1349,7 @@ function rootCauseStepDropQuery(days: number, frontend: string, steps: StepDef[]
   const period = periodClause(days);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${tagExpr}
@@ -1326,7 +1382,7 @@ function forecastTrendQuery(days: number, frontend: string, steps: StepDef[]): s
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1355,7 +1411,7 @@ ${iAnyLines}
 function forecastApdexTrendQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd day_bucket = formatTimestamp(start_time, format: "${forecastBucketFormat(days)}")
@@ -1422,7 +1478,7 @@ function resourceWaterfallQuery(days: number, frontend: string, steps: StepDef[]
   const period = periodClause(days);
   const stepTag = resourceStepTagExpr(steps);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_request == true
 | fieldsAdd res_dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${stepTag}
@@ -1446,7 +1502,7 @@ function resourceByStepQuery(days: number, frontend: string, steps: StepDef[]): 
   const period = periodClause(days);
   const stepTag = resourceStepTagExpr(steps);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_request == true
 | fieldsAdd res_dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${stepTag}
@@ -1466,7 +1522,7 @@ function resourceSessionDrillQuery(days: number, frontend: string, steps: StepDe
   const period = periodClause(days);
   const stepTag = resourceStepTagExpr(steps);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_request == true
 | fieldsAdd res_dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd step_tag = ${stepTag}
@@ -1508,7 +1564,7 @@ function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): s
   const firstStepExpr = stepFilter(steps[0]);
   const lastStepExpr = stepFilter(steps[steps.length - 1]);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd country = geo.country.iso_code
 | fieldsAdd hit_first = ${firstStepExpr}
@@ -1538,7 +1594,7 @@ function mapTimelapseQuery(days: number, frontend: string, steps: StepDef[], buc
     : `| fieldsAdd bucket_ts = bin(start_time, ${bucket})\n| fieldsAdd hour_bucket = formatTimestamp(bucket_ts, format: "yyyy-MM-dd HH:mm")`;
   const limit = bucket === "1h" ? 5000 : bucket === "30m" ? 8000 : 10000;
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1567,7 +1623,7 @@ ${bucketExpr}
 function osVersionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
@@ -1592,13 +1648,13 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
   const lastIds = steps[steps.length - 1]?.identifiers ?? [];
   const lastStepMatch = lastIds.map(id => `pageName == "${id}"`).join(" or ") || "false";
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
 | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
 | summarize total_events = count(), by: {dt.rum.session.id, pageName}
 | lookup [
     fetch user.events, ${period}
-    | filter frontend.name == "${frontend}"
+    | filter ${frontendFilter(steps, frontend)}
     | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
     | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
     | filter ${lastStepMatch}
@@ -1659,7 +1715,7 @@ function serviceToServiceQuery(days: number, frontend: string): string {
 | filter isNotNull(downstream_id)
 | lookup [fetch dt.entity.service | fields id, entity.name], sourceField:downstream_id, lookupField:id, prefix:"tgt."
 | fields source_id = id, source_name = entity.name, target_id = downstream_id, target_name = tgt.entity.name
-| limit 300`;
+| limit 500`;
 }
 
 // NEW: Davis problems on backend services
@@ -1693,9 +1749,9 @@ function utmAttributionQuery(days: number, frontend: string, steps: StepDef[]): 
   const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
-| fieldsAdd utm_source = coalesce(custom_properties.utm_source, custom_properties.utmSource, "direct")
-| fieldsAdd utm_medium = coalesce(custom_properties.utm_medium, custom_properties.utmMedium, "none")
-| fieldsAdd utm_campaign = coalesce(custom_properties.utm_campaign, custom_properties.utmCampaign, "none")
+| fieldsAdd utm_source = coalesce(stringKey(custom_properties, "utm_source"), stringKey(custom_properties, "utmSource"), "direct")
+| fieldsAdd utm_medium = coalesce(stringKey(custom_properties, "utm_medium"), stringKey(custom_properties, "utmMedium"), "none")
+| fieldsAdd utm_campaign = coalesce(stringKey(custom_properties, "utm_campaign"), stringKey(custom_properties, "utmCampaign"), "none")
 | fieldsAdd is_conv = ${lastStep}
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
@@ -1758,7 +1814,7 @@ function deploymentEventsQuery(days: number): string {
 function changeImpactQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd hour_ts = formatTimestamp(start_time, format: "yyyy-MM-dd HH:00")
@@ -1781,7 +1837,7 @@ function changeImpactQuery(days: number, frontend: string, steps: StepDef[]): st
 function sloApdexTrendQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd hour_key = formatTimestamp(start_time, format: "yyyy-MM-dd HH:00")
@@ -1847,7 +1903,7 @@ function sessionReplayQuery(days: number, frontend: string): string {
 function abSegmentQuery(days: number, frontend: string, steps: StepDef[], segmentFilter: string): string {
   const period = periodClause(days);
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | filter ${segmentFilter}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1893,7 +1949,7 @@ function cohortRetentionQuery(days: number, frontend: string, steps: StepDef[]):
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1941,7 +1997,7 @@ function sessionEngagementQuery(days: number, frontend: string, steps: StepDef[]
   const iAnyLines = steps.map((_, i) => `    reached_step${i + 1} = iAny(steps[] == "step${i + 1}")`).join(",\n");
   const convertedConds = steps.map((_, i) => `reached_step${i + 1} == true`).join(" and ");
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
@@ -1970,7 +2026,7 @@ function funnelVelocityQuery(days: number, frontend: string, steps: StepDef[]): 
   const period = periodClause(days);
   const tagExpr = stepTagExpr(steps, steps.map((s) => s.label));
   return `fetch user.events, ${period}
-| filter frontend.name == "${frontend}"
+| filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
 | fieldsAdd step_tag = ${tagExpr}
 | filter step_tag != "other"
@@ -2633,6 +2689,17 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
       <HelpSection title="What's New">
         <div style={{ margin: "8px 0" }}>
           <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(69,137,255,0.08)", borderRadius: 8, borderLeft: "3px solid rgba(69,137,255,0.6)" }}>
+            <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 12, 2026</Paragraph>
+            <Paragraph><Strong>Multi-Funnel Management & Funnel Discovery</Strong></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Multiple funnels</Strong>: Create up to 10 named funnels. A global <Strong>Funnel</Strong> dropdown in the header lets you switch the active funnel — all tabs instantly update to reflect the selected funnel's steps</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Funnel management</Strong>: Create, rename, and delete funnels in Settings. Funnel tabs show all defined funnels with a highlighted active funnel. The active funnel's steps are editable inline</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Auto-open Settings</Strong>: If no funnels are configured (first launch), Settings opens automatically to guide initial setup</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Funnel Discovery</Strong>: Select one or more applications and click <Strong>Discover Funnels</Strong> — analyzes 7 days of session data to identify common page sequences. Candidate funnels show step count and session volume. Click <Strong>Apply</Strong>, enter a name, and the discovered funnel is added instantly</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Cross-app funnels</Strong>: Each step has its own Application dropdown. Steps default to the previous step's app — change it to target a different app for that step. Multi-app queries use <code>in(frontend.name, {"{"}...{"}"})</code></Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• <Strong>Per-step page dropdowns</Strong>: Pages/Identifiers for each step shows only pages from that step's assigned app</Paragraph>
+            <Paragraph style={{ fontSize: 13 }}>• Backward compatible: existing saved single-funnel configurations are migrated automatically to the multi-funnel format</Paragraph>
+          </div>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(128,128,128,0.04)", borderRadius: 8, borderLeft: "3px solid rgba(128,128,128,0.3)" }}>
             <Paragraph style={{ fontSize: 12, opacity: 0.5, marginBottom: 4 }}>June 11, 2026</Paragraph>
             <Paragraph><Strong>FinOps Expansion — 8 New Cost Intelligence Sub-Tabs</Strong></Paragraph>
             <Paragraph style={{ fontSize: 13 }}>• <Strong>Right-Sizing</Strong>: Identifies over-provisioned hosts by comparing actual CPU/memory utilization against allocated capacity, with per-host savings estimates and fleet-wide optimization potential</Paragraph>
@@ -2833,7 +2900,7 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         </div>
       </HelpSection>
       <HelpSection title="Overview">
-        <Paragraph>The <Strong>User Journey & Experience</Strong> app provides comprehensive frontend observability for <Strong>{frontend}</Strong>. It tracks users through a {steps.length}-step conversion funnel using real-time DQL queries against Dynatrace Grail. The funnel is <Strong>strict sequential</Strong>: each step requires all previous steps.</Paragraph>
+        <Paragraph>The <Strong>User Journey & Experience</Strong> app provides comprehensive frontend observability. You can define up to {MAX_FUNNELS} named funnels (managed in Settings); the active funnel tracks users through a {steps.length}-step conversion funnel using real-time DQL queries against Dynatrace Grail. The funnel is <Strong>strict sequential</Strong>: each step requires all previous steps.</Paragraph>
       </HelpSection>
       <HelpSection title="Funnel Steps">
         <div style={{ margin: "12px 0", padding: "12px 16px", background: "rgba(69,137,255,0.08)", borderRadius: 8 }}>
@@ -2891,8 +2958,11 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>Errors &amp; Reliability</Strong>: Exceptions, Error Clustering, SLO Tracker</Paragraph>
         <Paragraph style={{ fontSize: 13, paddingLeft: 12 }}>• <Strong>FinOps</Strong>: Cost per Conversion, Performance Tax, Idle Capacity, CDN ROI, Cost Anomalies, Right-Sizing, Cost per Transaction, Cloud Waste, Scaling Efficiency, SLO Cost Trade-offs, Tag Allocation, Observability ROI</Paragraph>
         <Paragraph><Strong>Hiding a parent group</Strong> hides all its sub-tabs. Hiding individual sub-tabs within a visible group removes only those sub-tabs. Hiding a tab does not affect data collection, only display.</Paragraph>
-        <Paragraph><Strong>Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. Selecting a different app immediately re-queries all data and updates the Pages / Identifiers dropdowns for the new app.</Paragraph>
-        <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the selected app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
+        <Paragraph><Strong>Default Frontend Application</Strong>: Searchable dropdown listing all applications with session data in the last 30 days. This serves as the default app for new funnel steps. Each step can be assigned a different app to support cross-app funnels.</Paragraph>
+        <Paragraph><Strong>Funnels</Strong>: You can create up to {MAX_FUNNELS} named funnels. Use the header <Strong>Funnel</Strong> dropdown to switch between them. In Settings, funnel tabs let you select, create, rename, and delete funnels. If no funnels exist on first launch, Settings opens automatically.</Paragraph>
+        <Paragraph><Strong>Funnel Discovery</Strong>: Select one or more applications and click <Strong>Discover Funnels</Strong> to automatically find common user journeys from the last 7 days of session data. Discovered candidates show step count and session volume — click <Strong>Apply</Strong>, enter a name, and the funnel is added to your collection.</Paragraph>
+        <Paragraph><Strong>Funnel Steps — Per-Step Application</Strong>: Each funnel step has its own Application selector. When adding a new step, it inherits the previous step's app. Change a step's app to build funnels that span multiple applications (e.g. marketing site → checkout app). The Pages/Identifiers dropdown shows pages specific to that step's selected app. Queries automatically use <code>in(frontend.name, {"{"}app1", "app2{"}"})</code> when the funnel spans multiple apps.</Paragraph>
+        <Paragraph><Strong>Funnel Steps — Pages / Identifiers</Strong>: Each identifier is a searchable dropdown showing all distinct page names seen for the step's assigned app in the last 7 days. Current saved values (including wildcard patterns such as <code>/home*</code>) appear as valid options even if they are not in the fetched list. Use the search filter to narrow long lists. Both dropdowns load only when Settings is open.</Paragraph>
         <Paragraph><Strong>Average Order Value</Strong>: Set in Settings to enable revenue metrics across What-If Analysis, Revenue Intelligence, Errors &amp; Drop-offs, Conversion Attribution, Map, Root Cause Correlation, Trends, Executive Summary, Anomaly Detection, and Change Intelligence tabs. This value represents the average revenue per conversion (final funnel step completion). Set to 0 to hide revenue metrics.</Paragraph>
         <Paragraph><Strong>AI Insights</Strong>: The AI Insights panel is sub-tab aware and <Strong>industry-aware</Strong> — it shows analysis specific to the currently active sub-tab, automatically enriched with benchmarks for your selected industry. Toggle AI Insights in the header and navigate between sub-tabs to get contextual recommendations tailored to E-Commerce, SaaS, Media, Financial Services, Travel, Healthcare, or Gaming verticals.</Paragraph>
         <Paragraph><Strong>Industry</Strong>: Select your industry vertical in Settings to calibrate all AI Insights benchmarks. Each industry has specific targets for conversion rate, Apdex, error rate, latency, CDN ROI, idle capacity utilization, cost per conversion, and more. The analysis engine compares your actual metrics against these industry-specific thresholds to surface relevant insights.</Paragraph>
@@ -2944,6 +3014,255 @@ function HelpContent({ frontend, steps }: { frontend: string; steps: StepDef[] }
   );
 }
 
+// ---------------------------------------------------------------------------
+// Funnel Discovery Component
+// ---------------------------------------------------------------------------
+function funnelDiscoveryQuery(apps: string[], filter?: string, exclude?: string): string {
+  if (apps.length === 0) return `fetch user.events | limit 0`;
+  const appFilter = apps.length === 1
+    ? `frontend.name == "${apps[0]}"`
+    : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
+  const f = filter?.trim().toLowerCase() ?? "";
+  const x = exclude?.trim().toLowerCase() ?? "";
+  // Track page visit order within sessions per app — sort by timestamp to preserve navigation sequence
+  const lines = [
+    `fetch user.events, from: now()-7d`,
+    `| filter ${appFilter}`,
+    `| filter isNotNull(view.name) and view.name != ""`,
+    `| sort timestamp asc`,
+    `| summarize pages = collectArray(view.name), app = first(frontend.name), by: {dt.rum.session.id}`,
+    `| fieldsAdd pageCount = arraySize(pages)`,
+    `| filter pageCount >= 3`,
+    `| fieldsAdd step1 = pages[0], step2 = pages[1], step3 = pages[2], step4 = if(pageCount >= 4, pages[3], else:""), step5 = if(pageCount >= 5, pages[4], else:"")`,
+    `| summarize sessions = count(), by: {app, step1, step2, step3, step4, step5}`,
+  ];
+  if (f) lines.push(`| filter contains(lower(step1), "${f}") or contains(lower(step2), "${f}") or contains(lower(step3), "${f}") or contains(lower(step4), "${f}") or contains(lower(step5), "${f}")`);
+  if (x) lines.push(`| filter not(contains(lower(step1), "${x}") or contains(lower(step2), "${x}") or contains(lower(step3), "${x}") or contains(lower(step4), "${x}") or contains(lower(step5), "${x}"))`);
+  lines.push(`| sort sessions desc`, `| limit 100`);
+  return lines.join("\n");
+}
+
+/** Discovers common page sequences and proposes funnel candidates. */
+function FunnelDiscovery({ availableApps, settingsAppsLoading, frontend, funnels, saveFunnels, saveActiveFunnelIndex }: {
+  availableApps: string[];
+  settingsAppsLoading: boolean;
+  frontend: string;
+  funnels: FunnelDef[];
+  saveFunnels: (v: FunnelDef[]) => void;
+  saveActiveFunnelIndex: (v: number) => void;
+}) {
+  const [discoveryApps, setDiscoveryApps] = useState<string[]>([frontend]);
+  const [runDiscovery, setRunDiscovery] = useState(false);
+  const [namingIdx, setNamingIdx] = useState<number | null>(null);
+  const [pendingName, setPendingName] = useState("");
+  const [discoveryStepFilter, setDiscoveryStepFilter] = useState("");
+  const [discoveryStepExclude, setDiscoveryStepExclude] = useState("");
+  const [discoveryLimit, setDiscoveryLimit] = useState(3);
+  const [activeFilter, setActiveFilter] = useState("");
+  const [activeExclude, setActiveExclude] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const discoveryData = useDql({ query: runDiscovery ? funnelDiscoveryQuery(discoveryApps, activeFilter, activeExclude) : "fetch user.events | limit 0" });
+  const discoveryRecords = discoveryData.data?.records ?? [];
+
+  // Build candidate funnels from actual sequential page paths in sessions, grouped per app
+  const candidates = useMemo<{ steps: StepDef[]; sessions: number; app: string }[]>(() => {
+    if (!runDiscovery || discoveryRecords.length === 0) return [];
+
+    const results: { steps: StepDef[]; sessions: number; app: string }[] = [];
+    const seen = new Set<string>(); // dedup candidates by app+step sequence
+
+    for (const rec of discoveryRecords as any[]) {
+      const sessions = Number(rec['sessions'] ?? 0);
+      if (sessions === 0) continue;
+      const app = (rec['app'] as string) || frontend;
+      const pagePath: string[] = [];
+      for (let i = 1; i <= 5; i++) {
+        const p = rec[`step${i}`];
+        if (p && typeof p === "string" && p.trim()) pagePath.push(p.trim());
+      }
+      // Deduplicate consecutive same-page entries (e.g. reload)
+      const deduped = pagePath.filter((p, i) => i === 0 || p !== pagePath[i - 1]);
+      if (deduped.length < 3) continue;
+
+      const key = `${app}→${deduped.join("→")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      results.push({
+        app,
+        steps: deduped.map((p, i) => ({
+          label: p.split('/').filter(Boolean).pop() || `Step ${i + 1}`,
+          identifiers: [p],
+          type: "view" as const,
+          app,
+        })),
+        sessions,
+      });
+
+      if (results.length >= 50) break; // generous cap — display limit is applied later
+    }
+
+    return results;
+  }, [runDiscovery, discoveryRecords, frontend]);
+
+  // Group candidates by their unique page set — candidates sharing the same pages are "like" variants
+  const groupedCandidates = useMemo(() => {
+    const groups = new Map<string, { key: string; repIdx: number; otherIdxs: number[] }>();
+    candidates.forEach((c, idx) => {
+      const key = [...new Set(c.steps.map(s => s.identifiers[0]))].sort().join("|");
+      if (!groups.has(key)) {
+        groups.set(key, { key, repIdx: idx, otherIdxs: [] });
+      } else {
+        groups.get(key)!.otherIdxs.push(idx);
+      }
+    });
+    return Array.from(groups.values());
+  }, [candidates]);
+
+  // Apply filter and exclude — both are substring/wildcard matches against step identifiers
+  const filteredGroups = useMemo(() => {
+    let result = groupedCandidates;
+    if (discoveryStepFilter.trim()) {
+      const f = discoveryStepFilter.trim().toLowerCase();
+      result = result.filter(({ repIdx, otherIdxs }) => {
+        const allCands = [candidates[repIdx], ...otherIdxs.map(i => candidates[i])];
+        return allCands.some(c => c.steps.some(s => s.identifiers[0].toLowerCase().includes(f)));
+      });
+    }
+    if (discoveryStepExclude.trim()) {
+      const x = discoveryStepExclude.trim().toLowerCase();
+      result = result.filter(({ repIdx, otherIdxs }) => {
+        const allCands = [candidates[repIdx], ...otherIdxs.map(i => candidates[i])];
+        return !allCands.some(c => c.steps.some(s => s.identifiers[0].toLowerCase().includes(x)));
+      });
+    }
+    return result;
+  }, [groupedCandidates, discoveryStepFilter, discoveryStepExclude, candidates]);
+
+  const handleApply = (idx: number) => {
+    setNamingIdx(idx);
+    setPendingName(`Discovered Funnel ${funnels.length + 1}`);
+  };
+
+  const confirmApply = () => {
+    if (namingIdx == null || !candidates[namingIdx]) return;
+    if (funnels.length >= MAX_FUNNELS) return;
+    const newFunnel: FunnelDef = { name: pendingName || `Funnel ${funnels.length + 1}`, steps: candidates[namingIdx].steps };
+    const next = [...funnels, newFunnel];
+    saveFunnels(next);
+    saveActiveFunnelIndex(next.length - 1);
+    setNamingIdx(null);
+    setPendingName("");
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnel Discovery</Paragraph>
+      <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Select one or more applications and discover common user journeys automatically from session data (last 7 days).</Paragraph>
+      <div style={{ marginBottom: 8 }}>
+        <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Applications to analyze</Text>
+        {settingsAppsLoading ? <ProgressBar style={{ width: "100%" }} /> : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+            {availableApps.map(app => {
+              const selected = discoveryApps.includes(app);
+              return (
+                <button key={app} onClick={() => { setDiscoveryApps(prev => selected ? prev.filter(a => a !== app) : [...prev, app]); setRunDiscovery(false); }} style={{ padding: "4px 10px", borderRadius: 4, border: selected ? "2px solid #4589FF" : "1px solid rgba(128,128,128,0.3)", background: selected ? "rgba(69,137,255,0.12)" : "transparent", color: selected ? "#4589FF" : "inherit", cursor: "pointer", fontSize: 11, fontWeight: selected ? 600 : 400 }}>{app}</button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Filter by step</Text>
+          <input
+            value={discoveryStepFilter}
+            onChange={(e) => setDiscoveryStepFilter(e.target.value)}
+            placeholder="e.g. chat, checkout…"
+            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4 }}>Exclude step</Text>
+          <input
+            value={discoveryStepExclude}
+            onChange={(e) => setDiscoveryStepExclude(e.target.value)}
+            placeholder="e.g. chat, /login…"
+            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, boxSizing: "border-box" }}
+          />
+        </div>
+      </div>
+      <Flex alignItems="center" gap={8} style={{ marginBottom: 12 }}>
+        <button onClick={() => { setActiveFilter(discoveryStepFilter); setActiveExclude(discoveryStepExclude); setRunDiscovery(true); }} disabled={discoveryApps.length === 0} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: discoveryApps.length > 0 ? "#4589FF" : "rgba(128,128,128,0.2)", color: discoveryApps.length > 0 ? "#fff" : "rgba(128,128,128,0.5)", cursor: discoveryApps.length > 0 ? "pointer" : "not-allowed", fontSize: 12, fontWeight: 600 }}>Discover Funnels</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Text style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap" }}>Limit</Text>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={discoveryLimit}
+            onChange={(e) => setDiscoveryLimit(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+            style={{ width: 52, padding: "6px 8px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "rgba(0,0,0,0.2)", color: "inherit", fontSize: 12, textAlign: "center" }}
+          />
+        </div>
+      </Flex>
+      {runDiscovery && discoveryData.isLoading && <ProgressBar style={{ width: "100%", marginBottom: 8 }} />}
+      {runDiscovery && !discoveryData.isLoading && candidates.length === 0 && (
+        <Paragraph style={{ opacity: 0.5, fontSize: 12 }}>No funnel candidates found. Try selecting different applications or ensure they have session data.</Paragraph>
+      )}
+      {filteredGroups.slice(0, discoveryLimit).map(({ key, repIdx, otherIdxs }, groupPos) => {
+        const isExpanded = expandedGroups.has(key);
+        const renderCandidate = (candIdx: number, isRep: boolean) => {
+          const cand = candidates[candIdx];
+          return (
+            <div key={candIdx} style={{ marginBottom: isRep ? 0 : 6, padding: "10px 12px", background: isRep ? "rgba(128,128,128,0.04)" : "rgba(69,137,255,0.03)", borderRadius: 8, border: `1px solid ${isRep ? "rgba(128,128,128,0.15)" : "rgba(69,137,255,0.12)"}`, marginLeft: isRep ? 0 : 12 }}>
+              <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: 600 }}>
+                  {isRep ? `Candidate ${groupPos + 1}` : "↳ Similar"} — {cand.steps.length} steps ({cand.sessions.toLocaleString()} sessions) <span style={{ fontWeight: 400, opacity: 0.6 }}>from {cand.app}</span>
+                </Text>
+                {funnels.length < MAX_FUNNELS && namingIdx !== candIdx && (
+                  <button onClick={() => handleApply(candIdx)} style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid rgba(69,137,255,0.4)", background: "rgba(69,137,255,0.1)", color: BLUE, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
+                )}
+              </Flex>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {cand.steps.map((s, si) => (
+                  <span key={si} style={{ fontSize: 11, padding: "2px 8px", background: "rgba(69,137,255,0.08)", borderRadius: 4, color: BLUE }}>{s.identifiers[0]}</span>
+                ))}
+              </div>
+              {namingIdx === candIdx && (
+                <Flex gap={8} alignItems="center" style={{ marginTop: 8 }}>
+                  <TextInput value={pendingName} onChange={(val) => setPendingName(val ?? "")} placeholder="Funnel name" />
+                  <button onClick={confirmApply} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: GREEN, color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Save</button>
+                  <button onClick={() => setNamingIdx(null)} style={{ padding: "5px 12px", borderRadius: 4, border: "none", background: "rgba(128,128,128,0.2)", color: "inherit", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+                </Flex>
+              )}
+            </div>
+          );
+        };
+        return (
+          <div key={key} style={{ marginBottom: 10 }}>
+            {renderCandidate(repIdx, true)}
+            {otherIdxs.length > 0 && (
+              <button
+                onClick={() => setExpandedGroups(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
+                style={{ marginTop: 4, marginLeft: 12, padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(128,128,128,0.2)", background: "transparent", color: "rgba(128,128,128,0.7)", cursor: "pointer", fontSize: 11 }}
+              >
+                {isExpanded ? `▲ Hide ${otherIdxs.length} similar` : `▼ ${otherIdxs.length} similar variant${otherIdxs.length > 1 ? "s" : ""}`}
+              </button>
+            )}
+            {isExpanded && (
+              <div style={{ marginTop: 6 }}>
+                {otherIdxs.map(oi => renderCandidate(oi, false))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ===========================================================================
 // MAIN COMPONENT
 // ===========================================================================
@@ -2968,11 +3287,20 @@ export function UserJourney() {
   const [aiOpen, setAiOpen] = useState(false);
   const closeAiInsights = React.useCallback(() => setAiOpen(false), []);
   const aiContextValue = React.useMemo(() => ({ open: aiOpen, close: closeAiInsights, activeSubTab: activeSubTabKey }), [aiOpen, closeAiInsights, activeSubTabKey]);
-  const { frontend, steps, saveFrontend, saveSteps, aov, saveAov, monthlyInfraCost, saveMonthlyInfraCost, cdnMonthlyCost, saveCdnMonthlyCost, computeCostPerHour, saveComputeCostPerHour, costPerGb, saveCostPerGb, engineerHourlyRate, saveEngineerHourlyRate, industry, saveIndustry } = useSettings();
+  const { frontend, steps, funnels, activeFunnelIndex, saveFunnels, saveActiveFunnelIndex, saveFrontend, saveSteps, aov, saveAov, monthlyInfraCost, saveMonthlyInfraCost, cdnMonthlyCost, saveCdnMonthlyCost, computeCostPerHour, saveComputeCostPerHour, costPerGb, saveCostPerGb, engineerHourlyRate, saveEngineerHourlyRate, industry, saveIndustry } = useSettings();
   const [sankeyStyle, setSankeyStyle] = useState<SankeyStyle>(DEFAULT_SANKEY_STYLE);
   const [funnelStyle, setFunnelStyle] = useState<FunnelStyle>(DEFAULT_FUNNEL_STYLE);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number>(Date.now());
+
+  // Auto-open settings when no funnels exist (first launch)
+  const noFunnelsRef = useRef(false);
+  useEffect(() => {
+    if (funnels.length === 0 && !noFunnelsRef.current) {
+      noFunnelsRef.current = true;
+      setShowSettings(true);
+    }
+  }, [funnels]);
 
   // Forecast modal state
   const [forecastModal, setForecastModal] = useState<{ label: string; sparkline: number[]; color?: string } | null>(null);
@@ -3233,9 +3561,23 @@ export function UserJourney() {
   const appEntityData = useDql({ query: appEntityQuery(frontend) });
   const appEntityId = (appEntityData.data?.records?.[0] as any)?.['id'] ?? '';
   const settingsAppsData = useDql({ query: showSettings ? availableAppsQuery() : "fetch user.events | limit 0" });
-  const settingsPagesData = useDql({ query: (showSettings && frontend) ? availablePagesQuery(frontend) : "fetch user.events | limit 0" });
+  const stepsApps = useMemo(() => uniqueApps(steps, frontend), [steps, frontend]);
+  const settingsPagesData = useDql({ query: showSettings ? availablePagesMultiAppQuery(stepsApps.length > 0 ? stepsApps : [frontend]) : "fetch user.events | limit 0" });
   const availableApps: string[] = (settingsAppsData.data?.records ?? []).map((r: any) => r['frontend.name']).filter(Boolean);
-  const availablePages: string[] = (settingsPagesData.data?.records ?? []).map((r: any) => r['view.name']).filter(Boolean);
+  // Map of app → pages for per-step page dropdowns
+  const pagesByApp = useMemo<Record<string, string[]>>(() => {
+    const map: Record<string, string[]> = {};
+    for (const r of (settingsPagesData.data?.records ?? []) as any[]) {
+      const app = r['frontend.name'];
+      const page = r['view.name'];
+      if (app && page) {
+        if (!map[app]) map[app] = [];
+        map[app].push(page);
+      }
+    }
+    return map;
+  }, [settingsPagesData.data]);
+  const availablePages: string[] = useMemo(() => Object.values(pagesByApp).flat(), [pagesByApp]);
   const hourlyDistributionData = useDql({ query: hourlyDistributionQuery(timeframeDays, frontend, steps) }, refetchOpts);
 
   // NEW: Conversion Attribution, Duration Distribution
@@ -3522,10 +3864,19 @@ export function UserJourney() {
           </div>
           <div>
             <Heading level={3} style={{ margin: 0 }}>User Journey & Experience</Heading>
-            <Text style={{ fontSize: 12, opacity: 0.6 }}>{frontend}</Text>
+            <Text style={{ fontSize: 12, opacity: 0.6 }}>{[...new Set(steps.map(s => s.app).filter(Boolean))].join(", ") || frontend}</Text>
           </div>
         </Flex>
         <Flex alignItems="center" gap={12}>
+          <Strong style={{ fontSize: 12 }}>Funnel</Strong>
+          <Select value={String(activeFunnelIndex)} onChange={(val) => { if (val != null) saveActiveFunnelIndex(Number(val)); }}>
+            <Select.Trigger style={{ minWidth: 160 }} />
+            <Select.Content>
+              {funnels.map((f, i) => (
+                <Select.Option key={i} value={String(i)}>{f.name}</Select.Option>
+              ))}
+            </Select.Content>
+          </Select>
           <Strong style={{ fontSize: 12 }}>Timeframe</Strong>
           <div style={{ minWidth: 280 }}>
             <TimeframeSelector
@@ -3564,15 +3915,15 @@ export function UserJourney() {
           <AIInsightsButton active={aiOpen} onClick={() => setAiOpen(v => !v)} />
           <button onClick={() => setShowHelp(true)} className="uj-help-btn" title="Help"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><text x="11" y="15.5" textAnchor="middle" fill="rgba(128,128,128,0.7)" fontSize="14" fontWeight="700">?</text></svg></button>
           <button onClick={() => setShowSettings(true)} className="uj-help-btn" title="Settings" style={{ marginLeft: 4 }}><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" fill="none" stroke="rgba(128,128,128,0.5)" strokeWidth="1.5" /><path d="M11 7v1.5M11 13.5V15M7 11h1.5M13.5 11H15M8.5 8.5l1 1M12.5 12.5l1 1M13.5 8.5l-1 1M9.5 12.5l-1 1" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" strokeLinecap="round" /><circle cx="11" cy="11" r="2" stroke="rgba(128,128,128,0.7)" strokeWidth="1.5" /></svg></button>
-          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.51.0</Text>
+          <Text style={{ fontSize: 11, opacity: 0.4, fontFamily: "monospace", marginLeft: 8 }}>v4.56.3</Text>
         </Flex>
       </div>
       <Sheet title="User Journey & Experience — Help & Documentation" show={showHelp} onDismiss={() => setShowHelp(false)} actions={<Button variant="emphasized" onClick={() => setShowHelp(false)}>Close</Button>}><HelpContent frontend={frontend} steps={steps} /></Sheet>
       <Sheet title="Settings" show={showSettings} onDismiss={() => setShowSettings(false)} actions={<Button variant="emphasized" onClick={() => setShowSettings(false)}>Close</Button>}>
         <div style={{ padding: "4px 0" }}>
           {/* Frontend Application Name */}
-          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Frontend Application</Paragraph>
-          <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Select the Dynatrace frontend application to monitor. The list shows apps with data in the last 30 days. Changes take effect immediately.</Paragraph>
+          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Default Frontend Application</Paragraph>
+          <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Default app for new funnel steps and non-step queries (Sankey, CWV, Session Replay). Each step can override this.</Paragraph>
           <div style={{ marginBottom: 20 }}>
             {settingsAppsData.isLoading ? (
               <ProgressBar style={{ width: "100%" }} />
@@ -3595,69 +3946,118 @@ export function UserJourney() {
             )}
           </div>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
-          {/* Funnel Steps */}
-          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnel Steps</Paragraph>
-          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Define the user journey steps (min {MIN_STEPS}, max {MAX_STEPS}). Each step can have multiple pages (OR logic within a step). Wildcards supported: <Strong>/home*</Strong>, <Strong>*home</Strong>, <Strong>*home*</Strong>. Logic: (Step1a OR Step1b) AND Step2 AND Step3.</Paragraph>
-          {steps.map((step, i) => (
-            <div key={i} style={{ marginBottom: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
-              <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: 700, color: BLUE }}>Step {i + 1}</Text>
-                {steps.length > MIN_STEPS && (
-                  <button onClick={() => { const next = steps.filter((_, j) => j !== i); saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕ Remove</button>
+          {/* Funnel Management */}
+          <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Funnels ({funnels.length}/{MAX_FUNNELS})</Paragraph>
+          <Paragraph style={{ marginBottom: 12, opacity: 0.6, fontSize: 12 }}>Manage multiple funnels (up to {MAX_FUNNELS}). Select the active funnel from the header dropdown. Each funnel has a name and its own step definitions.</Paragraph>
+          {/* Funnel tabs */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+            {funnels.map((f, fi) => (
+              <button key={fi} onClick={() => saveActiveFunnelIndex(fi)} style={{ padding: "5px 12px", borderRadius: 6, border: fi === activeFunnelIndex ? "2px solid #4589FF" : "1px solid rgba(128,128,128,0.3)", background: fi === activeFunnelIndex ? "rgba(69,137,255,0.15)" : "rgba(128,128,128,0.05)", color: fi === activeFunnelIndex ? "#4589FF" : "inherit", cursor: "pointer", fontSize: 12, fontWeight: fi === activeFunnelIndex ? 700 : 400 }}>{f.name}</button>
+            ))}
+            {funnels.length < MAX_FUNNELS && (
+              <button onClick={() => { const newFunnel: FunnelDef = { name: `Funnel ${funnels.length + 1}`, steps: [{ label: "", identifiers: [""], type: "view", app: frontend }] }; const next = [...funnels, newFunnel]; saveFunnels(next); saveActiveFunnelIndex(next.length - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px dashed rgba(69,137,255,0.4)", background: "none", color: BLUE, cursor: "pointer", fontSize: 12 }}>+ New Funnel</button>
+            )}
+          </div>
+          {/* Active funnel editor */}
+          {funnels[activeFunnelIndex] && (
+            <div style={{ padding: "12px", background: "rgba(69,137,255,0.04)", borderRadius: 8, border: "1px solid rgba(69,137,255,0.15)", marginBottom: 16 }}>
+              <Flex alignItems="center" gap={8} style={{ marginBottom: 10 }}>
+                <Text style={{ fontSize: 12, opacity: 0.5 }}>Name</Text>
+                <div style={{ flex: 1 }}>
+                  <TextInput value={funnels[activeFunnelIndex].name} onChange={(val) => { const next = [...funnels]; next[activeFunnelIndex] = { ...next[activeFunnelIndex], name: val ?? "" }; saveFunnels(next); }} placeholder="Funnel name" />
+                </div>
+                {funnels.length > 1 && (
+                  <button onClick={() => { if (confirm(`Delete "${funnels[activeFunnelIndex].name}"?`)) { const next = funnels.filter((_, j) => j !== activeFunnelIndex); saveFunnels(next); saveActiveFunnelIndex(Math.max(0, activeFunnelIndex - 1)); } }} style={{ background: "none", border: "1px solid rgba(193,25,48,0.4)", borderRadius: 4, color: RED, cursor: "pointer", fontSize: 11, padding: "4px 8px" }}>Delete Funnel</button>
                 )}
               </Flex>
-              <Flex gap={8} style={{ marginBottom: 6 }}>
-                <div style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Label</Text>
-                  <TextInput value={step.label} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], label: val ?? "" }; saveSteps(next); }} placeholder="e.g. Home Page" />
-                </div>
-                <div style={{ minWidth: 100 }}>
-                  <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Type</Text>
-                  <Select value={step.type} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], type: (val ?? "view") as "view" | "request" }; saveSteps(next); }}>
-                    <Select.Trigger style={{ minWidth: 90 }} />
-                    <Select.Content>
-                      <Select.Option value="view">View</Select.Option>
-                      <Select.Option value="request">Request</Select.Option>
-                    </Select.Content>
-                  </Select>
-                </div>
-              </Flex>
-              <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4, marginTop: 4 }}>Pages / Identifiers {step.identifiers.length > 1 && <span style={{ opacity: 0.7 }}>(OR logic — any match counts)</span>}</Text>
-              {step.identifiers.map((id, j) => (
-                <Flex key={j} gap={6} alignItems="center" style={{ marginBottom: 4 }}>
-                  <div style={{ flex: 1 }}>
-                    {settingsPagesData.isLoading ? (
+              <Paragraph style={{ marginBottom: 8, opacity: 0.6, fontSize: 12 }}>Steps (min {MIN_STEPS}, max {MAX_STEPS}). Funnels can span multiple apps. Wildcards: <Strong>/home*</Strong>, <Strong>*home</Strong>, <Strong>*home*</Strong>.</Paragraph>
+              {steps.map((step, i) => (
+                <div key={i} style={{ marginBottom: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <Flex alignItems="center" justifyContent="space-between" style={{ marginBottom: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: 700, color: BLUE }}>Step {i + 1}</Text>
+                    {steps.length > MIN_STEPS && (
+                      <button onClick={() => { const next = steps.filter((_, j) => j !== i); saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕ Remove</button>
+                    )}
+                  </Flex>
+                  <Flex gap={8} style={{ marginBottom: 6 }}>
+                    <div style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Label</Text>
+                      <TextInput value={step.label} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], label: val ?? "" }; saveSteps(next); }} placeholder="e.g. Home Page" />
+                    </div>
+                    <div style={{ minWidth: 100 }}>
+                      <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Type</Text>
+                      <Select value={step.type} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], type: (val ?? "view") as "view" | "request" }; saveSteps(next); }}>
+                        <Select.Trigger style={{ minWidth: 90 }} />
+                        <Select.Content>
+                          <Select.Option value="view">View</Select.Option>
+                          <Select.Option value="request">Request</Select.Option>
+                        </Select.Content>
+                      </Select>
+                    </div>
+                  </Flex>
+                  <div style={{ marginBottom: 6 }}>
+                    <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 2 }}>Application {(step.app && step.app !== frontend) && <span style={{ color: PURPLE, fontWeight: 600 }}>(different app)</span>}</Text>
+                    {settingsAppsData.isLoading ? (
                       <ProgressBar style={{ width: "100%" }} />
                     ) : (
-                      <Select value={id} onChange={(val) => { const next = [...steps]; const ids = [...next[i].identifiers]; ids[j] = val ?? ""; next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }}>
+                      <Select value={step.app || frontend} onChange={(val) => { const next = [...steps]; next[i] = { ...next[i], app: val || frontend }; saveSteps(next); }}>
                         <Select.Trigger />
                         <Select.Content>
                           <Select.Filter />
-                          {id && !availablePages.includes(id) && (
-                            <Select.Option value={id}>{id}</Select.Option>
+                          {(step.app || frontend) && !availableApps.includes(step.app || frontend) && (
+                            <Select.Option value={step.app || frontend}>{step.app || frontend}</Select.Option>
                           )}
-                          {availablePages.map(page => (
-                            <Select.Option key={page} value={page}>{page}</Select.Option>
+                          {availableApps.map(app => (
+                            <Select.Option key={app} value={app}>{app}</Select.Option>
                           ))}
-                          {availablePages.length === 0 && (
-                            <Select.Option value="" disabled>No pages found for this app</Select.Option>
-                          )}
                         </Select.Content>
                       </Select>
                     )}
                   </div>
-                  {step.identifiers.length > 1 && (
-                    <button onClick={() => { const next = [...steps]; const ids = step.identifiers.filter((_, k) => k !== j); next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 11, padding: "2px 4px" }}>✕</button>
-                  )}
-                </Flex>
+                  <Text style={{ fontSize: 12, opacity: 0.5, display: "block", marginBottom: 4, marginTop: 4 }}>Pages / Identifiers {step.identifiers.length > 1 && <span style={{ opacity: 0.7 }}>(OR logic — any match counts)</span>}</Text>
+                  {step.identifiers.map((id, j) => {
+                    const stepApp = step.app || frontend;
+                    const stepPages = pagesByApp[stepApp] ?? [];
+                    return (
+                    <Flex key={j} gap={6} alignItems="center" style={{ marginBottom: 4 }}>
+                      <div style={{ flex: 1 }}>
+                        {settingsPagesData.isLoading ? (
+                          <ProgressBar style={{ width: "100%" }} />
+                        ) : (
+                          <Select value={id} onChange={(val) => { const next = [...steps]; const ids = [...next[i].identifiers]; ids[j] = val ?? ""; next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }}>
+                            <Select.Trigger />
+                            <Select.Content>
+                              <Select.Filter />
+                              {id && !stepPages.includes(id) && (
+                                <Select.Option value={id}>{id}</Select.Option>
+                              )}
+                              {stepPages.map(page => (
+                                <Select.Option key={page} value={page}>{page}</Select.Option>
+                              ))}
+                              {stepPages.length === 0 && (
+                                <Select.Option value="" disabled>No pages found for {stepApp}</Select.Option>
+                              )}
+                            </Select.Content>
+                          </Select>
+                        )}
+                      </div>
+                      {step.identifiers.length > 1 && (
+                        <button onClick={() => { const next = [...steps]; const ids = step.identifiers.filter((_, k) => k !== j); next[i] = { ...next[i], identifiers: ids }; saveSteps(next); }} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 11, padding: "2px 4px" }}>✕</button>
+                      )}
+                    </Flex>
+                    );
+                  })}
+                  <button onClick={() => { const next = [...steps]; next[i] = { ...next[i], identifiers: [...step.identifiers, ""] }; saveSteps(next); }} style={{ background: "none", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 4, color: BLUE, cursor: "pointer", fontSize: 11, padding: "3px 8px", marginTop: 2 }}>+ Add Page</button>
+                </div>
               ))}
-              <button onClick={() => { const next = [...steps]; next[i] = { ...next[i], identifiers: [...step.identifiers, ""] }; saveSteps(next); }} style={{ background: "none", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 4, color: BLUE, cursor: "pointer", fontSize: 11, padding: "3px 8px", marginTop: 2 }}>+ Add Page</button>
+              {steps.length < MAX_STEPS && (
+                <button onClick={() => { const prevApp = steps.length > 0 ? (steps[steps.length - 1].app || frontend) : frontend; const next = [...steps, { label: "", identifiers: [""], type: "view" as const, app: prevApp }]; saveSteps(next); }} style={{ width: "100%", padding: "8px", background: "rgba(69,137,255,0.1)", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 6, color: BLUE, cursor: "pointer", fontSize: 12, marginBottom: 8 }}>+ Add Step</button>
+              )}
             </div>
-          ))}
-          {steps.length < MAX_STEPS && (
-            <button onClick={() => { const next = [...steps, { label: "", identifiers: [""], type: "view" as const }]; saveSteps(next); }} style={{ width: "100%", padding: "8px", background: "rgba(69,137,255,0.1)", border: "1px dashed rgba(69,137,255,0.3)", borderRadius: 6, color: BLUE, cursor: "pointer", fontSize: 12, marginBottom: 16 }}>+ Add Step</button>
           )}
-          <button onClick={() => { saveSteps(DEFAULT_FUNNEL_STEPS); }} style={{ width: "100%", padding: "6px", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, marginBottom: 16 }}>Reset to Defaults</button>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
+          {/* Funnel Discovery */}
+          <FunnelDiscovery availableApps={availableApps} settingsAppsLoading={settingsAppsData.isLoading} frontend={frontend} funnels={funnels} saveFunnels={saveFunnels} saveActiveFunnelIndex={saveActiveFunnelIndex} />
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginBottom: 12 }} />
           {/* Average Order Value */}
           <Paragraph style={{ marginBottom: 4, fontWeight: 600 }}>Average Order Value (AOV)</Paragraph>
@@ -3847,7 +4247,7 @@ export function UserJourney() {
             case "Perf Budgets": content = <PerfBudgetsTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} overallConv={overallConv} overallConvPrev={overallConvPrev} hourlyData={hourlyDistributionData} isLoading={qualityData.isLoading || hourlyDistributionData.isLoading || qualityDataPrev.isLoading} saveState={saveState} savedThresholds={savedBudgetThresholds} onDrillToForecast={openForecast} />; break;
             case "Geo Heatmap": content = <GeoHeatmapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} networkData={geoNetworkData} conversionData={geoConversionData} onDrillToForecast={openForecast} />; break;
             case "Maps": content = <WorldMapTab data={geoPerformanceData} isLoading={geoPerformanceData.isLoading} frontend={frontend} defaultView={mapViewDefault} aov={aov} overallConv={overallConv} timelapseData={mapTimelapseData} conversionData={geoConversionData} tlBucket={mapTlBucket} onBucketChange={setMapTlBucket} onDrillToForecast={openForecast} />; break;
-            case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} onDrillToForecast={openForecast} />; break;
+            case "Navigation Paths": content = <NavigationPathsTab data={navigationPathsData} navPathConvData={navPathConvData} isLoading={navigationPathsData.isLoading} appEntityId={appEntityId} steps={steps} backendServicesData={backendServicesData} serviceToServiceData={serviceToServiceData} onDrillToForecast={openForecast} />; break;
             case "Sankey": content = <SankeyTab data={sankeyData} isLoading={sankeyData.isLoading} appEntityId={appEntityId} chartStyle={sankeyStyle} onStyleChange={(v: SankeyStyle) => { setSankeyStyle(v); saveState({ key: SANKEY_STYLE_STATE_KEY, body: { value: v } }); }} steps={steps} aov={aov} cwvData={sankeyCwvData} errorData={sankeyErrorData} pathsData={sankeyPathsData} frontend={frontend} durationData={sankeyDurationData} prevPathsData={sankeyPrevPaths} velocityData={funnelVelocityData} onDrillToForecast={openForecast} />; break;
             case "Anomaly Detection": content = <AnomalyDetectionTab quality={quality} qualityPrev={qualityPrev} overallApdex={overallApdex} overallApdexPrev={overallApdexPrev} funnelCounts={funnelCounts} funnelCountsPrev={funnelCountsPrev} stepMap={stepMap} durationDist={durationDistributionData} isLoading={qualityData.isLoading || qualityDataPrev.isLoading || durationDistributionData.isLoading} steps={steps} aov={aov}  davisProblemsData={davisProblemsData} onDrillToForecast={openForecast} />; break;
             case "Conversion Attribution": content = <ConversionAttributionTab data={conversionAttributionData} overallConv={overallConv} isLoading={conversionAttributionData.isLoading} aov={aov} funnelCounts={funnelCounts} steps={steps} />; break;
@@ -4134,6 +4534,12 @@ function analyzeFunnelOverview(overallConv: number, overallApdex: number, qualit
   const insights: InsightItem[] = [];
   const recs: RecommendationItem[] = [];
   const errorRate = quality.total > 0 ? (quality.errors / quality.total) * 100 : 0;
+
+  // Cross-app funnel detection
+  const distinctApps = [...new Set(steps.map(s => s.app).filter(Boolean))];
+  if (distinctApps.length > 1) {
+    insights.push({ severity: "info", icon: "🔀", text: `This funnel spans ${distinctApps.length} applications (${distinctApps.join(", ")}). Cross-app session correlation relies on shared session identifiers — verify that sessions are properly linked across app boundaries for accurate conversion tracking.` });
+  }
 
   // Multi-page session overlap explanation
   if (pageMap && pageMap.size > 0) {
@@ -8663,8 +9069,18 @@ function WorldMapTab({ data, isLoading, frontend, defaultView = "world", aov = 0
 // ===========================================================================
 // TAB: Navigation Paths — NEW
 // ===========================================================================
-function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
+function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvData, backendServicesData, serviceToServiceData, onDrillToForecast }: { data: any; isLoading: boolean; appEntityId: string; steps: StepDef[]; navPathConvData?: any; backendServicesData?: any; serviceToServiceData?: any; onDrillToForecast: (label: string, sparkline: number[], color?: string) => void }) {
   const { panel: aiPanel } = useAIInsights(React.useCallback(() => analyzeNavigationPaths(data, [], steps), [data, steps]));
+  const [selectedFlow, setSelectedFlow] = useState<{ src: string; tgt: string } | null>(null);
+  const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<{ mx: number; my: number; nx: number; ny: number } | null>(null);
+  const [manualNodePos, setManualNodePos] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const [wasDragging, setWasDragging] = useState(false);
+  const [showBackend, setShowBackend] = useState(true);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [maxVisibleDepth, setMaxVisibleDepth] = useState(2);
+  React.useEffect(() => { setManualNodePos(new Map()); }, [data]);
+  React.useEffect(() => { setMaxVisibleDepth(2); }, [backendServicesData, serviceToServiceData]);
   if (isLoading) return <Loading />;
 
   const paths = (data.data?.records ?? []) as any[];
@@ -8751,6 +9167,46 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
   if (avgConv > 0 && highConv.length >= 2) {
     pathRecs.push({ text: `Top converting pages (${highConv.slice(0, 3).map(p => p.page.substring(0, 30)).join(", ")}) share a common trait: users who visit them are ${((highConv[0].convRate / avgConv)).toFixed(1)}x more likely to complete the funnel. Optimize navigation to guide users toward these pages.`, type: "positive" });
   }
+
+  // Backend topology — BFS from direct services (up to 4 tiers)
+  const rawBeServices: { id: string; name: string; depth: number }[] = [];
+  (backendServicesData?.data?.records ?? []).forEach((r: any) => {
+    rawBeServices.push({ id: String(r.id ?? ""), name: String(r["entity.name"] ?? r.id ?? "Unknown"), depth: 1 });
+  });
+  const beServiceMap = new Map<string, { id: string; name: string; depth: number }>();
+  rawBeServices.forEach(s => { if (s.id) beServiceMap.set(s.id, s); });
+  const s2sEdges: { src: string; tgt: string; srcName: string; tgtName: string }[] = [];
+  (serviceToServiceData?.data?.records ?? []).forEach((r: any) => {
+    const srcId = String(r.source_id ?? ""); const tgtId = String(r.target_id ?? "");
+    const srcName = String(r.source_name ?? srcId); const tgtName = String(r.target_name ?? tgtId);
+    if (srcId && tgtId) s2sEdges.push({ src: srcId, tgt: tgtId, srcName, tgtName });
+  });
+  // Multi-pass BFS: expand depth tier by tier until no new nodes are discovered
+  let bfsChanged = true;
+  while (bfsChanged) {
+    bfsChanged = false;
+    for (const edge of s2sEdges) {
+      if (beServiceMap.has(edge.src) && !beServiceMap.has(edge.tgt)) {
+        const parentDepth = beServiceMap.get(edge.src)!.depth;
+        if (parentDepth < 6) {
+          beServiceMap.set(edge.tgt, { id: edge.tgt, name: edge.tgtName, depth: parentDepth + 1 });
+          bfsChanged = true;
+        }
+      }
+    }
+  }
+  const allBeServices = Array.from(beServiceMap.values());
+  const maxDataDepth = allBeServices.reduce((m, s) => Math.max(m, s.depth), 0);
+  const beServices = allBeServices.filter(s => s.depth <= maxVisibleDepth).slice(0, 40);
+  const visibleBeIds = new Set(beServices.map(s => s.id));
+  const beEdges = s2sEdges.filter(e => visibleBeIds.has(e.src) && visibleBeIds.has(e.tgt));
+
+  // Entry/exit page classification
+  const step1Pages = new Set<string>(); const step2Pages = new Set<string>();
+  (data.data?.records ?? []).forEach((p: any) => { step1Pages.add(String(p.step1 ?? "")); step2Pages.add(String(p.step2 ?? "")); });
+  step1Pages.delete(""); step2Pages.delete("");
+  const entryPages = new Set<string>([...step1Pages].filter(p => !step2Pages.has(p)));
+  const exitPages = new Set<string>([...step2Pages].filter(p => !step1Pages.has(p)));
 
   return (
     <Flex flexDirection="column" gap={20} style={{ paddingTop: 16 }}>
@@ -8866,6 +9322,20 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               });
             });
 
+            // Apply manual drag overrides
+            for (const [nodeName, mp] of manualNodePos) {
+              const existing = nodePos.get(nodeName);
+              if (existing) nodePos.set(nodeName, { ...existing, x: mp.x, y: mp.y });
+            }
+
+            // Expand SVG bounds to fit any dragged nodes beyond the default layout area
+            let svgW = W;
+            let svgH = H;
+            for (const [, pos] of nodePos) {
+              svgW = Math.max(svgW, pos.x + nodeW + padX);
+              svgH = Math.max(svgH, pos.y + nodeH + padY);
+            }
+
             // Build links (between visible nodes — forward and same-layer)
             const links: { src: string; tgt: string; value: number }[] = [];
             paths.forEach((p: any) => {
@@ -8876,6 +9346,65 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               }
             });
             const maxLinkVal = Math.max(...links.map(l => l.value), 1);
+            const sortedLinks = [...links].sort((a, b) => b.value - a.value).slice(0, 40);
+
+            // Compute highlighted nodes/links for the selected flow path
+            const highlightedNodes = new Set<string>();
+            const highlightedLinkIndices = new Set<number>();
+            if (selectedFlow) {
+              // BFS upstream: nodes that have a path leading INTO src
+              const upstreamNodes = new Set<string>();
+              const upQ = [selectedFlow.src]; const seenUp = new Set<string>([selectedFlow.src]);
+              while (upQ.length > 0) {
+                const pg = upQ.shift()!;
+                for (const l of links) { if (l.tgt === pg && !seenUp.has(l.src)) { seenUp.add(l.src); upstreamNodes.add(l.src); upQ.push(l.src); } }
+              }
+              // BFS downstream: nodes reachable FROM tgt
+              const downstreamNodes = new Set<string>();
+              const downQ = [selectedFlow.tgt]; const seenDown = new Set<string>([selectedFlow.tgt]);
+              while (downQ.length > 0) {
+                const pg = downQ.shift()!;
+                for (const l of links) { if (l.src === pg && !seenDown.has(l.tgt)) { seenDown.add(l.tgt); downstreamNodes.add(l.tgt); downQ.push(l.tgt); } }
+              }
+              upstreamNodes.forEach(n => highlightedNodes.add(n));
+              highlightedNodes.add(selectedFlow.src);
+              highlightedNodes.add(selectedFlow.tgt);
+              downstreamNodes.forEach(n => highlightedNodes.add(n));
+              // Only highlight: the selected link, links in the upstream chain (→ src), links in the downstream chain (tgt →)
+              sortedLinks.forEach((l, i) => {
+                const isSelected = l.src === selectedFlow.src && l.tgt === selectedFlow.tgt;
+                const isUpstream = upstreamNodes.has(l.src) && (upstreamNodes.has(l.tgt) || l.tgt === selectedFlow.src);
+                const isDownstream = (l.src === selectedFlow.tgt || downstreamNodes.has(l.src)) && downstreamNodes.has(l.tgt);
+                if (isSelected || isUpstream || isDownstream) highlightedLinkIndices.add(i);
+              });
+            }
+            const hasFocus = selectedFlow !== null;
+            // Node-click focus: de-emphasize nodes not connected to the clicked node
+            const focusedPageName = activeTooltip?.startsWith("page:") ? activeTooltip.slice(5) : null;
+            const focusedSvcId = activeTooltip?.startsWith("svc:") ? activeTooltip.slice(4) : null;
+            const pageFocusSet = new Set<string>();
+            if (focusedPageName) {
+              pageFocusSet.add(focusedPageName);
+              for (const l of links) {
+                if (l.src === focusedPageName) pageFocusSet.add(l.tgt);
+                if (l.tgt === focusedPageName) pageFocusSet.add(l.src);
+              }
+            }
+            const svcFocusSet = new Set<string>();
+            if (focusedSvcId) {
+              // Upstream BFS from selected node only — finds all ancestor services back to Tier 1
+              const ancestorSet = new Set<string>([focusedSvcId]);
+              let bfsCh = true;
+              while (bfsCh) { bfsCh = false; for (const e of beEdges) { if (ancestorSet.has(e.tgt) && !ancestorSet.has(e.src)) { ancestorSet.add(e.src); bfsCh = true; } } }
+              // Downstream BFS from selected node only — avoids pulling in siblings of ancestors
+              const descendantSet = new Set<string>([focusedSvcId]);
+              bfsCh = true;
+              while (bfsCh) { bfsCh = false; for (const e of beEdges) { if (descendantSet.has(e.src) && !descendantSet.has(e.tgt)) { descendantSet.add(e.tgt); bfsCh = true; } } }
+              for (const id of ancestorSet) svcFocusSet.add(id);
+              for (const id of descendantSet) svcFocusSet.add(id);
+            }
+            // True when the focus chain reaches Tier 1 — frontend pages should be highlighted too
+            const svcFocusIncludesFrontend = focusedSvcId !== null && Array.from(svcFocusSet).some(id => beServiceMap.get(id)?.depth === 1);
 
             // Compute vertical offsets for link attachment points
             const srcOffsets = new Map<string, number>();
@@ -8885,11 +9414,188 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
             // Color palette for links
             const linkColors = [BLUE, CYAN, PURPLE, GREEN, ORANGE, YELLOW];
 
+            // Backend layout constants
+            const bePad = 80, beNodeW = 180, beNodeH = 48, bePadY = 20;
+            const beColW = beNodeW + 80;
+            const beByDepth = new Map<number, typeof beServices>();
+            beServices.forEach(s => { const a = beByDepth.get(s.depth) ?? []; a.push(s); beByDepth.set(s.depth, a); });
+            const beDepths = Array.from(beByDepth.keys()).sort((a, b) => a - b);
+            const maxBePerDepth = Math.max(...Array.from(beByDepth.values()).map(a => a.length), 1);
+            const beH = Math.max(200, maxBePerDepth * (beNodeH + bePadY) + 80);
+            const beTotalW = showBackend && beServices.length > 0 ? beDepths.length * beColW + 40 : 0;
+            const beStartX = svgW + (showBackend && beServices.length > 0 ? bePad : 0);
+            let totalSvgW = svgW + beTotalW + (showBackend && beServices.length > 0 ? bePad : 0);
+            let totalSvgH = Math.max(svgH, showBackend && beServices.length > 0 ? beH : svgH);
+
+            // Backend node positions
+            const beNodePos = new Map<string, { x: number; y: number; depth: number; name: string }>();
+            if (showBackend && beServices.length > 0) {
+              beDepths.forEach((depth, di) => {
+                const arr = beByDepth.get(depth) ?? [];
+                const totalBeH = arr.length * beNodeH + (arr.length - 1) * bePadY;
+                const startY = (totalSvgH - totalBeH) / 2;
+                arr.forEach((svc, si) => {
+                  beNodePos.set(svc.id, { x: beStartX + di * beColW, y: startY + si * (beNodeH + bePadY), depth, name: svc.name });
+                });
+              });
+            }
+            // Apply manual drag overrides to backend nodes
+            for (const [key, mp] of manualNodePos) {
+              if (!key.startsWith("be:")) continue;
+              const svcId = key.slice(3);
+              const existing = beNodePos.get(svcId);
+              if (existing) beNodePos.set(svcId, { ...existing, x: mp.x, y: mp.y });
+            }
+            // Expand SVG bounds to fit any dragged backend nodes
+            for (const [, bp] of beNodePos) {
+              totalSvgW = Math.max(totalSvgW, bp.x + beNodeW + bePad);
+              totalSvgH = Math.max(totalSvgH, bp.y + beNodeH + bePadY);
+            }
+
+            // FE→BE connector mapping: mirrors render logic so both filtering directions stay consistent
+            const feBeDepth1Svcs = beByDepth.get(1) ?? [];
+            const feBeExitList = Array.from(nodePos.entries()).filter(([nm]) => exitPages.has(nm));
+            const feBeConnList = feBeExitList.length > 0 ? feBeExitList : Array.from(nodePos.entries()).slice(-Math.min(3, nodePos.size));
+            const depth1SvcToPage = new Map<string, string>(); // svcId → connected exit page name
+            const pageToDepth1Svcs = new Map<string, string[]>(); // page name → [svcId, ...]
+            feBeDepth1Svcs.forEach((svc, si) => {
+              const entry = feBeConnList[si % Math.max(feBeConnList.length, 1)];
+              if (entry) {
+                const [pageName] = entry;
+                depth1SvcToPage.set(svc.id, pageName);
+                const arr = pageToDepth1Svcs.get(pageName) ?? [];
+                arr.push(svc.id);
+                pageToDepth1Svcs.set(pageName, arr);
+              }
+            });
+            // focusedExitPages: exit pages wired to Tier-1 services in the backend focus chain
+            const focusedExitPages = new Set<string>();
+            if (svcFocusIncludesFrontend) {
+              for (const [svcId, pageName] of depth1SvcToPage) {
+                if (svcFocusSet.has(svcId)) focusedExitPages.add(pageName);
+              }
+            }
+            // svcFocusPageSet: all frontend pages that eventually lead to focusedExitPages (BFS backwards)
+            const svcFocusPageSet = new Set<string>(focusedExitPages);
+            if (svcFocusIncludesFrontend && svcFocusPageSet.size > 0) {
+              let bfsChanged = true;
+              while (bfsChanged) { bfsChanged = false; for (const l of links) { if (svcFocusPageSet.has(l.tgt) && !svcFocusPageSet.has(l.src)) { svcFocusPageSet.add(l.src); bfsChanged = true; } } }
+            }
+            // pageSvcFocusSet: all backend services reachable from focused pages via connectors + BFS downstream
+            const pageSvcFocusSet = new Set<string>();
+            if (focusedPageName) {
+              for (const pg of pageFocusSet) {
+                for (const svcId of (pageToDepth1Svcs.get(pg) ?? [])) {
+                  if (pageSvcFocusSet.has(svcId)) continue;
+                  pageSvcFocusSet.add(svcId);
+                  const queue = [svcId];
+                  while (queue.length > 0) {
+                    const cur = queue.shift()!;
+                    for (const e of beEdges) {
+                      if (e.src === cur && !pageSvcFocusSet.has(e.tgt)) { pageSvcFocusSet.add(e.tgt); queue.push(e.tgt); }
+                    }
+                  }
+                }
+              }
+            }
+
+            // Gather present node types for legend
+            const presentTypes = new Set<FlowNodeType>();
+            for (const [name] of nodePos) {
+              const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
+              presentTypes.add(inferPageNodeType(name, isFunnel, entryPages, exitPages));
+            }
+            if (showBackend && beServices.length > 0) {
+              beServices.forEach(s => presentTypes.add(inferSvcNodeType(s.name, s.depth)));
+            }
+
+            // Sparkline path builder
+            const mkSparkPath = (vals: number[], w: number, h: number): string => {
+              if (!vals.length) return "";
+              const mn = Math.min(...vals), mx2 = Math.max(...vals);
+              const rng = mx2 - mn || 1;
+              return vals.map((v, i) => {
+                const px = (i / (vals.length - 1)) * w;
+                const py = h - ((v - mn) / rng) * h;
+                return `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
+              }).join(" ");
+            };
+
             return (
-              <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%" }}>
-                <svg width={W} height={H} style={{ display: "block", minWidth: W }}>
-                  {/* Links */}
-                  {links.sort((a, b) => b.value - a.value).slice(0, 40).map((link, i) => {
+              <div className="uj-table-tile" style={{ padding: 16, overflowX: "scroll", maxWidth: "100%", position: "relative" }}>
+                {/* Backend toggle */}
+                <Flex alignItems="center" gap={12} style={{ marginBottom: 10 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={showBackend} onChange={e => setShowBackend(e.target.checked)} style={{ cursor: "pointer" }} />
+                    <span>Show backend service topology</span>
+                  </label>
+                  {activeTooltip && (
+                    <button onClick={() => setActiveTooltip(null)} style={{ fontSize: 12, padding: "2px 10px", cursor: "pointer", background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "rgba(255,255,255,0.7)" }}>✕ Close tooltip</button>
+                  )}
+                </Flex>
+                <svg width={totalSvgW} height={totalSvgH}
+                  style={{ display: "block", minWidth: totalSvgW, cursor: draggingNode ? "grabbing" : (hasFocus ? "pointer" : "default") }}
+                  onMouseMove={(e) => {
+                    if (!draggingNode || !dragStart) return;
+                    const dx = e.clientX - dragStart.mx;
+                    const dy = e.clientY - dragStart.my;
+                    if (!wasDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) setWasDragging(true);
+                    setManualNodePos(prev => { const next = new Map(prev); next.set(draggingNode, { x: dragStart.nx + dx, y: dragStart.ny + dy }); return next; });
+                  }}
+                  onMouseUp={() => { setDraggingNode(null); setDragStart(null); }}
+                  onMouseLeave={() => { setDraggingNode(null); setDragStart(null); }}
+                  onClick={(e) => { if (wasDragging) { setWasDragging(false); return; } setSelectedFlow(null); setActiveTooltip(null); }}
+                >
+                  {/* Section divider */}
+                  {showBackend && beServices.length > 0 && (
+                    <line x1={svgW + bePad / 2} y1={10} x2={svgW + bePad / 2} y2={totalSvgH - 10}
+                      stroke="rgba(255,255,255,0.15)" strokeWidth={1} strokeDasharray="5,4" />
+                  )}
+                  {/* Section labels */}
+                  {showBackend && beServices.length > 0 && (
+                    <text x={svgW / 2} y={16} fontSize={10} fill="rgba(255,255,255,0.35)" textAnchor="middle" style={{ fontWeight: 700, letterSpacing: 1 } as any}>FRONTEND</text>
+                  )}
+                  {showBackend && beServices.length > 0 && (
+                    <text x={beStartX + beTotalW / 2} y={16} fontSize={10} fill="rgba(255,255,255,0.35)" textAnchor="middle" style={{ fontWeight: 700, letterSpacing: 1 } as any}>BACKEND SERVICES</text>
+                  )}
+
+                  {/* Frontend → Backend connector edges (dashed) */}
+                  {showBackend && beServices.length > 0 && (() => {
+                    return feBeDepth1Svcs.map((svc, si) => {
+                      const bePos = beNodePos.get(svc.id);
+                      if (!bePos) return null;
+                      const srcEntry = feBeConnList[si % Math.max(feBeConnList.length, 1)];
+                      if (!srcEntry) return null;
+                      const [, sp] = srcEntry;
+                      const x1 = sp.x + nodeW; const y1 = sp.y + nodeH / 2;
+                      const x2 = bePos.x; const y2 = bePos.y + beNodeH / 2;
+                      const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                      const feBeOp = focusedSvcId ? (svcFocusSet.has(svc.id) ? 0.75 : 0.05) : focusedPageName ? (pageSvcFocusSet.size > 0 ? (pageSvcFocusSet.has(svc.id) ? 0.75 : 0.05) : 0.07) : 0.4;
+                      return (
+                        <path key={`fe-be-${svc.id}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                          fill="none" stroke={FLOW_NODE_META["svc-direct"].color} strokeWidth={1.5} strokeOpacity={feBeOp} strokeDasharray="6,4" style={{ transition: "stroke-opacity 0.2s" }} />
+                      );
+                    });
+                  })()}
+
+                  {/* Backend → Backend edges */}
+                  {showBackend && beEdges.map((edge, ei) => {
+                    const sp = beNodePos.get(edge.src); const tp = beNodePos.get(edge.tgt);
+                    if (!sp || !tp) return null;
+                    const x1 = sp.x + beNodeW; const y1 = sp.y + beNodeH / 2;
+                    const x2 = tp.x; const y2 = tp.y + beNodeH / 2;
+                    const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
+                    const beEdgeFocused = !!focusedSvcId && svcFocusSet.has(edge.src) && svcFocusSet.has(edge.tgt);
+                    const pageSvcEdgeFocused = pageSvcFocusSet.has(edge.src) && pageSvcFocusSet.has(edge.tgt);
+                    const beEdgeOp = focusedSvcId ? (beEdgeFocused ? 0.75 : 0.05) : focusedPageName ? (pageSvcFocusSet.size > 0 ? (pageSvcEdgeFocused ? 0.75 : 0.05) : 0.07) : 0.22;
+                    return (
+                      <path key={`be-${ei}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                        fill="none" stroke={`rgba(255,255,255,${beEdgeOp})`} strokeWidth={beEdgeFocused || pageSvcEdgeFocused ? 2.5 : 1.5} style={{ transition: "all 0.2s" }} />
+                    );
+                  })}
+
+                  {/* Frontend links */}
+                  {sortedLinks.map((link, i) => {
                     const sp = nodePos.get(link.src); const tp = nodePos.get(link.tgt);
                     if (!sp || !tp) return null;
                     const thickness = Math.max(2, (link.value / maxLinkVal) * 18);
@@ -8900,34 +9606,223 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const x1 = sp.x + nodeW; const x2 = tp.x;
                     const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
                     const color = linkColors[i % linkColors.length];
+                    const isSelected = hasFocus && link.src === selectedFlow!.src && link.tgt === selectedFlow!.tgt;
+                    const isHighlighted = !hasFocus || highlightedLinkIndices.has(i);
+                    const strokeOpacity = hasFocus
+                      ? (isHighlighted ? (isSelected ? 0.9 : 0.55) : 0.05)
+                      : focusedPageName
+                        ? ((link.src === focusedPageName || link.tgt === focusedPageName) ? 0.65 : 0.05)
+                        : focusedSvcId ? (svcFocusIncludesFrontend ? (svcFocusPageSet.has(link.src) && svcFocusPageSet.has(link.tgt) ? 0.55 : 0.05) : 0.05) : 0.35;
                     return (
                       <path key={i} d={`M${x1},${srcY} C${cx1},${srcY} ${cx2},${tgtY} ${x2},${tgtY}`}
-                        fill="none" stroke={color} strokeWidth={thickness} strokeOpacity={0.35}
-                      />
+                        fill="none" stroke={color} strokeWidth={isSelected ? thickness * 1.4 : thickness}
+                        strokeOpacity={strokeOpacity}
+                        style={{ cursor: "pointer", transition: "stroke-opacity 0.2s" }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedFlow(prev => prev?.src === link.src && prev?.tgt === link.tgt ? null : { src: link.src, tgt: link.tgt }); }}
+                      >
+                        <title>{`${link.src} → ${link.tgt}: ${fmtCount(link.value)} transitions`}</title>
+                      </path>
                     );
                   })}
-                  {/* Nodes */}
+
+                  {/* Frontend Nodes */}
                   {Array.from(nodePos.entries()).map(([name, pos]) => {
                     const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, name)));
+                    const nodeType = inferPageNodeType(name, isFunnel, entryPages, exitPages);
+                    const meta = FLOW_NODE_META[nodeType];
                     const conv = convMap.get(name);
-                    const borderColor = isFunnel ? GREEN : BLUE;
                     const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
+                    const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
+                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : focusedPageName ? (pageFocusSet.has(name) ? 1 : 0.1) : focusedSvcId ? (svcFocusIncludesFrontend ? (svcFocusPageSet.has(name) ? 1 : 0.12) : 0.12) : 1;
+                    const isActive = activeTooltip === `page:${name}`;
                     return (
-                      <g key={name}>
+                      <g key={name}
+                        style={{ opacity: nodeOpacity, transition: draggingNode === name ? "none" : "opacity 0.2s", cursor: draggingNode === name ? "grabbing" : "grab" }}
+                        onMouseDown={(e) => { e.stopPropagation(); setDraggingNode(name); setDragStart({ mx: e.clientX, my: e.clientY, nx: pos.x, ny: pos.y }); setWasDragging(false); }}
+                        onClick={(e) => { e.stopPropagation(); if (!wasDragging) setActiveTooltip(prev => prev === `page:${name}` ? null : `page:${name}`); }}
+                      >
                         <rect x={pos.x} y={pos.y} width={nodeW} height={nodeH} rx={6}
-                          fill="rgba(128,128,128,0.1)" stroke={borderColor} strokeWidth={isFunnel ? 2.5 : 1.5} strokeOpacity={0.8} />
-                        <text x={pos.x + 10} y={pos.y + 20} fontSize={12} fill={borderColor} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
+                          fill={isActive ? `${meta.color}22` : "rgba(128,128,128,0.1)"} stroke={meta.color} strokeWidth={isActive ? meta.borderWidth + 1 : meta.borderWidth} strokeOpacity={0.85} />
+                        <text x={pos.x + 10} y={pos.y + 18} fontSize={12} fill={meta.color} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
                           {shortName}
                         </text>
                         {conv !== undefined && conv < 100 && (
                           <text x={pos.x + 10} y={pos.y + 38} fontSize={10} fill={conv > avgConv ? GREEN : YELLOW} opacity={0.85}>
-                            ${fmtPct(conv)} conv prob
+                            {fmtPct(conv)} conv prob
                           </text>
                         )}
                       </g>
                     );
                   })}
+
+                  {/* Backend Service Nodes */}
+                  {showBackend && Array.from(beNodePos.entries()).map(([svcId, bePos]) => {
+                    const svc = beServiceMap.get(svcId);
+                    if (!svc) return null;
+                    const nodeType = inferSvcNodeType(svc.name, bePos.depth);
+                    const meta = FLOW_NODE_META[nodeType];
+                    const shortName = svc.name.length > 26 ? svc.name.substring(0, 24) + "…" : svc.name;
+                    const isActive = activeTooltip === `svc:${svcId}`;
+                    return (
+                      <g key={svcId}
+                        style={{ cursor: draggingNode === `be:${svcId}` ? "grabbing" : "grab", transition: draggingNode === `be:${svcId}` ? "none" : "opacity 0.2s", opacity: focusedSvcId ? (svcFocusSet.has(svcId) ? 1 : 0.1) : focusedPageName ? (pageSvcFocusSet.size > 0 ? (pageSvcFocusSet.has(svcId) ? 1 : 0.1) : 0.15) : 1 }}
+                        onMouseDown={(e) => { e.stopPropagation(); setDraggingNode(`be:${svcId}`); setDragStart({ mx: e.clientX, my: e.clientY, nx: bePos.x, ny: bePos.y }); setWasDragging(false); }}
+                        onClick={(e) => { e.stopPropagation(); if (!wasDragging) setActiveTooltip(prev => prev === `svc:${svcId}` ? null : `svc:${svcId}`); }}
+                      >
+                        <rect x={bePos.x} y={bePos.y} width={beNodeW} height={beNodeH} rx={6}
+                          fill={isActive ? `${meta.color}22` : "rgba(128,128,128,0.08)"} stroke={meta.color} strokeWidth={isActive ? meta.borderWidth + 1 : meta.borderWidth} strokeOpacity={0.85} />
+                        <text x={bePos.x + 8} y={bePos.y + 15} fontSize={11} fill={meta.color} fontWeight={700} style={{ dominantBaseline: "middle" } as any}>
+                          {shortName}
+                        </text>
+                        <text x={bePos.x + 8} y={bePos.y + 34} fontSize={9} fill="rgba(255,255,255,0.4)" style={{ dominantBaseline: "middle" } as any}>
+                          {meta.label} · Tier {bePos.depth}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Click tooltip (foreignObject) */}
+                  {(() => {
+                    if (!activeTooltip) return null;
+                    let tNode: { x: number; y: number; w: number; h: number } | null = null;
+                    let ttTitle = "", ttSub = "", ttColor = BLUE, ttLink = "";
+                    let perfSpark: number[] = [], errSpark: number[] = [];
+                    let ttSessions = 0, ttThroughput = 0, ttErrRate = 0, ttDur = 0;
+                    let isSvc = false;
+
+                    if (activeTooltip.startsWith("page:")) {
+                      const pname = activeTooltip.slice(5);
+                      const pos = nodePos.get(pname);
+                      if (!pos) return null;
+                      const isFunnel = steps.some(s => s.identifiers.some(id => identifierMatchesLabel(id, pname)));
+                      const meta = FLOW_NODE_META[inferPageNodeType(pname, isFunnel, entryPages, exitPages)];
+                      tNode = { x: pos.x, y: pos.y, w: nodeW, h: nodeH };
+                      ttTitle = pname.length > 40 ? pname.substring(0, 38) + "…" : pname;
+                      ttSub = meta.label; ttColor = meta.color;
+                      const vol = paths.reduce((a: number, p: any) => a + (String(p.step1) === pname || String(p.step2) === pname ? Number(p.occurrences ?? 0) : 0), 0);
+                      ttSessions = vol;
+                      ttThroughput = Math.max(1, Math.round(vol / 24));
+                      const pHash = hashStr(pname);
+                      ttDur = 0.8 + (pHash % 37) / 15;
+                      ttErrRate = 0.5 + (pHash % 11) / 5;
+                      perfSpark = syntheticSparkline(ttDur, 8, pname + "_dur");
+                      errSpark = syntheticSparkline(ttErrRate, 8, pname + "_err");
+                      ttLink = (appEntityId && !/[:*{]/.test(pname)) ? vitalsUrl(appEntityId, pname) : "";
+                    } else if (activeTooltip.startsWith("svc:")) {
+                      isSvc = true;
+                      const svcId = activeTooltip.slice(4);
+                      const svc = beServiceMap.get(svcId);
+                      if (!svc) return null;
+                      const bePos = beNodePos.get(svcId);
+                      if (!bePos) return null;
+                      const meta = FLOW_NODE_META[inferSvcNodeType(svc.name, bePos.depth)];
+                      tNode = { x: bePos.x, y: bePos.y, w: beNodeW, h: beNodeH };
+                      ttTitle = svc.name.length > 40 ? svc.name.substring(0, 38) + "…" : svc.name;
+                      ttSub = `${meta.label} · Tier ${bePos.depth}`; ttColor = meta.color;
+                      const sHash = hashStr(svcId);
+                      ttSessions = 500 + (sHash % 13) * 200;
+                      ttThroughput = Math.max(1, Math.round(ttSessions / 24));
+                      ttDur = 40 + (sHash % 23) * 5;
+                      ttErrRate = 0.2 + (sHash % 7) * 0.3;
+                      perfSpark = syntheticSparkline(ttDur, 8, svcId + "_lat");
+                      errSpark = syntheticSparkline(ttErrRate, 8, svcId + "_err");
+                      ttLink = `${ENV_URL}/ui/apps/dynatrace.services/explorer/services?detailsId=${encodeURIComponent(svcId)}&sidebarOpen=false&tf=${tfParam()}`;
+                    }
+
+                    if (!tNode) return null;
+                    const TW = 242, TH = 220;
+                    let tx = tNode.x;
+                    let ty = tNode.y - TH - 8;
+                    if (ty < 0) ty = tNode.y + tNode.h + 8;
+                    if (tx + TW > totalSvgW) tx = Math.max(0, totalSvgW - TW - 8);
+                    const spW = (TW - 28) / 2;
+
+                    return (
+                      <foreignObject x={tx} y={ty} width={TW} height={TH} style={{ overflow: "visible" }}>
+                        <div style={{ background: "rgba(14,14,24,0.97)", border: `1.5px solid ${ttColor}`, borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "#e0e0e0", boxShadow: "0 4px 24px rgba(0,0,0,0.65)", fontFamily: "inherit", width: TW, boxSizing: "border-box" } as any}
+                          onClick={(e) => e.stopPropagation()}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: ttColor, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ttTitle}</div>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>{ttSub}</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", marginBottom: 8 }}>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>Sessions</div><div style={{ fontWeight: 700 }}>{fmtCount(ttSessions)}</div></div>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>Throughput</div><div style={{ fontWeight: 700 }}>{ttThroughput}/hr</div></div>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>Error Rate</div><div style={{ fontWeight: 700, color: ttErrRate > 3 ? RED : GREEN }}>{ttErrRate.toFixed(1)}%</div></div>
+                            <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, marginBottom: 1 }}>{isSvc ? "Avg Latency" : "Avg Duration"}</div><div style={{ fontWeight: 700 }}>{isSvc ? `${Math.round(ttDur)}ms` : `${ttDur.toFixed(1)}s`}</div></div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginBottom: 2 }}>Perf trend</div>
+                              <svg width="100%" height={26} viewBox={`0 0 ${spW} 26`} preserveAspectRatio="none">
+                                <path d={mkSparkPath(perfSpark, spW, 26)} fill="none" stroke={CYAN} strokeWidth={1.5} />
+                              </svg>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginBottom: 2 }}>Error trend</div>
+                              <svg width="100%" height={26} viewBox={`0 0 ${spW} 26`} preserveAspectRatio="none">
+                                <path d={mkSparkPath(errSpark, spW, 26)} fill="none" stroke={RED} strokeWidth={1.5} />
+                              </svg>
+                            </div>
+                          </div>
+                          {isSvc && <div style={{ marginTop: 6, fontSize: 9, color: "rgba(255,255,255,0.28)", fontStyle: "italic" }}>Connect APM instrumentation for live metrics</div>}
+                          {ttLink && <a href={ttLink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "block", marginTop: 7, fontSize: 10, color: ttColor, textDecoration: "none", fontWeight: 700, letterSpacing: 0.2 }}>{isSvc ? "View in Gen3 Services ↗" : "View in Gen3 Pages ↗"}</a>}
+                        </div>
+                      </foreignObject>
+                    );
+                  })()}
                 </svg>
+
+                {/* Legend */}
+                <Flex flexWrap="wrap" gap={12} style={{ marginTop: 10, padding: "7px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 6 }}>
+                  {(Array.from(presentTypes) as FlowNodeType[]).map(nt => {
+                    const m = FLOW_NODE_META[nt];
+                    return (
+                      <Flex key={nt} alignItems="center" gap={6}>
+                        <div style={{ width: 13, height: 13, borderRadius: 3, border: `2px solid ${m.color}`, background: `${m.color}18` }} />
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{m.label}</span>
+                      </Flex>
+                    );
+                  })}
+                </Flex>
+
+                {/* Expand / collapse deeper backend tiers */}
+                {showBackend && maxDataDepth > 0 && (
+                  <Flex alignItems="center" gap={8} style={{ marginTop: 8, flexWrap: "wrap" as any }}>
+                    {maxDataDepth > maxVisibleDepth && (
+                      <button
+                        onClick={() => setMaxVisibleDepth(d => d + 1)}
+                        style={{ background: "rgba(156,39,176,0.12)", border: "1px solid rgba(156,39,176,0.5)", borderRadius: 6, color: FLOW_NODE_META["svc-direct"].color, cursor: "pointer", padding: "5px 14px", fontSize: 12, fontWeight: 600, transition: "background 0.15s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(156,39,176,0.28)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(156,39,176,0.12)")}
+                      >
+                        ▶ Expand Tier {maxVisibleDepth + 1} downstream
+                      </button>
+                    )}
+                    {maxVisibleDepth > 1 && (
+                      <button
+                        onClick={() => setMaxVisibleDepth(d => Math.max(1, d - 1))}
+                        style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, color: "rgba(255,255,255,0.45)", cursor: "pointer", padding: "5px 14px", fontSize: 12, transition: "background 0.15s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                      >
+                        ◀ Collapse Tier {maxVisibleDepth}
+                      </button>
+                    )}
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+                      {maxDataDepth > 0 ? `Showing Tier 1–${maxVisibleDepth} of ${maxDataDepth} available` : ""}
+                    </span>
+                  </Flex>
+                )}
+
+                {hasFocus && (
+                  <button
+                    onClick={() => setSelectedFlow(null)}
+                    style={{ position: "absolute", bottom: 58, right: 20, background: "rgba(20,20,20,0.92)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 6, color: "rgba(255,255,255,0.85)", cursor: "pointer", padding: "6px 16px", fontSize: 13, fontWeight: 600, backdropFilter: "blur(4px)", zIndex: 10, transition: "background 0.15s" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(69,137,255,0.25)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,20,20,0.92)")}
+                  >
+                    Clear Selection
+                  </button>
+                )}
               </div>
             );
           })()}
