@@ -60,8 +60,8 @@ function geoNetworkQuery(days: number, frontend: string): string {
 // NEW: Geo Conversion Rate Query
 function geoConversionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const firstStep = steps[0]?.identifiers?.map(id => \`view.name == "\${id}"\`).join(" or ") ?? "true";
-  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => \`view.name == "\${id}"\`).join(" or ") ?? "true";
+  const firstStep = steps[0]?.identifiers?.map(id => \`custom.view.name == "\${id}"\`).join(" or ") ?? "true";
+  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => \`custom.view.name == "\${id}"\`).join(" or ") ?? "true";
   return \`fetch user.events, \${period}
 | filter frontend.name == "\${frontend}"
 | fieldsAdd country = geo.country.iso_code
@@ -126,10 +126,10 @@ function osVersionQuery(days: number, frontend: string, steps: StepDef[]): strin
 // NEW: Navigation Path Conversion Query
 function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => \`view.name == "\${id}"\`).join(" or ") ?? "true";
+  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => \`custom.view.name == "\${id}"\`).join(" or ") ?? "true";
   return \`fetch user.events, \${period}
 | filter frontend.name == "\${frontend}"
-| fieldsAdd pageName = coalesce(view.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, url.path, "unknown")
 | fieldsAdd is_conv = \${lastStep}
 | summarize
     total_sessions = countDistinct(dt.rum.session.id),
@@ -148,7 +148,7 @@ function clickIssuesReplayQuery(days: number, frontend: string): string {
 | filter characteristics.has_rage_click == true or characteristics.has_dead_click == true
 | fields sid = dt.rum.session.id, timestamp, start_time,
     element = coalesce(user_action.target, "unknown"),
-    page = coalesce(view.name, url.path, "unknown"),
+    page = coalesce(custom.view.name, url.path, "unknown"),
     click_type = if(characteristics.has_rage_click == true, "rage", else: "dead")
 | sort timestamp desc
 | limit 30\`;
@@ -190,7 +190,7 @@ function featureFlagEventsQuery(days: number): string {
 // NEW: UTM Attribution Query
 function utmAttributionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => \`view.name == "\${id}"\`).join(" or ") ?? "true";
+  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => \`custom.view.name == "\${id}"\`).join(" or ") ?? "true";
   return \`fetch user.events, \${period}
 | filter frontend.name == "\${frontend}"
 | fieldsAdd utm_source = coalesce(stringKey(custom_properties, "utm_source"), stringKey(custom_properties, "utmSource"), "direct")

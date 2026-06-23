@@ -6,7 +6,7 @@ import { queryExecutionClient, QueryStartResponse } from '@dynatrace-sdk/client-
 export function getQueryString(){
   return `fetch user.events, from: now()-7d
 | filter frontend.name == "POS"
-| summarize actions = count(), sessions = countDistinct(dt.rum.session.id), by: {view.name}
+| summarize actions = count(), sessions = countDistinct(dt.rum.session.id), by: {custom.view.name}
 | sort actions desc
 | limit 30
 `;

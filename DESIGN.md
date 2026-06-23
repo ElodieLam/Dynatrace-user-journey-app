@@ -145,7 +145,7 @@ The 36 sub-tabs are organized into **8 parent tab groups** with nested Strato `<
 fetch user.events, from: now() - {timeframe}
 | filter {frontendFilter}  -- frontend.name == "X" (single app) or in(frontend.name, {"X","Y"}) (multi-app)
 | filter {anyStepFilter}
-| fieldsAdd step_tag = coalesce(if(view.name == "/home", "Home"), if(view.name == "/search", "Search"), ..., "other")
+| fieldsAdd step_tag = coalesce(if(custom.view.name == "/home", "Home"), if(custom.view.name == "/search", "Search"), ..., "other")
 | summarize steps = collectDistinct(step_tag), by: {dt.rum.session.id}
 | fieldsAdd reached_step1 = iAny(steps[] == "step1"), reached_step2 = iAny(steps[] == "step2"), ...
 | summarize total_sessions = count(), at_step1 = countIf(reached_step1), at_step2 = countIf(reached_step1 AND reached_step2), ...
@@ -219,7 +219,7 @@ fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_page_summary == true
 | fieldsAdd lcp_ms = web_vitals.largest_contentful_paint, cls_val = web_vitals.cumulative_layout_shift, inp_ms = web_vitals.interaction_to_next_paint, ttfb_ms = web_vitals.time_to_first_byte, fcp_ms = web_vitals.first_contentful_paint
-| summarize lcp_avg = avg(lcp_ms), cls_avg = avg(cls_val), inp_avg = avg(inp_ms), ttfb_avg = avg(ttfb_ms), load_avg = avg(fcp_ms), by: {view.name}
+| summarize lcp_avg = avg(lcp_ms), cls_avg = avg(cls_val), inp_avg = avg(inp_ms), ttfb_avg = avg(ttfb_ms), load_avg = avg(fcp_ms), by: {custom.view.name}
 | sort lcp_avg desc
 | limit 20
 ```
@@ -241,7 +241,7 @@ fetch user.events, from: now() - {timeframe}
 - **Web Vitals** button (single-page steps): Toggleable CWV panel showing LCP, CLS, INP color-coded against Google thresholds with Good/Needs Improvement/Poor labels
 - **Compare Pages** button (multi-page steps only): Expands per-page breakdown with individual Apdex, durations, satisfaction counts. First page is the primary baseline; all other pages show delta indicators (▲/▼ with %) against it. Each page also shows **LCP, CLS, INP** color-coded against Google CWV thresholds.
 
-**Queries**: Reuses `stepMetricsQuery` for aggregate step metrics. Adds `pageMetricsQuery` (groups by `view.name` instead of `step_tag`) for per-page breakdown. Uses `cwvByPageQuery` for per-page Core Web Vitals (LCP, CLS, INP).
+**Queries**: Reuses `stepMetricsQuery` for aggregate step metrics. Adds `pageMetricsQuery` (groups by `custom.view.name` instead of `step_tag`) for per-page breakdown. Uses `cwvByPageQuery` for per-page Core Web Vitals (LCP, CLS, INP).
 
 ---
 
@@ -274,7 +274,7 @@ fetch user.events, from: now() - {timeframe}
 | filter {anyStepFilter}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000
 | fieldsAdd satisfaction = if(dur_ms <= 3000, "satisfied", else: if(dur_ms <= 12000, "tolerating", else: "frustrated"))
-| fieldsAdd pageName = coalesce(view.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, url.path, "unknown")
 | fieldsAdd errName = if(characteristics.has_error == true, coalesce(error.display_name, error.type, "error"), "")
 | summarize actions = count(), avg_dur = avg(dur_ms), max_dur = max(dur_ms), p90_dur = percentile(dur_ms, 90), errors = countIf(characteristics.has_error), frustrated = countIf(satisfaction == "frustrated"), satisfied = countIf(satisfaction == "satisfied"), tolerating = countIf(satisfaction == "tolerating"), start_ts = min(start_time), pages = collectDistinct(pageName), error_types = collectDistinct(errName), by: {dt.rum.session.id}
 | sort frustrated desc, errors desc, max_dur desc
@@ -307,7 +307,7 @@ fetch user.events, from: now() - {timeframe}, samplingRatio: 1
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_error
 | filter error.type == "exception"
-| summarize occurrences = count(), affected_users = countDistinct(dt.rum.instance.id), affected_sessions = countDistinct(dt.rum.session.id), first_seen = min(start_time), last_seen = max(start_time), pages = collectDistinct(view.name), sample_stack = takeFirst(stackLocation), by: {error.id, errorName}
+| summarize occurrences = count(), affected_users = countDistinct(dt.rum.instance.id), affected_sessions = countDistinct(dt.rum.session.id), first_seen = min(start_time), last_seen = max(start_time), pages = collectDistinct(custom.view.name), sample_stack = takeFirst(stackLocation), by: {error.id, errorName}
 | sort occurrences desc
 | limit 30
 ```
@@ -335,7 +335,7 @@ fetch user.events, from: now() - {timeframe}, samplingRatio: 1
 fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter in(event.type, {"rageClick", "deadClick"})
-| summarize occurrences = count(), affected_sessions = countDistinctExact(dt.rum.session.id), by: {event.type, view.name, target.element}
+| summarize occurrences = count(), affected_sessions = countDistinctExact(dt.rum.session.id), by: {event.type, custom.view.name, target.element}
 | sort occurrences desc
 | limit 30
 ```
@@ -438,7 +438,7 @@ fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
 | sort timestamp asc
-| summarize path = collectArray(view.name), by: {dt.rum.session.id}
+| summarize path = collectArray(custom.view.name), by: {dt.rum.session.id}
 | filter size(path) >= 2
 | fieldsAdd step1 = path[0], step2 = path[1]
 | fieldsAdd transition = concat(step1, " -> ", step2)
@@ -492,7 +492,7 @@ fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
 | sort timestamp asc
-| summarize path = collectArray(view.name), by: {dt.rum.session.id}
+| summarize path = collectArray(custom.view.name), by: {dt.rum.session.id}
 | filter size(path) >= 2
 | fieldsAdd s0 = path[0], s1 = path[1], s2 = path[2], s3 = path[3], s4 = path[4]
 | summarize sessions = count(), by: {s0, s1, s2, s3, s4}
@@ -505,7 +505,7 @@ fetch user.events, from: now() - {timeframe}
 fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
@@ -520,7 +520,7 @@ fetch user.events, from: now() - {timeframe}
 fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_error == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | summarize errorCount = count(), errorSessions = countDistinct(dt.rum.session.id), by: {pageName}
 | sort errorCount desc
 | limit 50
@@ -531,7 +531,7 @@ fetch user.events, from: now() - {timeframe}
 fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -544,7 +544,7 @@ fetch user.events, from: now() - {timeframe}
 fetch user.events, from: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | summarize avgDuration = avg(dur_ms), p90Duration = percentile(dur_ms, 90), sessions = count(), by: {pageName}
 | sort sessions desc
@@ -556,7 +556,7 @@ fetch user.events, from: now() - {timeframe}
 fetch user.events, from: now() - {prevPeriod}, to: now() - {timeframe}
 | filter frontend.name == "{frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1462,7 +1462,7 @@ All revenue calculations are client-side — no additional DQL queries needed be
 | 2026-05-15 | 4.47.80 | **Worst Sessions — AI Impact Score & Pattern Clustering**: Replaced static composite ranking (frustrated/errors/max_dur sort) with ML-driven Impact Score (0–100). Z-score normalization across 4 severity dimensions weighted by systemic multiplier (error frequency across sessions). "Sessions Like This" column shows cluster size per behavioral fingerprint. SYSTEMIC badge for repeatable patterns. Pattern Clusters section with systemic/outlier counts. Query enhanced with `collectDistinct(pageName)`, `collectDistinct(errName)`, `p90_dur`, limit raised to 50 for scoring population. AI Insights updated with cluster-aware analysis. |
 | 2026-05-15 | 4.47.79 | **Step Details — Web Vitals Button for Single-Page Steps**: Added "Web Vitals" toggle button (cyan accent) for single-page steps. When clicked, expands a panel showing LCP, CLS, INP color-coded against Google thresholds with Good/Needs Improvement/Poor labels beneath each metric. |
 | 2026-05-15 | 4.47.78 | **Step Details — Page Drop-off Funnel & CWV Overlay**: Added Page Drop-off Contributors funnel for multi-page steps — horizontal bars ranked by event count, Apdex color-coded, with percentage drop indicators. Added LCP/CLS/INP overlay in Compare Pages view per page. `cwvByPageQuery` updated to include INP. `cwvByPage` data passed to StepDetailsTab. Help and AI Insights updated. |
-| 2026-05-11 | 4.47.43 | **Step Details — Per-Page Comparison + Wildcard Enhancements**: Step Details tab now supports per-page comparison for multi-page steps — Compare Pages button (purple accent) reveals per-page breakdown with PRIMARY badge on first page, delta indicators (▲/▼ with %) comparing each subsequent page against the primary baseline, individual Apdex gauges, and Vitals links (skipping wildcards). New `pageMetricsQuery` groups by `view.name` for per-page metrics. Mid-string wildcards supported (`/journeys/*/book` → `startsWith() AND endsWith()`). Dynatrace `:id:` placeholders recognized as wildcards to prevent broken links. AI Insights updated with multi-page awareness. |
+| 2026-05-11 | 4.47.43 | **Step Details — Per-Page Comparison + Wildcard Enhancements**: Step Details tab now supports per-page comparison for multi-page steps — Compare Pages button (purple accent) reveals per-page breakdown with PRIMARY badge on first page, delta indicators (▲/▼ with %) comparing each subsequent page against the primary baseline, individual Apdex gauges, and Vitals links (skipping wildcards). New `pageMetricsQuery` groups by `custom.view.name` for per-page metrics. Mid-string wildcards supported (`/journeys/*/book` → `startsWith() AND endsWith()`). Dynatrace `:id:` placeholders recognized as wildcards to prevent broken links. AI Insights updated with multi-page awareness. |
 | 2026-05-11 | 4.47.42 | **Multi-Page Funnel Steps + Wildcard Support**: Each funnel step now supports multiple page identifiers with OR logic — e.g. (Step1a OR Step1b) AND Step2 AND (Step3a OR Step3b). Wildcards supported in all positions: `/home*` (startsWith), `*home` (endsWith), `*home*` (contains). DQL filters generate `startsWith()`, `endsWith()`, `contains()` expressions. Links skip wildcard identifiers (use first non-wildcard for Vitals URL). Settings UI updated with per-step "+ Add Page" button and per-identifier remove. Backward-compatible migration from old `identifier: string` to `identifiers: string[]` format. Updated Help docs |
 | 2026-05-10 | 4.47.39 | **AI Insights Engine**: Header-level AI Insights button (3-sparkle icon) between timeframe selector and help icon. Collapsible panel per tab with Summary, color-coded Insights (good/warning/critical/info), and prioritized Recommendations (high/medium/low). Typewriter streaming animation (60ms/word, 0.3s fade). 25+ tab-specific analysis functions with industry benchmarks (conversion 2-5%, Apdex thresholds, Google CWV targets, error rate <1%). React context (`AIInsightsContext`) shares state from header to all 30 tab components via `useAIInsights` hook. All analysis client-side — zero external API calls |
 | 2026-05-09 | 4.47.33 | **4 New Tabs + Funnel Velocity Sub-Tab**: Cohort Retention (daily cohorts, device breakdown, conv rate curves), Session Engagement (0-100 score per session, tier conversion rates, high-intent non-converters), Third-Party Impact (1P vs 3P resource analysis, domain breakdown, CWV correlation), Error Clustering (error grouping by type, hourly trend, impact ranking). Sankey gets 9th sub-tab: Funnel Velocity (step transition times, median/P90/avg per pair, journey time histogram). 8 new DQL queries, tab count 26→30 |

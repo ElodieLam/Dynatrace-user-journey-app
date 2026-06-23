@@ -110,7 +110,7 @@ fetch user.events, from: now() - 2h
 | fields
     start_time,
     characteristics.classifier,
-    view.name,
+    custom.view.name,
     page.url.path,
     interaction.name,
     error.type

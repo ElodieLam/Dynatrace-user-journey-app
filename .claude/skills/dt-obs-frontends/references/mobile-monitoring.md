@@ -336,7 +336,7 @@ fetch user.events, from: now() - 2h
     view_count = count(),
     unique_sessions = countDistinct(dt.rum.session.id),
     avg_foreground_time = avg(view.foreground_time),
-    by: {frontend.name, view.name}
+    by: {frontend.name, custom.view.name}
 | sort view_count desc
 | limit 30
 

@@ -175,7 +175,7 @@ fetch user.events, from: now() - 2h
 | fields
     start_time,
     characteristics.classifier,
-    view.name,
+    custom.view.name,
     page.url.path,
     interaction.name,
     error.type
@@ -276,7 +276,7 @@ Analyze page summaries (web) and view summaries (mobile) for engagement metrics.
 
 **Key Fields:**
 
-- `page.url.path` / `view.name` - Page/view identifier
+- `page.url.path` / `custom.view.name` - Page/view identifier
 - `page.foreground_time` / `view.foreground_time` - Active time
 - `page.background_time` / `view.background_time` - Hidden time
 - `view.sequence_number` - View position in session

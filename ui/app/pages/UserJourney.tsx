@@ -271,7 +271,7 @@ function formatTimeAgo(ts: number): string {
 }
 
 function identifierFilter(id: string, type: "view" | "request"): string {
-  const field = type === "view" ? "view.name" : "url.path";
+  const field = type === "view" ? "custom.view.name" : "url.path";
   const startsW = id.startsWith("*");
   const endsW = id.endsWith("*");
   // Mid-string wildcard: /easytravel/journeys/*/book → startsWith + endsWith
@@ -387,8 +387,8 @@ function availableAppsQuery(): string {
 
 function availablePagesQuery(frontend: string): string {
   return `fetch user.events, from: now()-7d
-| filter frontend.name == "${frontend}" and isNotNull(view.name) and view.name != ""
-| summarize count = count(), by: {view.name}
+| filter frontend.name == "${frontend}" and isNotNull(custom.view.name) and custom.view.name != ""
+| summarize count = count(), by: {custom.view.name}
 | sort count desc
 | limit 300
 | fieldsRemove count`;
@@ -401,8 +401,8 @@ function availablePagesMultiAppQuery(apps: string[]): string {
     ? `frontend.name == "${apps[0]}"`
     : `in(frontend.name, {${apps.map(a => `"${a}"`).join(", ")}})`;
   return `fetch user.events, from: now()-7d
-| filter ${filter} and isNotNull(view.name) and view.name != ""
-| summarize count = count(), by: {frontend.name, view.name}
+| filter ${filter} and isNotNull(custom.view.name) and custom.view.name != ""
+| summarize count = count(), by: {frontend.name, custom.view.name}
 | sort count desc
 | limit 500
 | fieldsRemove count`;
@@ -745,10 +745,10 @@ fetch user.events, ${period}
     by: {step_tag}`;
 }
 
-/** Per-page metrics — breaks down each page (view.name) individually for multi-page steps */
+/** Per-page metrics — breaks down each page (custom.view.name) individually for multi-page steps */
 function pageMetricsQuery(days: number, frontend: string, steps: StepDef[], nonce = 0, prev = false): string {
   const period = periodClause(days, prev);
-  const field = steps[0]?.type === "view" ? "view.name" : "url.path";
+  const field = steps[0]?.type === "view" ? "custom.view.name" : "url.path";
   return `// ${nonce}
 fetch user.events, ${period}
 | filter ${frontendFilter(steps, frontend)}
@@ -796,7 +796,7 @@ function cwvByPageQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
@@ -890,7 +890,7 @@ function trendsSparklineQuery(days: number, frontend: string, steps: StepDef[]):
 function pageSparklineQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days, false);
   const binSize = days < 1 ? '1h' : days <= 3 ? '6h' : '1d';
-  const field = steps[0]?.type === "view" ? "view.name" : "url.path";
+  const field = steps[0]?.type === "view" ? "custom.view.name" : "url.path";
   return `fetch user.events, ${period}
 | filter ${frontendFilter(steps, frontend)}
 | filter ${anyStepFilter(steps)}
@@ -1008,7 +1008,7 @@ function worstSessionsQuery(days: number, frontend: string, steps: StepDef[]): s
 | filter ${anyStepFilter(steps)}
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | fieldsAdd satisfaction = coalesce(if(dur_ms <= ${APDEX_T}.0, "satisfied"), if(dur_ms <= ${APDEX_4T}.0, "tolerating"), "frustrated")
-| fieldsAdd pageName = coalesce(view.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, url.path, "unknown")
 | fieldsAdd errName = if(characteristics.has_error == true, coalesce(error.display_name, error.type, "error"), else: "")
 | summarize
     actions = count(),
@@ -1041,7 +1041,7 @@ function jsErrorsQuery(days: number, frontend: string, prev = false): string {
 | filter frontend_name == "${frontend}"
 | filter error.type == "exception"
 | fieldsAdd errorName = error.display_name
-| fieldsAdd pageName = view.name
+| fieldsAdd pageName = custom.view.name
 | fieldsAdd stackLocation = coalesce(error.stack_trace, "")
 | summarize
     occurrences = count(),
@@ -1063,7 +1063,7 @@ function clickIssuesQuery(days: number, frontend: string): string {
 | filter frontend.name == "${frontend}"
 | filter in(event.type, "rageClick", "deadClick")
 | fieldsAdd eventType = event.type
-| fieldsAdd pageName = view.name
+| fieldsAdd pageName = custom.view.name
 | fieldsAdd target = event.name
 | summarize
     occurrences = count(),
@@ -1110,7 +1110,7 @@ function navigationPathsQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1131,7 +1131,7 @@ function sankeyQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1153,7 +1153,7 @@ function sankeyCwvPerPageQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
@@ -1174,7 +1174,7 @@ function sankeyErrorsPerPageQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_error == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | summarize
     errorCount = count(),
     errorSessions = countDistinct(dt.rum.session.id),
@@ -1189,7 +1189,7 @@ function sankeyExtendedPathsQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1203,7 +1203,7 @@ function sankeyPageDurationQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | summarize
     avgDuration = avg(dur_ms),
@@ -1220,7 +1220,7 @@ function sankeyPrevPathsQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1650,13 +1650,13 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
   return `fetch user.events, ${period}
 | filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | summarize total_events = count(), by: {dt.rum.session.id, pageName}
 | lookup [
     fetch user.events, ${period}
     | filter ${frontendFilter(steps, frontend)}
     | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-    | fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+    | fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
     | filter ${lastStepMatch}
     | summarize conv_flag = count(), by: {dt.rum.session.id}
   ], sourceField:dt.rum.session.id, lookupField:dt.rum.session.id, prefix:"c."
@@ -1679,7 +1679,7 @@ function clickIssuesReplayQuery(days: number, frontend: string): string {
 | filter characteristics.has_rage_click == true or characteristics.has_dead_click == true
 | fields sid = dt.rum.session.id, timestamp, start_time,
     element = coalesce(user_action.target, "unknown"),
-    page = coalesce(view.name, url.path, "unknown"),
+    page = coalesce(custom.view.name, url.path, "unknown"),
     click_type = if(characteristics.has_rage_click == true, "rage", else: "dead")
 | sort timestamp desc
 | limit 30`;
@@ -1746,7 +1746,7 @@ function featureFlagEventsQuery(days: number): string {
 // NEW: UTM Attribution Query
 function utmAttributionQuery(days: number, frontend: string, steps: StepDef[]): string {
   const period = periodClause(days);
-  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `view.name == "${id}"`).join(" or ") ?? "true";
+  const lastStep = steps[steps.length - 1]?.identifiers?.map(id => `custom.view.name == "${id}"`).join(" or ") ?? "true";
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | fieldsAdd utm_source = coalesce(stringKey(custom_properties, "utm_source"), stringKey(custom_properties, "utmSource"), "direct")
@@ -2073,7 +2073,7 @@ function thirdPartyCwvCorrelationQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
@@ -2104,7 +2104,7 @@ function errorClusteringQuery(days: number, frontend: string): string {
 | filter frontend_name == "${frontend}"
 | filter error.type == "exception"
 | fieldsAdd errorName = error.display_name
-| fieldsAdd pageName = view.name
+| fieldsAdd pageName = custom.view.name
 | fieldsAdd errorMessage = coalesce(error.message, error.display_name, "")
 | summarize
     occurrences = count(),
@@ -3028,9 +3028,9 @@ function funnelDiscoveryQuery(apps: string[], filter?: string, exclude?: string)
   const lines = [
     `fetch user.events, from: now()-7d`,
     `| filter ${appFilter}`,
-    `| filter isNotNull(view.name) and view.name != ""`,
+    `| filter isNotNull(custom.view.name) and custom.view.name != ""`,
     `| sort timestamp asc`,
-    `| summarize pages = collectArray(view.name), app = first(frontend.name), by: {dt.rum.session.id}`,
+    `| summarize pages = collectArray(custom.view.name), app = first(frontend.name), by: {dt.rum.session.id}`,
     `| fieldsAdd pageCount = arraySize(pages)`,
     `| filter pageCount >= 3`,
     `| fieldsAdd step1 = pages[0], step2 = pages[1], step3 = pages[2], step4 = if(pageCount >= 4, pages[3], else:""), step5 = if(pageCount >= 5, pages[4], else:"")`,
@@ -3569,7 +3569,7 @@ export function UserJourney() {
     const map: Record<string, string[]> = {};
     for (const r of (settingsPagesData.data?.records ?? []) as any[]) {
       const app = r['frontend.name'];
-      const page = r['view.name'];
+      const page = r['custom.view.name'];
       if (app && page) {
         if (!map[app]) map[app] = [];
         map[app].push(page);
@@ -3708,7 +3708,7 @@ export function UserJourney() {
   const pageMap = useMemo(() => {
     const m = new Map<string, any>();
     for (const r of (pageMetrics.data?.records ?? []) as any[]) {
-      const key = String(r["view.name"] ?? r["url.path"] ?? "");
+      const key = String(r["custom.view.name"] ?? r["url.path"] ?? "");
       if (key) m.set(key, r);
     }
     return m;
@@ -3718,7 +3718,7 @@ export function UserJourney() {
   const pageMapPrev = useMemo(() => {
     const m = new Map<string, any>();
     for (const r of (pageMetricsPrev.data?.records ?? []) as any[]) {
-      const key = String(r["view.name"] ?? r["url.path"] ?? "");
+      const key = String(r["custom.view.name"] ?? r["url.path"] ?? "");
       if (key) m.set(key, r);
     }
     return m;
@@ -3730,7 +3730,7 @@ export function UserJourney() {
     const records = (pageSparklineData.data?.records ?? []) as any[];
     const byPage = new Map<string, any[]>();
     for (const r of records) {
-      const key = String(r["view.name"] ?? r["url.path"] ?? "");
+      const key = String(r["custom.view.name"] ?? r["url.path"] ?? "");
       if (!key) continue;
       if (!byPage.has(key)) byPage.set(key, []);
       byPage.get(key)!.push(r);

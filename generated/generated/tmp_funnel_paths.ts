@@ -6,9 +6,9 @@ import { queryExecutionClient, QueryStartResponse } from '@dynatrace-sdk/client-
 export function getQueryString(){
   return `fetch user.events, from:now()-2h
 | filter frontend.name == "www.angular.easytravel.com"
-| filter isNotNull(view.name)
+| filter isNotNull(custom.view.name)
 | sort timestamp asc
-| summarize path = collectArray(view.name), by:{dt.rum.session.id}
+| summarize path = collectArray(custom.view.name), by:{dt.rum.session.id}
 | limit 500
 `;
 }

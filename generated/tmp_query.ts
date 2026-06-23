@@ -6,7 +6,7 @@ import { queryExecutionClient, QueryStartResponse } from '@dynatrace-sdk/client-
 export function getQueryString(){
   return `fetch user.events, from: now() - 14d
 | filter frontend.name == "www.angular.easytravel.com"
-| filter view.name == "/easytravel/home"
+| filter custom.view.name == "/easytravel/home"
 | limit 1
 | fields timestamp, startTime, start_time
 `;

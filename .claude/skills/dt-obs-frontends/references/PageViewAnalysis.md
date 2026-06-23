@@ -6,7 +6,7 @@ Analyze page summaries (web) and view summaries (mobile) for engagement metrics.
 
 **Key Fields:**
 
-- `page.url.path` / `view.name` - Page/view identifier
+- `page.url.path` / `custom.view.name` - Page/view identifier
 - `page.foreground_time` / `view.foreground_time` - Active time
 - `page.background_time` / `view.background_time` - Hidden time
 - `view.sequence_number` - View position in session
@@ -42,7 +42,7 @@ fetch user.events, from: now() - 2h
     view_count = count(),
     unique_sessions = countDistinct(dt.rum.session.id),
     avg_foreground_time = avg(view.foreground_time),
-    by: {frontend.name, view.name}
+    by: {frontend.name, custom.view.name}
 | sort view_count desc
 | limit 30
 
@@ -137,7 +137,7 @@ fetch user.events, from: now() - 2h
 | filter navigation.type == "soft_navigation"
 | summarize
     soft_nav_count = count(),
-    by: {frontend.name, view.name}
+    by: {frontend.name, custom.view.name}
 | sort soft_nav_count desc
 
 ```

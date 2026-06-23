@@ -6,9 +6,9 @@ import { queryExecutionClient, QueryStartResponse } from '@dynatrace-sdk/client-
 export function getQueryString(){
   return `fetch user.events, from:now()-2h
 | filter frontend.name == "www.angular.easytravel.com"
-| filter isNotNull(view.name)
+| filter isNotNull(custom.view.name)
 | sort timestamp asc
-| summarize path = collectDistinct(view.name), by:{dt.rum.session.id}
+| summarize path = collectDistinct(custom.view.name), by:{dt.rum.session.id}
 | fieldsAdd reached_book = iAny(path[] == "/easytravel/journeys/:id:/book")
 | summarize 
     total = count(),

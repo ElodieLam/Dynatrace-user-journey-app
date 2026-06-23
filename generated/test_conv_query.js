@@ -7,7 +7,7 @@ const steps = [
 ];
 
 function identifierFilter(id, type) {
-  const field = 'view.name';
+  const field = 'custom.view.name';
   const startsW = id.startsWith('*');
   const endsW = id.endsWith('*');
   const midIdx = id.indexOf('*', 1);
