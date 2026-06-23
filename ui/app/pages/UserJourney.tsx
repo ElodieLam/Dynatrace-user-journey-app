@@ -9452,6 +9452,53 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
               totalSvgH = Math.max(totalSvgH, bp.y + beNodeH + bePadY);
             }
 
+            // FE→BE connector mapping: mirrors render logic so both filtering directions stay consistent
+            const feBeDepth1Svcs = beByDepth.get(1) ?? [];
+            const feBeExitList = Array.from(nodePos.entries()).filter(([nm]) => exitPages.has(nm));
+            const feBeConnList = feBeExitList.length > 0 ? feBeExitList : Array.from(nodePos.entries()).slice(-Math.min(3, nodePos.size));
+            const depth1SvcToPage = new Map<string, string>(); // svcId → connected exit page name
+            const pageToDepth1Svcs = new Map<string, string[]>(); // page name → [svcId, ...]
+            feBeDepth1Svcs.forEach((svc, si) => {
+              const entry = feBeConnList[si % Math.max(feBeConnList.length, 1)];
+              if (entry) {
+                const [pageName] = entry;
+                depth1SvcToPage.set(svc.id, pageName);
+                const arr = pageToDepth1Svcs.get(pageName) ?? [];
+                arr.push(svc.id);
+                pageToDepth1Svcs.set(pageName, arr);
+              }
+            });
+            // focusedExitPages: exit pages wired to Tier-1 services in the backend focus chain
+            const focusedExitPages = new Set<string>();
+            if (svcFocusIncludesFrontend) {
+              for (const [svcId, pageName] of depth1SvcToPage) {
+                if (svcFocusSet.has(svcId)) focusedExitPages.add(pageName);
+              }
+            }
+            // svcFocusPageSet: all frontend pages that eventually lead to focusedExitPages (BFS backwards)
+            const svcFocusPageSet = new Set<string>(focusedExitPages);
+            if (svcFocusIncludesFrontend && svcFocusPageSet.size > 0) {
+              let bfsChanged = true;
+              while (bfsChanged) { bfsChanged = false; for (const l of links) { if (svcFocusPageSet.has(l.tgt) && !svcFocusPageSet.has(l.src)) { svcFocusPageSet.add(l.src); bfsChanged = true; } } }
+            }
+            // pageSvcFocusSet: all backend services reachable from focused pages via connectors + BFS downstream
+            const pageSvcFocusSet = new Set<string>();
+            if (focusedPageName) {
+              for (const pg of pageFocusSet) {
+                for (const svcId of (pageToDepth1Svcs.get(pg) ?? [])) {
+                  if (pageSvcFocusSet.has(svcId)) continue;
+                  pageSvcFocusSet.add(svcId);
+                  const queue = [svcId];
+                  while (queue.length > 0) {
+                    const cur = queue.shift()!;
+                    for (const e of beEdges) {
+                      if (e.src === cur && !pageSvcFocusSet.has(e.tgt)) { pageSvcFocusSet.add(e.tgt); queue.push(e.tgt); }
+                    }
+                  }
+                }
+              }
+            }
+
             // Gather present node types for legend
             const presentTypes = new Set<FlowNodeType>();
             for (const [name] of nodePos) {
@@ -9514,19 +9561,16 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
 
                   {/* Frontend → Backend connector edges (dashed) */}
                   {showBackend && beServices.length > 0 && (() => {
-                    const depth1Svcs = beByDepth.get(1) ?? [];
-                    const exitNodeList = Array.from(nodePos.entries()).filter(([nm]) => exitPages.has(nm));
-                    const srcList = exitNodeList.length > 0 ? exitNodeList : Array.from(nodePos.entries()).slice(-Math.min(3, nodePos.size));
-                    return depth1Svcs.map((svc, si) => {
+                    return feBeDepth1Svcs.map((svc, si) => {
                       const bePos = beNodePos.get(svc.id);
                       if (!bePos) return null;
-                      const srcEntry = srcList[si % Math.max(srcList.length, 1)];
+                      const srcEntry = feBeConnList[si % Math.max(feBeConnList.length, 1)];
                       if (!srcEntry) return null;
                       const [, sp] = srcEntry;
                       const x1 = sp.x + nodeW; const y1 = sp.y + nodeH / 2;
                       const x2 = bePos.x; const y2 = bePos.y + beNodeH / 2;
                       const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
-                      const feBeOp = focusedSvcId ? (svcFocusSet.has(svc.id) ? 0.75 : 0.05) : focusedPageName ? 0.07 : 0.4;
+                      const feBeOp = focusedSvcId ? (svcFocusSet.has(svc.id) ? 0.75 : 0.05) : focusedPageName ? (pageSvcFocusSet.size > 0 ? (pageSvcFocusSet.has(svc.id) ? 0.75 : 0.05) : 0.07) : 0.4;
                       return (
                         <path key={`fe-be-${svc.id}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
                           fill="none" stroke={FLOW_NODE_META["svc-direct"].color} strokeWidth={1.5} strokeOpacity={feBeOp} strokeDasharray="6,4" style={{ transition: "stroke-opacity 0.2s" }} />
@@ -9542,10 +9586,11 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const x2 = tp.x; const y2 = tp.y + beNodeH / 2;
                     const cx1 = x1 + (x2 - x1) * 0.4; const cx2 = x1 + (x2 - x1) * 0.6;
                     const beEdgeFocused = !!focusedSvcId && svcFocusSet.has(edge.src) && svcFocusSet.has(edge.tgt);
-                    const beEdgeOp = focusedSvcId ? (beEdgeFocused ? 0.75 : 0.05) : focusedPageName ? 0.07 : 0.22;
+                    const pageSvcEdgeFocused = pageSvcFocusSet.has(edge.src) && pageSvcFocusSet.has(edge.tgt);
+                    const beEdgeOp = focusedSvcId ? (beEdgeFocused ? 0.75 : 0.05) : focusedPageName ? (pageSvcFocusSet.size > 0 ? (pageSvcEdgeFocused ? 0.75 : 0.05) : 0.07) : 0.22;
                     return (
                       <path key={`be-${ei}`} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                        fill="none" stroke={`rgba(255,255,255,${beEdgeOp})`} strokeWidth={beEdgeFocused ? 2.5 : 1.5} style={{ transition: "all 0.2s" }} />
+                        fill="none" stroke={`rgba(255,255,255,${beEdgeOp})`} strokeWidth={beEdgeFocused || pageSvcEdgeFocused ? 2.5 : 1.5} style={{ transition: "all 0.2s" }} />
                     );
                   })}
 
@@ -9567,7 +9612,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                       ? (isHighlighted ? (isSelected ? 0.9 : 0.55) : 0.05)
                       : focusedPageName
                         ? ((link.src === focusedPageName || link.tgt === focusedPageName) ? 0.65 : 0.05)
-                        : focusedSvcId ? (svcFocusIncludesFrontend ? 0.25 : 0.08) : 0.35;
+                        : focusedSvcId ? (svcFocusIncludesFrontend ? (svcFocusPageSet.has(link.src) && svcFocusPageSet.has(link.tgt) ? 0.55 : 0.05) : 0.05) : 0.35;
                     return (
                       <path key={i} d={`M${x1},${srcY} C${cx1},${srcY} ${cx2},${tgtY} ${x2},${tgtY}`}
                         fill="none" stroke={color} strokeWidth={isSelected ? thickness * 1.4 : thickness}
@@ -9588,7 +9633,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const conv = convMap.get(name);
                     const shortName = name.length > 32 ? name.substring(0, 30) + "…" : name;
                     const isHighlightedNode = !hasFocus || highlightedNodes.has(name);
-                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : focusedPageName ? (pageFocusSet.has(name) ? 1 : 0.1) : focusedSvcId ? (svcFocusIncludesFrontend ? 0.85 : 0.12) : 1;
+                    const nodeOpacity = hasFocus ? (isHighlightedNode ? 1 : 0.12) : focusedPageName ? (pageFocusSet.has(name) ? 1 : 0.1) : focusedSvcId ? (svcFocusIncludesFrontend ? (svcFocusPageSet.has(name) ? 1 : 0.12) : 0.12) : 1;
                     const isActive = activeTooltip === `page:${name}`;
                     return (
                       <g key={name}
@@ -9620,7 +9665,7 @@ function NavigationPathsTab({ data, isLoading, appEntityId, steps, navPathConvDa
                     const isActive = activeTooltip === `svc:${svcId}`;
                     return (
                       <g key={svcId}
-                        style={{ cursor: draggingNode === `be:${svcId}` ? "grabbing" : "grab", transition: draggingNode === `be:${svcId}` ? "none" : "opacity 0.2s", opacity: focusedSvcId ? (svcFocusSet.has(svcId) ? 1 : 0.1) : focusedPageName ? 0.15 : 1 }}
+                        style={{ cursor: draggingNode === `be:${svcId}` ? "grabbing" : "grab", transition: draggingNode === `be:${svcId}` ? "none" : "opacity 0.2s", opacity: focusedSvcId ? (svcFocusSet.has(svcId) ? 1 : 0.1) : focusedPageName ? (pageSvcFocusSet.size > 0 ? (pageSvcFocusSet.has(svcId) ? 1 : 0.1) : 0.15) : 1 }}
                         onMouseDown={(e) => { e.stopPropagation(); setDraggingNode(`be:${svcId}`); setDragStart({ mx: e.clientX, my: e.clientY, nx: bePos.x, ny: bePos.y }); setWasDragging(false); }}
                         onClick={(e) => { e.stopPropagation(); if (!wasDragging) setActiveTooltip(prev => prev === `svc:${svcId}` ? null : `svc:${svcId}`); }}
                       >
