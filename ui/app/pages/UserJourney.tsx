@@ -796,7 +796,7 @@ function cwvByPageQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
@@ -1110,7 +1110,7 @@ function navigationPathsQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1131,7 +1131,7 @@ function sankeyQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1153,7 +1153,7 @@ function sankeyCwvPerPageQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
@@ -1174,7 +1174,7 @@ function sankeyErrorsPerPageQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_error == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | summarize
     errorCount = count(),
     errorSessions = countDistinct(dt.rum.session.id),
@@ -1189,7 +1189,7 @@ function sankeyExtendedPathsQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1203,7 +1203,7 @@ function sankeyPageDurationQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | fieldsAdd dur_ms = toDouble(duration) / 1000000.0
 | summarize
     avgDuration = avg(dur_ms),
@@ -1220,7 +1220,7 @@ function sankeyPrevPathsQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | sort timestamp asc
 | summarize path = collectArray(pageName), by: {dt.rum.session.id}
 | fieldsAdd pathLen = arraySize(path)
@@ -1650,13 +1650,13 @@ function navPathConversionQuery(days: number, frontend: string, steps: StepDef[]
   return `fetch user.events, ${period}
 | filter ${frontendFilter(steps, frontend)}
 | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | summarize total_events = count(), by: {dt.rum.session.id, pageName}
 | lookup [
     fetch user.events, ${period}
     | filter ${frontendFilter(steps, frontend)}
     | filter characteristics.has_navigation == true OR characteristics.has_page_summary == true
-    | fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+    | fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
     | filter ${lastStepMatch}
     | summarize conv_flag = count(), by: {dt.rum.session.id}
   ], sourceField:dt.rum.session.id, lookupField:dt.rum.session.id, prefix:"c."
@@ -2073,7 +2073,7 @@ function thirdPartyCwvCorrelationQuery(days: number, frontend: string): string {
   return `fetch user.events, ${period}
 | filter frontend.name == "${frontend}"
 | filter characteristics.has_page_summary == true
-| fieldsAdd pageName = coalesce(custom.view.name, page.name, url.path, "unknown")
+| fieldsAdd pageName = coalesce(custom.view.name, custom.page.name, url.path, "unknown")
 | fieldsAdd
     lcp_ms = toDouble(web_vitals.largest_contentful_paint) / 1000000.0,
     cls_val = toDouble(web_vitals.cumulative_layout_shift),
